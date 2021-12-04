@@ -1,0 +1,3 @@
+[submodule "extern/pcg-cpp"]
+	path = extern/pcg-cpp
+	url = https://github.com/imneme/pcg-cpp.git

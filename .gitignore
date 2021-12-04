@@ -1,0 +1,15 @@
+data/
+data
+output/
+.DS_Store/
+__pycache__/
+.mypy_cache/
+.venv*/
+.direnv/
+logs/
+.idea/
+ml_files/
+.python-version
+.vs/
+_skbuild/
+dist/
