@@ -30,6 +30,7 @@
               pkgs.ninja
               pkgs.pkg-config
               pkgs.yajl
+              pkgs.zlib
             ];
 
             shellHook = ''
@@ -41,6 +42,7 @@
               export LD_LIBRARY_PATH=${pkgs.cudnn_cudatoolkit_11_2}/lib:${pkgs.cutensor_cudatoolkit_11_2}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.linuxPackages.nvidia_x11}/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11}/nvvm/libdevice:$LD_LIBRARY_PATH
+              export LD_LIBRARY_PATH=${pkgs.zlib.out}/lib:$LD_LIBRARY_PATH
               SOURCE_DATE_EPOCH=$(date +%s)
               export TF_GPU_ALLOCATOR=cuda_malloc_async
               export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${pkgs.cudaPackages.cudatoolkit_11}"
