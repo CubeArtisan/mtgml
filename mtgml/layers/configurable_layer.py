@@ -14,7 +14,7 @@ class ConfigurableLayer(tf.keras.layers.Layer):
 
     @classmethod
     def from_config(cls, config):
-        config['hyper_config'] = HyperConfig.from_dict(cls, config['hyper_config'])
+        config['hyper_config'] = HyperConfig(layer_type=cls, data=config['hyper_config'])
         return cls(**config)
 
     def build(self, input_shapes):
