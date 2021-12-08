@@ -2,123 +2,78 @@ import math
 
 import tensorflow as tf
 
+from mtgml.layers.configurable_layer import ConfigurableLayer
+from mtgml.layers.contextual_rating import ContextualRating
+from mtgml.layers.item_embedding import ItemEmbedding
+from mtgml.layers.item_rating import ItemRating
+from mtgml.layers.set_emedding import AdditiveSetEmbedding
+from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
 from mtgml.tensorboard.timeseries import log_timeseries
 
 
-class DraftBot(tf.keras.models.Model):
-    def __init__(self, num_items, embed_dims=64, seen_dims=16, pool_dims=32,
-                 triplet_loss_weight=0.0, dropout_pool=0.0, dropout_seen=0.0,
-                 margin=1, log_loss_weight=1.0, activation='selu',
-                 pool_context_ratings=True, seen_context_ratings=True, item_ratings=True,
-                 bounded_distance=True, final_activation='linear', normalize_sum=True,
-                 pool_hidden_units=64, seen_hidden_units=32, pool_dropout_dense=0.0,
-                 seen_dropout_dense=0.0, time_shape=(3, 15), **kwargs):
-        kwargs.update({'dynamic': False})
-        super(DraftBot, self).__init__(**kwargs)
-        self.num_items = num_items
-        self.embed_dims = embed_dims
-        self.seen_dims = seen_dims
-        self.pool_dims = pool_dims
-        self.triplet_loss_weight = triplet_loss_weight
-        self.dropout_pool = dropout_pool
-        self.dropout_seen = dropout_seen
-        self.margin = margin
-        self.log_loss_weight = log_loss_weight
-        self.activation = activation
-        self.pool_context_ratings = pool_context_ratings
-        self.seen_context_ratings = seen_context_ratings
-        self.item_ratings = item_ratings
-        self.bounded_distance = bounded_distance
-        self.final_activation = final_activation
-        self.normalize_sum = normalize_sum
-        self.pool_hidden_units = pool_hidden_units
-        self.seen_hidden_units = seen_hidden_units
-        self.pool_dropout_dense = pool_dropout_dense
-        self.seen_dropout_dense = seen_dropout_dense
-        self.time_shape = time_shape
-        if not pool_context_ratings and not seen_context_ratings and not item_ratings:
-            raise ValueError('Must have at least one sublayer enabled')
-
-    def get_config(self):
-        config = super(DraftBot, self).get_config()
-        config.update({
-            "num_items": self.num_items,
-            "embed_dims": self.embed_dims,
-            "seen_dims": self.seen_dims,
-            "pool_dims": self.pool_dims,
-            "triplet_loss_weight": self.triplet_loss_weight,
-            "dropout_pool": self.dropout_pool,
-            "dropout_seen": self.dropout_seen,
-            "margin": self.margin,
-            "log_loss_weight": self.log_loss_weight,
-            "activation": self.activation,
-            "bounded_distance": self.bounded_distance,
-            "final_activation": self.final_activation,
-            "normalize_sum": self.normalize_sum,
-            "pool_hidden_units": self.pool_hidden_units,
-            "seen_hidden_units": self.seen_hidden_units,
-            "pool_dropout_dense": self.pool_dropout_dense,
-            "seen_dropout_dense": self.seen_dropout_dense,
-            "time_shape": self.time_shape,
-        })
-        return config
-
-    def build(self, input_shapes):
-        sublayers = 0
-        if self.pool_context_ratings:
-            self.pool_rating_layer = ContextualRating(self.num_items, self.embed_dims, self.pool_dims,
-                                                        item_dropout_rate=self.dropout_pool,
-                                                        dense_dropout_rate=self.pool_dropout_dense,
-                                                        activation=self.activation,
-                                                        bounded_distance=self.bounded_distance,
-                                                        final_activation=self.final_activation,
-                                                        normalize_sum=self.normalize_sum,
-                                                        hidden_units=self.pool_hidden_units,
-                                                        time_shape=self.time_shape,
-                                                        name='RatingFromPool')
-            sublayers += 1
-        if self.seen_context_ratings:
-            self.seen_rating_layer = ContextualRating(self.num_items, self.embed_dims, self.seen_dims,
-                                                      item_dropout_rate=self.dropout_seen,
-                                                      dense_dropout_rate=self.seen_dropout_dense,
-                                                      activation=self.activation,
-                                                      bounded_distance=self.bounded_distance,
-                                                      final_activation=self.final_activation,
-                                                      normalize_sum=self.normalize_sum,
-                                                      hidden_units=self.seen_hidden_units,
-                                                      time_shape=self.time_shape,
-                                                      name='RatingFromSeen')
-            sublayers += 1
-        if self.item_ratings:
-            self.item_rating_layer = ItemRating(self.num_items, bounded=self.bounded_distance,
-                                                name='CardRating')
-            sublayers += 1
-        if sublayers > 1:
-            self.time_varying = TimeVaryingLinearEmbedding(self.time_shape, sublayers,
-                                                  initializer=tf.constant_initializer(-4),
-                                                  name='OracleCombination')
+class DraftBot(tf.keras.models.Model, ConfigurableLayer):
+    @classmethod
+    def get_properties(cls, hyper_config, input_shapes=None):
+        pool_context_ratings = hyper_config.get_bool('pool_context_ratings', default=False,
+                                                     help='Whether to rate cards based on how the go with the other cards in the pool so far.')
+        seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=False,
+                                                     help='Whether to rate cards based on the packs seen so far.')
+        item_ratings = hyper_config.get_bool('item_ratings', default=False, help='Whether to give each card a rating independent of context.')
+        seen_pack_dims = hyper_config.get_int('seen_pack_dims', min=8, max=512, step=8, default=32,
+                                              help='The number of dimensions to embed seen packs into.')\
+            if seen_context_ratings else 0
+        props = {
+            'embed_card': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
+                                                    seed_mod=29, help='The embeddings for the card objects.')
+            'rate_off_pool': hyper_config.get_sublayer('RatingFromPool', sub_layer_type=ContextualRating,
+                                                       seed_mod=31, help='The layer that rates based on the other cards that have been picked.')
+                             if pool_context_ratings else None,
+            'seen_pack_dims': seen_pack_dims,
+            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AdditiveSetEmbedding,
+                                                    fixed={'Decoder': {'final': {'dims': seen_pack_dims}}},
+                                                    seed_mod=37, help='The layer that embeds the packs that have been seen so far.')
+                          if seen_context_ratings else None,
+            'pack_position_count': input_shapes[2][1] if input_shapes else 45,
+            'embed_pack_position': hyper_config.get_sublayer('EmbedPackPosition',
+                                                             sub_layer_type=TimeVaryingEmbedding,
+                                                             fixed={'dims': seen_pack_dims,
+                                                                    'time_shape': (input_shapes[2][1] if input_shapes else 45,)},
+                                                             seed_mod=23, help='The embedding for the position in the draft')
+                                  if seen_context_ratings else None
+            'rate_off_seen': hyper_config.get_sublayer('RatingFromSeen', sub_layer_type=ContextualRating,
+                                                       seed_mod=31, help='The layer that rates based on the embeddings of the packs that have been seen.')
+                             if seen_context_ratings else None,
+            'rate_card': hyper_config.get_sublayer('CardRating', sub_layer_type=ItemRating, seed__mod=13),
+        }
 
     def call(self, inputs, training=False):
         inputs = (
             tf.cast(inputs[0], dtype=tf.int32, name='card_choices'),
             tf.cast(inputs[1], dtype=tf.int32, name='pool'),
-            tf.cast(inputs[2], dtype=tf.int32, name='seen'),
+            tf.cast(inputs[2], dtype=tf.int32, name='seen_packs'),
             tf.cast(inputs[3], dtype=tf.int32, name='coords'),
             tf.cast(inputs[4], dtype=tf.float32, name='coord_weights'),
-            tf.cast(inputs[5], dtype=tf.int32, name='inputs[5]'),
+            tf.cast(inputs[5], dtype=tf.int32, name='y_idx'),
         )
         loss_dtype = tf.float32
         sublayer_scores = []
+        card_choice_embeds = self.embed_card(inputs[0])
+        pool_embeds = self.embed_card(inputs[1])
+        seen_pack_embeds = self.embed_card(inputs[2])
+        position_embed  
         if self.pool_context_ratings:
-            sublayer_scores.append(self.pool_rating_layer((inputs[0], inputs[1], (inputs[3], inputs[4]))))
+            sublayer_scores.append(self.pool_rating_layer((card_choice_embeds, pool_embeds)))
         if self.seen_context_ratings:
-            sublayer_scores.append(self.seen_rating_layer((inputs[0], inputs[2], (inputs[3], inputs[4]))))
+            pack_embeds = self.embed_pack(seen_pack_embeds)
+            pack_positions = tf.reshape(tf.range(self.pack_position_count), (1, -1, 1, 1))
+            position_embeds = self.embed_pack_position(pack_positions, tf.ones_like(pack_positions))
+            pack_embeds = tf.math.sqrt(self.seen_pack_dims) * pack_embeds + position_embeds
+            sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds)))
         if self.item_ratings:
-            sublayer_scores.append(self.item_rating_layer(inputs[0], training=training))
+            sublayer_scores.append(self.rate_card(inputs[0], training=training))
         if len(sublayer_scores) > 1:
-            sublayer_weights = 8 * tf.math.softplus(self.time_varying((inputs[3], inputs[4]), training=training), name='sublayer_weights')
             sublayer_scores = tf.stack(sublayer_scores, axis=-1, name='stacked_sublayer_scores')
-            scores = tf.einsum('...o,...co->...c', sublayer_weights, sublayer_scores, name='scores')
+            scores = tf.math.reduce_sum(sublayer_scores, axis=-1, name='scores')
         else:
             scores = sublayer_scores[0]
         scores = tf.cast(scores, dtype=loss_dtype, name='cast_scores')

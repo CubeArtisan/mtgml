@@ -12,21 +12,22 @@ class ContextualRating(ConfigurableLayer):
                                                    default='linear',
                                                    help='The final activation before calculating distance')
         embed_item = hyper_config.get_sublayer('EmbedItem', layer_type=MLP,
-                                               fixed={'final_dims': measure_dims,
-                                                      'final_activation': final_activation},
+                                               fixed={ 'final': {'dims': measure_dims,
+                                                                  'activation': final_activation}},
                                                help='Transforms the card embeddings to the embedding used to calculate distances.')
         set_embed_type = hyper_config.get_choice('set_embed_type', choices=SET_EMBEDDING_CHOICES,
                                                  default='attentive', help='The kind of set embedding to use to get the contexts embedding for distance calculation.')
         if set_embed_type == 'additive':
             embed_context = hyper_config.get_sublayer('EmbedContext', layer_type=AdditiveSetEmbedding,
-                                                      fixed={'final_dims': measure_dims,
-                                                             'decoding_final_activation': final_activation},
+                                                      fixed={'Decoder':
+                                                             { 'final': {'dims': measure_dims,
+                                                               'activation': final_activation}}},
                                                       help="The Additive set embedding layer to use if set_embed_type is 'additive'")
         elif set_embed_type == 'attentive':
             embed_context = hyper_config.get_sublayer('EmbedContext', layer_type=AttentiveSetEmbedding,
                                                       fixed={'Decoder':
-                                                             {'final_dims': measure_dims,
-                                                              'final_activation': final_activation}},
+                                                             { 'final': {'dims': measure_dims,
+                                                               'activation': final_activation}}},
                                                       help="The Attentive set embedding layer to use if set_embed_type is 'attentive'")
         else:
             raise NotImplementedError('This form of set_embed_type is not supported for this layer')

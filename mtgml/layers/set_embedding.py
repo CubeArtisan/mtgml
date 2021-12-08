@@ -4,6 +4,7 @@ from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
 from mtgml.layers.wrapped import MultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
+from mtgml.tensorboard.plot_attention_scores import plot_attention_scores
 
 
 class AdditiveSetEmbedding(tf.keras.layers.Layer):
@@ -88,9 +89,9 @@ class AttentiveSetEmbedding(tf.keras.layers.Layer):
                                            axis=-1, keepdims=True, name='num_valid')
             summed_embeds = tf.math.divide(summed_embeds, num_valid + 1e-09, name='normalized_embeds')
         summed_embeds = self.decoding_dropout(self.activation_layer(summed_embeds), training=training)
+        # Tensorboard logging
+        plot_attention_scores(attention_scores, multihead=True, name=self.name)
         return self.decoder(summed_embeds, training=training)
-        hidden = self.dropout(self.hidden(summed_embeds), training=training)
-        return self.output_layer(hidden)
 
     def compute_mask(self, inputs, mask=None):
         if not mask:

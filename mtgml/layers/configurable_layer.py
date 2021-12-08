@@ -6,6 +6,7 @@ class ConfigurableLayer(tf.keras.layers.Layer):
         super(self, ConfigurableLayer).__init__(**kwargs)
         self.hyper_config = hyper_config
         self.seed = self.hyper_config.seed
+        self.built = False
 
     def get_config(self):
         config = super(self, ConfigurableLayer).get_config()
@@ -18,6 +19,8 @@ class ConfigurableLayer(tf.keras.layers.Layer):
         return cls(**config)
 
     def build(self, input_shapes):
+        if self.built:
+            return
         properties = self.get_properties(self.hyper_config, input_shapes=input_shapes)
         for key, prop in properties.items():
             if isinstance(prop, list):
@@ -27,3 +30,4 @@ class ConfigurableLayer(tf.keras.layers.Layer):
             if isinstance(prop, HyperLayer):
                 prop = prop()
             setattr(self, key, prop)
+        self.built = True
