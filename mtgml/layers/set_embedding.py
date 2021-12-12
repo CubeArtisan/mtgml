@@ -1,30 +1,33 @@
 import tensorflow as tf
 
+from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
-from mtgml.layers.wrapped import MultiHeadAttention
+from mtgml.layers.wrapped import Dropout, MultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
-from mtgml.tensorboard.plot_attention_scores import plot_attention_scores
+# from mtgml.tensorboard.plot_attention_scores import plot_attention_scores
+
+SET_EMBEDDING_CHOICES = ('additive', 'attentive')
 
 
-class AdditiveSetEmbedding(tf.keras.layers.Layer):
+class AdditiveSetEmbedding(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        decoding_dropout = hyper_config.get_float('decoding_dropout', min=0, max=0.99, step=0.01,
+        decoding_dropout = hyper_config.get_float('decoding_dropout', min=0, max=0.99, step=0.01, default=0,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         return {
-            'encoder': hyper_config.get_sublayer('Encoder', layer_type=MLP, seed_mod=13,
+            'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=MLP, seed_mod=13,
                                                  help='The mapping from the item embeddings to the embeddings to add.'),
-            'decoder': hyper_config.get_sublayer('Decoder', layer_type=MLP, seed_mod=17,
+            'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
                                                  fixed={"dropout": decoding_dropout},
                                                  help='The mapping from the added item embeddings to the embeddings to return.'),
-            'zero_masked': hyper_config.get_sublayer('ZeroMasked', layer_type=ZeroMasked, seed_mod=71,
+            'zero_masked': hyper_config.get_sublayer('ZeroMasked', sub_layer_type=ZeroMasked, seed_mod=71,
                                                      help='Zero out the masked values for adding.'),
-            'item_dropout': hyper_config.get_sublayer('ItemDropout' layer_type=ExtendedDropout,
+            'item_dropout': hyper_config.get_sublayer('ItemDropout', sub_layer_type=ExtendedDropout,
                                                       seed_mod=53, fixed={'all_last_dim': True},
                                                       help='Drops out entire items from the set.'),
-            'decoding_dropout': hyper_config.get_sublayer('DecodingDropout', layer_type=Dropout,
-                                                          seed_mod=43, fixed={'rate': decoding_dropout
+            'decoding_dropout': hyper_config.get_sublayer('DecodingDropout', sub_layer_type=Dropout,
+                                                          seed_mod=43, fixed={'rate': decoding_dropout,
                                                                               'blank_last_dim': True},
                                                       help='Drops out values from the decoding layers to improve generalizability.'),
             'normalize_sum': hyper_config.get_bool('normalize_sum', default=False,
@@ -51,24 +54,24 @@ class AdditiveSetEmbedding(tf.keras.layers.Layer):
         return tf.math.reduce_any(mask, axis=-1)
 
 
-class AttentiveSetEmbedding(tf.keras.layers.Layer):
+class AttentiveSetEmbedding(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        decoding_dropout = hyper_config.get_float('decoding_dropout', min=0, max=0.99, step=0.01,
+        decoding_dropout = hyper_config.get_float('decoding_dropout', min=0, max=0.99, step=0.01, default=0.0,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         return {
-            'encoder': hyper_config.get_sublayer('Encoder', layer_type=MultiHeadAttention, seed_mod=37,
+            'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=MultiHeadAttention, seed_mod=37,
                                                  help='The mapping from the item embeddings to the embeddings to add.'),
-            'decoder': hyper_config.get_sublayer('Decoder', layer_type=MLP, seed_mod=17,
+            'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
                                                  fixed={"dropout": decoding_dropout},
                                                  help='The mapping from the added item embeddings to the embeddings to return.'),
-            'zero_masked': hyper_config.get_sublayer('ZeroMasked', layer_type=ZeroMasked, seed_mod=71,
+            'zero_masked': hyper_config.get_sublayer('ZeroMasked', sub_layer_type=ZeroMasked, seed_mod=71,
                                                      help='Zero out the masked values for adding.'),
-            'item_dropout': hyper_config.get_sublayer('ItemDropout' layer_type=ExtendedDropout,
+            'item_dropout': hyper_config.get_sublayer('ItemDropout', sub_layer_type=ExtendedDropout,
                                                       seed_mod=53, fixed={'all_last_dim': True},
                                                       help='Drops out entire items from the set.'),
-            'decoding_dropout': hyper_config.get_sublayer('DecodingDropout', layer_type=Dropout,
-                                                          seed_mod=43, fixed={'rate': decoding_dropout
+            'decoding_dropout': hyper_config.get_sublayer('DecodingDropout', sub_layer_type=Dropout,
+                                                          seed_mod=43, fixed={'rate': decoding_dropout,
                                                                               'blank_last_dim': True},
                                                       help='Drops out values from the decoding layers to improve generalizability.'),
             'normalize_sum': hyper_config.get_bool('normalize_sum', default=False,
@@ -90,7 +93,7 @@ class AttentiveSetEmbedding(tf.keras.layers.Layer):
             summed_embeds = tf.math.divide(summed_embeds, num_valid + 1e-09, name='normalized_embeds')
         summed_embeds = self.decoding_dropout(self.activation_layer(summed_embeds), training=training)
         # Tensorboard logging
-        plot_attention_scores(attention_scores, multihead=True, name=self.name)
+        # plot_attention_scores(attention_scores, multihead=True, name=self.name)
         return self.decoder(summed_embeds, training=training)
 
     def compute_mask(self, inputs, mask=None):

@@ -59,7 +59,7 @@ class Dropout(WrappedLayer):
         return {
             'rate': hyper_config.get_float('rate', min=0, max=0.99, step=0.01, default=0,
                                            help='The percent of values that get replaced with zero.'),
-            'noise_shape': hyper_config.get_array('noise_shape', default=None,
+            'noise_shape': hyper_config.get_list('noise_shape', default=None,
                                                   help='The shape of the generated noise which will be broadcast as needed.'),
         }
 

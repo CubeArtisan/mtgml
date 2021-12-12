@@ -6,7 +6,8 @@ from mtgml.layers.configurable_layer import ConfigurableLayer
 class ItemEmbedding(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        num_items = hyper_config.get_int('num_items', min=1, max=2**31 - 1, default=None)
+        num_items = hyper_config.get_int('num_items', min=1, max=2**31 - 1, default=None,
+                                         help='The number of items that must be embedded. Should be 1 + the max index expected to see.')
         if not num_items and input_shapes:
             raise NotImplementedError('You must supply the number of items.')
         return {
@@ -16,9 +17,10 @@ class ItemEmbedding(ConfigurableLayer):
         }
 
     def build(self, input_shapes):
-        super(self, CardEmbedding).build(input_shapes)
+        super(ItemEmbedding, self).build(input_shapes)
         self.embeddings = self.add_weight('embeddings', shape=(self.num_items, self.dims),
-                                          initializer=self.initializer, trainable=True)
+                                          initializer=tf.keras.initializers.GlorotUniform(seed=self.seed),
+                                          trainable=True)
 
     def compute_mask(inputs, mask=None):
         our_mask = inputs > 0
@@ -28,6 +30,6 @@ class ItemEmbedding(ConfigurableLayer):
             return our_mask
 
     def call(self, inputs):
-        embeddings = tf.concat((tf.constant(0, shape=(1, self.embed_dims), dtype=self.compute_dtype),
+        embeddings = tf.concat((tf.constant(0, shape=(1, self.dims), dtype=self.compute_dtype),
                                 self.embeddings), axis=0, name='embeddings_with_zero')
         return tf.gather(embeddings, inputs, 'gathered_embeddings')

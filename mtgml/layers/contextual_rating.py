@@ -1,6 +1,9 @@
 import tensorflow as tf
 
+from mtgml.constants import ACTIVATION_CHOICES
 from mtgml.layers.configurable_layer import ConfigurableLayer
+from mtgml.layers.mlp import MLP
+from mtgml.layers.set_embedding import AdditiveSetEmbedding, AttentiveSetEmbedding, SET_EMBEDDING_CHOICES
 
 
 class ContextualRating(ConfigurableLayer):
@@ -11,20 +14,20 @@ class ContextualRating(ConfigurableLayer):
         final_activation = hyper_config.get_choice('final_activation', choices=ACTIVATION_CHOICES,
                                                    default='linear',
                                                    help='The final activation before calculating distance')
-        embed_item = hyper_config.get_sublayer('EmbedItem', layer_type=MLP,
+        embed_item = hyper_config.get_sublayer('EmbedItem', sub_layer_type=MLP,
                                                fixed={ 'final': {'dims': measure_dims,
                                                                   'activation': final_activation}},
                                                help='Transforms the card embeddings to the embedding used to calculate distances.')
         set_embed_type = hyper_config.get_choice('set_embed_type', choices=SET_EMBEDDING_CHOICES,
                                                  default='attentive', help='The kind of set embedding to use to get the contexts embedding for distance calculation.')
         if set_embed_type == 'additive':
-            embed_context = hyper_config.get_sublayer('EmbedContext', layer_type=AdditiveSetEmbedding,
+            embed_context = hyper_config.get_sublayer('EmbedContext', sub_layer_type=AdditiveSetEmbedding,
                                                       fixed={'Decoder':
                                                              { 'final': {'dims': measure_dims,
                                                                'activation': final_activation}}},
                                                       help="The Additive set embedding layer to use if set_embed_type is 'additive'")
         elif set_embed_type == 'attentive':
-            embed_context = hyper_config.get_sublayer('EmbedContext', layer_type=AttentiveSetEmbedding,
+            embed_context = hyper_config.get_sublayer('EmbedContext', sub_layer_type=AttentiveSetEmbedding,
                                                       fixed={'Decoder':
                                                              { 'final': {'dims': measure_dims,
                                                                'activation': final_activation}}},
@@ -44,7 +47,7 @@ class ContextualRating(ConfigurableLayer):
         context_embeds = self.embed_context(contexts, training=training)
         embed_diffs = tf.math.subtract(item_embeds, tf.expand_dims(context_embeds, 1, name='expanded_context_embeds'),
                                        name='embed_diffs')
-        distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), name='distances)
+        distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), name='distances')
         if self.bounded_distance:
             one = tf.constant(1, dtype=self.compute_dtype)
             nonlinear_distances = tf.math.divide(one, tf.math.add(one, distances,

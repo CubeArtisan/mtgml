@@ -1,10 +1,13 @@
 import tensorflow as tf
 
+from mtgml.layers.configurable_layer import ConfigurableLayer
 
-class ZeroMasked(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
-        super(self, RemoveMasked).__init__(**kwargs)
-        self.supports_masking = True
+class ZeroMasked(ConfigurableLayer):
+    @classmethod
+    def get_properties(cls, hyper_config, input_shapes=None):
+        return {
+            'supports_masking': True,
+        }
 
     def call(self, inputs, mask=None):
         if mask:

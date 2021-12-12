@@ -9,18 +9,14 @@ class ExtendedDropout(ConfigurableLayer):
         return {
             'rate': hyper_config.get_float('rate', min=0, max=0.99, step=0.01, default=0,
                                            help='The percent of values that get replaced with zero.'),
-            'noise_shape': hyper_config.get_array('noise_shape', default=None,
+            'noise_shape': hyper_config.get_list('noise_shape', default=None,
                                                   help='The shape of the generated noise which will be broadcast as needed.'),
             'return_mask': hyper_config.get_bool('return_mask', default=False,
                                                  help='Whether to return both the output and the mask for the noise.'),
             'blank_last_dim': hyper_config.get_bool('blank_last_dim', default=False,
-                                                    help='Apply dropout to the entire last dimension vs choosing for each element of the last dimension.')
-
+                                                    help='Apply dropout to the entire last dimension vs choosing for each element of the last dimension.'),
+            'supports_masking': True,
         }
-
-    def __init__(self, *args, **kwargs):
-        super(self, ExtendedDropout).__init__(*args, **kwargs)
-        self.supports_masking = True
 
     def call(self, inputs, training=False, mask=None):
         if 0 >= rate or not training:

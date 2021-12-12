@@ -6,15 +6,15 @@ from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.item_embedding import ItemEmbedding
 from mtgml.layers.item_rating import ItemRating
-from mtgml.layers.set_emedding import AdditiveSetEmbedding
+from mtgml.layers.set_embedding import AdditiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
 from mtgml.tensorboard.timeseries import log_timeseries
 
 
-class DraftBot(tf.keras.models.Model, ConfigurableLayer):
+class DraftBot(ConfigurableLayer, tf.keras.models.Model):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        pool_context_ratings = hyper_config.get_bool('pool_context_ratings', default=False,
+        pool_context_ratings = hyper_config.get_bool('pool_context_ratings', default=True,
                                                      help='Whether to rate cards based on how the go with the other cards in the pool so far.')
         seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=False,
                                                      help='Whether to rate cards based on the packs seen so far.')
@@ -22,9 +22,12 @@ class DraftBot(tf.keras.models.Model, ConfigurableLayer):
         seen_pack_dims = hyper_config.get_int('seen_pack_dims', min=8, max=512, step=8, default=32,
                                               help='The number of dimensions to embed seen packs into.')\
             if seen_context_ratings else 0
-        props = {
+        num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
+                                         help='The number of items that must be embedded. Should be 1 + the max index expected to see.')
+        return {
             'embed_card': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
-                                                    seed_mod=29, help='The embeddings for the card objects.')
+                                                    fixed={'num_items': num_cards},
+                                                    seed_mod=29, help='The embeddings for the card objects.'),
             'rate_off_pool': hyper_config.get_sublayer('RatingFromPool', sub_layer_type=ContextualRating,
                                                        seed_mod=31, help='The layer that rates based on the other cards that have been picked.')
                              if pool_context_ratings else None,
@@ -37,13 +40,15 @@ class DraftBot(tf.keras.models.Model, ConfigurableLayer):
             'embed_pack_position': hyper_config.get_sublayer('EmbedPackPosition',
                                                              sub_layer_type=TimeVaryingEmbedding,
                                                              fixed={'dims': seen_pack_dims,
-                                                                    'time_shape': (input_shapes[2][1] if input_shapes else 45,)},
+                                                                    'time_shape': (3, 15)},
                                                              seed_mod=23, help='The embedding for the position in the draft')
-                                  if seen_context_ratings else None
+                                  if seen_context_ratings else None,
             'rate_off_seen': hyper_config.get_sublayer('RatingFromSeen', sub_layer_type=ContextualRating,
                                                        seed_mod=31, help='The layer that rates based on the embeddings of the packs that have been seen.')
                              if seen_context_ratings else None,
-            'rate_card': hyper_config.get_sublayer('CardRating', sub_layer_type=ItemRating, seed__mod=13),
+            'rate_card': hyper_config.get_sublayer('CardRating', sub_layer_type=ItemRating, seed_mod=13,
+                                                   fixed={'num_items': num_cards},
+                                                   help='The linear ordering of cards by value.'),
         }
 
     def call(self, inputs, training=False):
@@ -51,24 +56,27 @@ class DraftBot(tf.keras.models.Model, ConfigurableLayer):
             tf.cast(inputs[0], dtype=tf.int32, name='card_choices'),
             tf.cast(inputs[1], dtype=tf.int32, name='pool'),
             tf.cast(inputs[2], dtype=tf.int32, name='seen_packs'),
-            tf.cast(inputs[3], dtype=tf.int32, name='coords'),
-            tf.cast(inputs[4], dtype=tf.float32, name='coord_weights'),
-            tf.cast(inputs[5], dtype=tf.int32, name='y_idx'),
+            tf.cast(inputs[3], dtype=tf.int32, name='seen_coords'),
+            tf.cast(inputs[4], dtype=tf.float32, name='seen_coord_weights'),
+            tf.cast(inputs[5], dtype=tf.int32, name='coords'),
+            tf.cast(inputs[6], dtype=tf.float32, name='coord_weights'),
+            tf.cast(inputs[7], dtype=tf.int32, name='y_idx'),
         )
         loss_dtype = tf.float32
         sublayer_scores = []
-        card_choice_embeds = self.embed_card(inputs[0])
-        pool_embeds = self.embed_card(inputs[1])
-        seen_pack_embeds = self.embed_card(inputs[2])
-        position_embed  
+        card_choice_embeds = self.embed_card(inputs[0], training=training)
+        pool_embeds = self.embed_card(inputs[1], training=training)
+        seen_pack_embeds = self.embed_card(inputs[2], training=training)
         if self.pool_context_ratings:
-            sublayer_scores.append(self.pool_rating_layer((card_choice_embeds, pool_embeds)))
+            sublayer_scores.append(self.pool_rating_layer((card_choice_embeds, pool_embeds), training=training))
         if self.seen_context_ratings:
-            pack_embeds = self.embed_pack(seen_pack_embeds)
-            pack_positions = tf.reshape(tf.range(self.pack_position_count), (1, -1, 1, 1))
-            position_embeds = self.embed_pack_position(pack_positions, tf.ones_like(pack_positions))
+            pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
+            pack_embeds_mask = pack_embeds._keras_mask
+            position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights),
+                                                       training=training)
             pack_embeds = tf.math.sqrt(self.seen_pack_dims) * pack_embeds + position_embeds
-            sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds)))
+            pack_embeds._keras_mask = pack_embeds_mask
+            sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))
         if self.item_ratings:
             sublayer_scores.append(self.rate_card(inputs[0], training=training))
         if len(sublayer_scores) > 1:

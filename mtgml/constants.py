@@ -1,3 +1,4 @@
 ACTIVATION_CHOICES = ('elu', 'selu', 'relu', 'tanh', 'sigmoid', 'linear', 'swish')
 
-SET_EMBEDDING_CHOICES = ('additive', 'attentive')
+OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb', 'adadelta',
+                     'nadam', 'rmsprop')

@@ -1,10 +1,11 @@
 import tensorflow as tf
 
+from mtgml.layers.configurable_layer import ConfigurableLayer
 
-class TimeVaryingEmbedding(tf.keras.layers.Layer):
+class TimeVaryingEmbedding(ConfigurableLayer):
     @classmethod
-    def get_properties(cls, hyper_config, input_shape):
-        time_shape = hyper_config.get_array('time_shape', default=None,
+    def get_properties(cls, hyper_config, input_shapes=None):
+        time_shape = hyper_config.get_list('time_shape', default=None,
                                             help='The dimensions of the time space.')
         if not time_shape and input_shape:
             raise NotImplementedError('You must supply a time shape.')

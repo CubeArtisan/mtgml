@@ -12,65 +12,22 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
+import yaml
 import zstandard as zstd
 from tensorboard.plugins.hparams import api as hp
 
+from mtgml.config.hyper_config import HyperConfig
 from mtgml.draftbots.draftbots import DraftBot
-from mtgml.utils.tqdm_callback import TQDMProgressBar
-from mtgml.utils.range import Range
 from mtgml.tensorboard.callback import TensorBoard
+from mtgml.utils.tqdm_callback import TQDMProgressBar
+from mtgml.generators.picks_generator import PickGenerator
+from mtgml.utils.range import Range
 
 BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
 EMBED_DIMS_CHOICES = tuple(2 ** i + j for i in range(0, 10) for j in range(2))
 ACTIVATION_CHOICES = ('relu', 'selu', 'swish', 'tanh', 'sigmoid', 'linear', 'gelu', 'elu')
 OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb', 'adadelta',
                      'nadam', 'rmsprop')
-HYPER_PARAMS = (
-    {"name": "batch_size", "type": int, "choices": BATCH_CHOICES, "range": hp.Discrete(BATCH_CHOICES),
-     "default": 8192, "help": "The batch size for one step."},
-    {"name": "learning_rate", "type": float, "choices": [Range(1e-06, 1e+01)],
-     "range": hp.RealInterval(1e-06, 1e+05), "default": 1e-03, "help": "The initial learning rate to train with."},
-    {"name": "embed_dims", "type": int, "default": 16, "choices": EMBED_DIMS_CHOICES,
-     "range": hp.Discrete(EMBED_DIMS_CHOICES), "help": "The number of dimensions to use for card embeddings."},
-    {"name": "seen_dims", "type": int, "default": 16, "choices": EMBED_DIMS_CHOICES,
-     "range": hp.Discrete(EMBED_DIMS_CHOICES), "help": 'The number of dimensions to use for seen card embeddings.'},
-    {"name": 'pool_dims', "type": int, "default": 16, "choices": EMBED_DIMS_CHOICES,
-     "range": hp.Discrete(EMBED_DIMS_CHOICES), "help": 'The number of dimensions to use for pool card embeddings.'},
-    {"name": 'dropout_pool', "type": float, "default": 0.0, "choices": [Range(0.0, 1.0)],
-     "range": hp.RealInterval(0.0, 1.0), "help": 'The percent of cards to drop from pool when calculating the pool embedding.'},
-    {"name": 'dropout_seen', "type": float, "default": 0.0, "choices": [Range(0.0, 1.0)],
-     "range": hp.RealInterval(0.0, 1.0), "help": 'The percent of cards to drop from pool when calculating the seen embedding.'},
-    {"name": 'pool_dropout_dense', "type": float, "default": 0.0, "choices": [Range(0.0, 1.0)],
-     "range": hp.RealInterval(0.0, 1.0), "help": 'The percent of values to drop from the dense layers when calculating pool/seen embeddings.'},
-    {"name": 'seen_dropout_dense', "type": float, "default": 0.0, "choices": [Range(0.0, 1.0)],
-     "range": hp.RealInterval(0.0, 1.0), "help": 'The percent of values to drop from the dense layers when calculating pool/seen embeddings.'},
-    {"name": 'triplet_loss_weight', "type": float, "default": 1.0, "choices": [Range(0.0, 1.0)],
-     "range": hp.RealInterval(0.0, 1.0), "help": 'The relative weight of the loss based on difference of the scores.'},
-    {"name": 'log_loss_weight', "type": float, "default": 1.0, "choices": [Range(0.0, 1.0)],
-     "range": hp.RealInterval(0.0, 1.0), "help": 'The relative weight of the loss based on the log of the probability we guess correctly for each pair.'},
-    {"name": 'margin', "type": float, "default": 1.0, "choices": [Range(0.0, 1e+02)],
-     "range": hp.RealInterval(0.0, 1e+02), "help": 'The minimum amount the score of the correct option should win by.'},
-    {"name": 'activation', "type": str, "default": 'elu', "choices": ACTIVATION_CHOICES,
-     "range": hp.Discrete(ACTIVATION_CHOICES), "help": "The activation function for the hidden layers."},
-    {"name": 'final_activation', "type": str, "default": 'linear', "choices": ACTIVATION_CHOICES,
-     "range": hp.Discrete(ACTIVATION_CHOICES), "help": "The activation function for the final embedding layer."},
-    {"name": 'optimizer', "type": str, "default": 'adam', "choices": OPTIMIZER_CHOICES,
-     "range": hp.Discrete(OPTIMIZER_CHOICES), "help": "The optimization algorithm to use."},
-    {"name": "seen_hidden_units", "type": int, "default": 16, "choices": EMBED_DIMS_CHOICES,
-     "range": hp.Discrete(EMBED_DIMS_CHOICES), "help": 'The number of dimensions to use for the seen hidden layer.'},
-    {"name": "pool_hidden_units", "type": int, "default": 16, "choices": EMBED_DIMS_CHOICES,
-     "range": hp.Discrete(EMBED_DIMS_CHOICES), "help": 'The number of dimensions to use for the pool hidden layer.'},
-)
-
-BOOL_HYPER_PARAMS = (
-    {"name": "pool_context_ratings", "action": "store_true", "help": "Whether to include the Contextual Rating layer for the current pool."},
-    {"name": "seen_context_ratings", "action": "store_true", "help": "Whether to include the Contextual Rating layer for the current set of seen cards."},
-    {"name": "item_ratings", "action": "store_true", "help": "Whether to include the individual card ratings."},
-    {"name": 'hyperbolic', "action": 'store_true', "help": 'Use the hyperbolic geometry model.'},
-    {"name": "bounded_distance", "action": "store_true", "help": "Use a bounded metric for distance"},
-    {"name": "normalize_sum", "action": "store_true", "help": "L2 Normalize the sum of card embeddings before passing them through the dense layers."},
-)
-
 if __name__ == "__main__":
     locale.setlocale(locale.LC_ALL, '')
     logging.basicConfig(level=logging.INFO)
@@ -79,32 +36,12 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', '-e', type=int, required=True, help="The maximum number of epochs to train for")
     parser.add_argument('--name', '-o', '-n', type=str, required=True, help="The name to save this model under.")
     parser.add_argument('--seed', type=int, default=37, help='The random seed to initialize things with to improve reproducibility.')
-    for param in HYPER_PARAMS:
-        parser.add_argument(f'--{param["name"]}', type=param["type"], default=param["default"],
-                            choices=param["choices"], help=param["help"])
-    for param in BOOL_HYPER_PARAMS:
-        parser.add_argument(f'--{param["name"]}', action=param['action'], help=param["help"])
-    float_type_group = parser.add_mutually_exclusive_group()
-    float_type_group.add_argument('-16', dest='float_type', const=tf.float16, action='store_const', help='Use 16 bit numbers throughout the model.')
-    float_type_group.add_argument('--auto16', '-16rw', action='store_true', help='Automatically rewrite some operations to use 16 bit numbers.')
-    float_type_group.add_argument('--keras16', '-16k', action='store_true', help='Have Keras automatically convert the synergy calculations to 16 bit.')
-    float_type_group.add_argument('-32', dest='float_type', const=tf.float32, action='store_const', help='Use 32 bit numbers (the default) throughout the model.')
-    float_type_group.add_argument('-64', dest='float_type', const=tf.float64, action='store_const', help='Use 64 bit numbers throughout the model.')
-    xla_group = parser.add_mutually_exclusive_group()
-    xla_group.add_argument('--xla', action='store_true', dest='use_xla', help='Enable using xla to optimize the model (the default).')
-    xla_group.add_argument('--no-xla', action='store_false', dest='use_xla', help='Disable using xla to optimize the model.')
     parser.add_argument('--debug', action='store_true', help='Enable debug dumping of tensor stats.')
-    parser.add_argument('--mlir', action='store_true', help='Enable MLIR passes on the data (EXPERIMENTAL).')
     parser.add_argument('--profile', action='store_true', help='Enable profiling a range of batches from the first epoch.')
     parser.add_argument('--deterministic', action='store_true', help='Try to keep the run deterministic so results can be reproduced.')
     parser.add_argument('--dir', type=str, required=True, help='The soure directory where the training and validation data are stored.')
-    parser.add_argument('--epochs_per_cycle', type=int, default=1, help='The number of epochs it takes to go through all the training data.')
-    parser.add_argument('--epochs_per_validation', type=int, default=1, help='The number of epochs between running validation.')
     parser.set_defaults(float_type=tf.float32, use_xla=True)
     args = parser.parse_args()
-    hparams = {hp.HParam(param["name"], param["range"]): getattr(args, param["name"]) for param in HYPER_PARAMS}
-    hparams.update({hp.HParam(param['name'], hp.Discrete((True, False))): getattr(args, param['name'])
-                    for param in BOOL_HYPER_PARAMS})
     tf.keras.utils.set_random_seed(args.seed)
     directory = Path(args.dir)
 
@@ -114,15 +51,28 @@ if __name__ == "__main__":
         card_ratings = [(c.get('elo', 1200) / 1200) - 1  for c in cards_json]
         card_names = [c['name'] for c in cards_json]
 
+    config_path = Path('ml_files')/args.name/'hyper_config.yaml'
+    if config_path.exists():
+        with open(config_path, 'r') as config_file:
+            hyper_config = HyperConfig.from_config(yaml.load(config_file, yaml.Loader))
+            hyper_config.layer_type = DraftBot
+    else:
+        hyper_config = HyperConfig(layer_type=DraftBot, fixed={
+            'num_cards': len(cards_json),
+        })
+    batch_size = hyper_config.get_int('batch_size', min=8, max=2048, step=8, logdist=True, default=512,
+                                      help='The number of samples to evaluate at a time')
+
     logging.info('Creating the pick Datasets.')
-    train_epochs_per_cycle = args.epochs_per_cycle
+    train_epochs_per_cycle = hyper_config.get_int('epochs_per_cycle', min=1, max=256, default=1,
+                                                  help='The number of epochs for a full cycle through the training data')
     # pick_generator_train = PickPairGenerator(args.batch_size, directory/'training_parsed_picks',
     #                                          train_epochs_per_cycle, args.seed)
-    pick_generator_train = PickGenerator(args.batch_size, directory/'training_parsed_picks',
-                                             train_epochs_per_cycle, args.seed)
+    pick_generator_train = PickGenerator(batch_size, directory/'training_parsed_picks',
+                                         train_epochs_per_cycle, args.seed)
     logging.info(f"There are {len(pick_generator_train):,} training batches.")
     # pick_generator_test = pick_generator_train
-    pick_generator_test = PickGenerator(8192, directory/'validation_parsed_picks',
+    pick_generator_test = PickGenerator(batch_size * 4, directory/'validation_parsed_picks',
                                         1, args.seed)
     logging.info(f"There are {len(pick_generator_test):n} validation batches.")
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
@@ -137,17 +87,21 @@ if __name__ == "__main__":
             tensor_dtypes=[args.float_type],
             # op_regex="(?!^(Placeholder|Constant)$)"
         )
-    if args.mlir:
-        tf.config.experimental.enable_mlir_graph_optimization()
-        tf.config.experimental.enable_mlir_bridge()
     if args.deterministic:
         tf.config.experimental.enable_op_determinism()
 
     Path(log_dir).mkdir(exist_ok=True, parents=True)
+    dtype = hyper_config.get_choice('dtype', choices=(16, 32, 64), default=32,
+                                    help='The size of the floating point numbers to use for calculations in the model')
+    if dtype == 16:
+        dtype = 'mixed_float16'
+    elif dtype == 32:
+        dtype = 'float32'
+    elif dtype == 64:
+        dtype = 'float64'
+    tf.keras.mixed_precision.set_global_policy(dtype)
 
-    if args.keras16 or args.float_type == tf.float16:
-        tf.keras.mixed_precision.set_global_policy('mixed_float16')
-    tf.config.optimizer.set_jit(args.use_xla)
+    tf.config.optimizer.set_jit(hyper_config.get_bool('use_xla', default=False, help='Whether to use xla to speed up calculations.'))
     if args.debug:
         tf.config.optimizer.set_experimental_options=({
             'layout_optimizer': True,
@@ -199,43 +153,43 @@ if __name__ == "__main__":
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     num_batches = len(pick_generator_train)
     tensorboard_period = len(pick_generator_test)
-    draftbots_kwargs = {param["name"]: getattr(args, param["name"]) for param in HYPER_PARAMS}
-    draftbots_bool_kwargs = {param["name"]: getattr(args, param["name"]) for param in BOOL_HYPER_PARAMS}
-    del draftbots_kwargs["batch_size"]
-    del draftbots_kwargs["learning_rate"]
-    del draftbots_kwargs["optimizer"]
-    draftbots = DraftBot(num_items=len(cards_json) + 1, name='DraftBot', **draftbots_kwargs,
-                         **draftbots_bool_kwargs)
-    learning_rate = args.learning_rate or 1e-03
-    if args.optimizer == 'adam':
+    draftbots = hyper_config.build(name='DraftBot')
+    optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
+                                        default='adam', help='The optimizer type to use for optimization')
+    learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
+                                           default=1e-03, help=f'The learning rate to use for {optimizer}')
+    if optimizer == 'adam':
         opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    if args.optimizer == 'adadelta':
-        opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate)
-    if args.optimizer == 'nadam':
-        opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
-    if args.optimizer == 'adamax':
+    if optimizer == 'adamax':
         opt = tf.keras.optimizers.Adamax(learning_rate=learning_rate)
-    if args.optimizer == 'rmsprop':
-        opt = tf.keras.optimizers.RMSprop(learning_rate=learning_rate, momentum=0.1)
-    if args.optimizer == 'lazyadam':
+    if optimizer == 'adadelta':
+        opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate)
+    if optimizer == 'nadam':
+        opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
+    if optimizer == 'sgd':
+        momentum = hyper_config.get_float('sgd_momentum', min=1e-05, max=1e-01, logdist=True,
+                                          default=1e-04, help='The momentum for sgd optimization.')
+        nesterov = hyper_config.get_bool('sgd_nesterov', default=False, help='Whether to use nesterov momentum for sgd.')
+        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum)
+    if optimizer == 'lazyadam':
         opt = tfa.optimizers.LazyAdam(learning_rate=learning_rate)
-    if args.optimizer == 'rectadam':
-        opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=1e-07)
-    if args.optimizer == 'novograd':
-        opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate)
-    if args.optimizer == 'lamb':
-        opt = tfa.optimizers.LAMB(learning_rate=learning_rate)
-    # opt = tfa.optimizers.Lookahead(opt, sync_period=16, slow_step_size=0.5)
-    if args.float_type == tf.float16:
-        opt = tf.keras.mixed_precision.LossScaleOptimizer(opt, dynamic_growth_steps=num_batches // 128)
-    if args.auto16:
-        logging.warn("WARNING 16 bit rewrite mode can cause numerical instabilities.")
-        tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite(opt)
+    if optimizer == 'rectadam':
+        weight_decay = hyper_config.get_float('rectadam_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
+                                              help='The weight decay for rectadam optimization per batch.')
+        opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=weight_decay)
+    if optimizer == 'novograd':
+        weight_decay = hyper_config.get_float('novograd_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
+                                              help='The weight decay for novograd optimization per batch.')
+        opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
     draftbots.compile(optimizer=opt, loss=lambda y_true, y_pred: 0.0)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
         logging.info('Loading Checkpoint.')
         draftbots.load_weights(latest)
+    with open(config_path, 'w') as config_file:
+        yaml.dump(hyper_config.get_config(), config_file)
+    with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
+        yaml.dump(hyper_config.get_config(), config_file)
 
     logging.info('Starting training')
     callbacks = []
@@ -264,18 +218,16 @@ if __name__ == "__main__":
     tb_callback = TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=True,
                               update_freq=tensorboard_period, embeddings_freq=None,
                               profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
-    hp_callback = hp.KerasCallback(log_dir, hparams)
     BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
     tqdm_callback = TQDMProgressBar(smoothing=0.01, epoch_bar_format=BAR_FORMAT)
     callbacks.append(nan_callback)
     # callbacks.append(es_callback)
     callbacks.append(tb_callback)
-    callbacks.append(hp_callback)
     callbacks.append(tqdm_callback)
     draftbots.fit(
         pick_generator_train,
         validation_data=pick_generator_test,
-        validation_freq=args.epochs_per_validation,
+        validation_freq=1,
         epochs=args.epochs,
         callbacks=callbacks,
         verbose=0,
