@@ -24,7 +24,7 @@ class AdditiveSetEmbedding(ConfigurableLayer):
             'zero_masked': hyper_config.get_sublayer('ZeroMasked', sub_layer_type=ZeroMasked, seed_mod=71,
                                                      help='Zero out the masked values for adding.'),
             'item_dropout': hyper_config.get_sublayer('ItemDropout', sub_layer_type=ExtendedDropout,
-                                                      seed_mod=53, fixed={'all_last_dim': True},
+                                                      seed_mod=53, fixed={'all_last_dim': True, 'return_mask': False},
                                                       help='Drops out entire items from the set.'),
             'decoding_dropout': hyper_config.get_sublayer('DecodingDropout', sub_layer_type=WDropout,
                                                           seed_mod=43, fixed={'rate': decoding_dropout,
@@ -37,7 +37,7 @@ class AdditiveSetEmbedding(ConfigurableLayer):
     def call(self, inputs, training=False, mask=None):
         encoded_items = self.encoder(inputs, training=training)
         dropped_inputs = self.zero_masked(self.item_dropout(encoded_items, training=training))
-        summed_embeds = tf.math.reduce_sum(item_embeds, -2, name='summed_embeds')
+        summed_embeds = tf.math.reduce_sum(dropped_inputs, -2, name='summed_embeds')
         if self.normalize_sum:
             num_valid = tf.math.reduce_sum(tf.cast(tf.keras.layers.Masking().compute_mask(dropped_inputs),
                                                    dtype=self.compute_dtype, name='mask'),
@@ -68,7 +68,7 @@ class AttentiveSetEmbedding(ConfigurableLayer):
             'zero_masked': hyper_config.get_sublayer('ZeroMasked', sub_layer_type=ZeroMasked, seed_mod=71,
                                                      help='Zero out the masked values for adding.'),
             'item_dropout': hyper_config.get_sublayer('ItemDropout', sub_layer_type=ExtendedDropout,
-                                                      seed_mod=53, fixed={'all_last_dim': True},
+                                                      seed_mod=53, fixed={'all_last_dim': True, 'return_mask': True},
                                                       help='Drops out entire items from the set.'),
             'decoding_dropout': hyper_config.get_sublayer('DecodingDropout', sub_layer_type=WDropout,
                                                           seed_mod=43, fixed={'rate': decoding_dropout,

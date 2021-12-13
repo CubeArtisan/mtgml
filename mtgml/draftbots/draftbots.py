@@ -74,12 +74,15 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
         if self.rate_off_pool:
             sublayer_scores.append(self.rate_off_pool((card_choice_embeds, pool_embeds), training=training))
         if self.rate_off_seen:
+            print(seen_pack_embeds.shape)
             pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
+            print(pack_embeds.shape)
             pack_embeds_mask = pack_embeds._keras_mask
-            position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights),
-                                                       training=training)
-            pack_embeds = tf.math.sqrt(self.seen_pack_dims) * pack_embeds + position_embeds
+            position_embeds = tf.expand_dims(self.embed_pack_position(inputs[3:5], training=training), -2)
+            print(position_embeds.shape)
+            pack_embeds = tf.constant(math.sqrt(self.seen_pack_dims), self.compute_dtype) * pack_embeds + position_embeds
             pack_embeds._keras_mask = pack_embeds_mask
+            print(pack_embeds.shape)
             sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))
         if self.rate_card:
             sublayer_scores.append(self.rate_card(inputs[0], training=training))

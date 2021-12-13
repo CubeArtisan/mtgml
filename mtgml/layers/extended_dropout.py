@@ -20,9 +20,11 @@ class ExtendedDropout(ConfigurableLayer):
 
     def call(self, inputs, training=False, mask=None):
         if 0 >= self.rate or not training:
-            return inputs, tf.ones_like(inputs)
+            result = inputs
+            noise_mask = tf.cast(tf.ones_like(inputs), tf.bool)
         elif self.rate >= 1:
-            return tf.zeros_like(inputs), tf.zeros_like(inputs)
+            result = tf.zeros_like(inputs)
+            noise_mask = tf.cast(tf.zeros_like(inputs), tf.bool)
         else:
             noise_shape = self.noise_shape or tf.shape(inputs)
             if self.blank_last_dim:
@@ -45,10 +47,12 @@ class ExtendedDropout(ConfigurableLayer):
                                               dropped_inputs)
             else:
                 result = tf.math.multiply(inputs, noise_mult)
-            if self.return_mask:
-                noise_mask = noise >= self.rate
-                if mask:
-                    noise_mask = tf.math.logical_and(noise_mask, mask, name='combined_mask')
-                return result, noise_mask
-            else:
-                return result
+            noise_mask = noise >= self.rate
+        if self.return_mask:
+            if mask is not None:
+                if tf.rank(mask) < tf.rank(noise_mask):
+                    mask = tf.expand_dims(mask, -1)
+                noise_mask = tf.math.logical_and(noise_mask, mask, name='combined_mask')
+            return result, tf.ensure_shape(noise_mask, result.shape)
+        else:
+            return result
