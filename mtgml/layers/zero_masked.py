@@ -10,8 +10,9 @@ class ZeroMasked(ConfigurableLayer):
         }
 
     def call(self, inputs, mask=None):
-        if mask:
-            return tf.expand_dims(tf.cast(mask, self.compute_dtype, name='float_mask'), -1,
-                                  name='expanded_mask') * inputs
+        if mask is not None:
+            while len(mask.shape) < len(inputs.shape):
+                mask = tf.expand_dims(mask, -1)
+            return tf.cast(mask, self.compute_dtype, name='float_mask') * inputs
         else:
             return inputs

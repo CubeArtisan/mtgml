@@ -25,7 +25,7 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
                                          help='The number of items that must be embedded. Should be 1 + the max index expected to see.')
         return {
-            'embed_card': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
+            'embed_cards': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
                                                     fixed={'num_items': num_cards},
                                                     seed_mod=29, help='The embeddings for the card objects.'),
             'rate_off_pool': hyper_config.get_sublayer('RatingFromPool', sub_layer_type=ContextualRating,
@@ -49,6 +49,10 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
             'rate_card': hyper_config.get_sublayer('CardRating', sub_layer_type=ItemRating, seed_mod=13,
                                                    fixed={'num_items': num_cards},
                                                    help='The linear ordering of cards by value.'),
+            'log_loss_weight': hyper_config.get_float('log_loss_weight', min=0, max=1, step=0.01,
+                                                      default=0.5, help='The weight given to log_loss vs triplet_loss. Triplet loss weight is 1 - log_loss_weight'),
+            'margin': hyper_config.get_float('margin', min=0, max=10, step=0.01, default=2.5,
+                                             help='The margin by which we want the correct choice to beat the incorrect choices.')
         }
 
     def call(self, inputs, training=False):
@@ -64,12 +68,12 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
         )
         loss_dtype = tf.float32
         sublayer_scores = []
-        card_choice_embeds = self.embed_card(inputs[0], training=training)
-        pool_embeds = self.embed_card(inputs[1], training=training)
-        seen_pack_embeds = self.embed_card(inputs[2], training=training)
-        if self.pool_context_ratings:
-            sublayer_scores.append(self.pool_rating_layer((card_choice_embeds, pool_embeds), training=training))
-        if self.seen_context_ratings:
+        card_choice_embeds = self.embed_cards(inputs[0], training=training)
+        pool_embeds = self.embed_cards(inputs[1], training=training)
+        seen_pack_embeds = self.embed_cards(inputs[2], training=training)
+        if self.rate_off_pool:
+            sublayer_scores.append(self.rate_off_pool((card_choice_embeds, pool_embeds), training=training))
+        if self.rate_off_seen:
             pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
             pack_embeds_mask = pack_embeds._keras_mask
             position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights),
@@ -77,7 +81,7 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
             pack_embeds = tf.math.sqrt(self.seen_pack_dims) * pack_embeds + position_embeds
             pack_embeds._keras_mask = pack_embeds_mask
             sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))
-        if self.item_ratings:
+        if self.rate_card:
             sublayer_scores.append(self.rate_card(inputs[0], training=training))
         if len(sublayer_scores) > 1:
             sublayer_scores = tf.stack(sublayer_scores, axis=-1, name='stacked_sublayer_scores')
@@ -88,7 +92,7 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
         mask = tf.cast(inputs[0] > 0, dtype=loss_dtype, name='pack_mask')
         neg_scores = tf.stop_gradient(tf.math.reduce_max(scores, axis=-1, keepdims=True)) - scores
         pos_scores = scores - tf.stop_gradient(tf.math.reduce_min(scores, axis=-1, keepdims=True))
-        scores = tf.where(tf.expand_dims(inputs[5] == 0, -1), pos_scores, neg_scores, name='scores_after_y_idx')
+        scores = tf.where(tf.expand_dims(inputs[7] == 0, -1), pos_scores, neg_scores, name='scores_after_y_idx')
         scores = tf.math.multiply(scores, mask, name='masked_scores')
         probs_with_zeros = tf.nn.softmax(scores, axis=-1, name='probs_with_zeros')
         probs = tf.linalg.normalize(tf.math.multiply(probs_with_zeros, mask, name='masked_probs'),
@@ -106,10 +110,10 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
         clipped_diffs = mask[:, 1:] * tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name='clipped_score_diffs'),
         triplet_losses = tf.math.reduce_sum(clipped_diffs) / num_in_packs
         self.add_loss(tf.math.multiply(triplet_losses,
-                                       tf.constant(self.triplet_loss_weight, dtype=loss_dtype, name='triplet_loss_weight'),
+                                       tf.constant(1 - self.log_loss_weight, dtype=loss_dtype, name='triplet_loss_weight'),
                                        name='triplet_loss_weighted'))
         self.add_metric(triplet_losses, 'triplet_losses')
-        chosen_idx = tf.zeros_like(inputs[5])
+        chosen_idx = tf.zeros_like(inputs[7])
         top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
         top_2_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 2)
         top_3_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3)

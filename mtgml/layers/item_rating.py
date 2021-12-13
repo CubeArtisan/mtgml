@@ -15,7 +15,7 @@ class ItemRating(ConfigurableLayer):
         }
 
     def build(self, input_shape):
-        super(self, ItemRating).build(input_shape)
+        super(ItemRating, self).build(input_shape)
         self.item_rating_logits = self.add_weight('item_rating_logits', shape=(self.num_items,),
                                                   initializer=tf.random_uniform_initializer(-0.05, 0.05,
                                                                                            seed=self.seed),

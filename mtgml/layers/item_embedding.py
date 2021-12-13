@@ -22,7 +22,7 @@ class ItemEmbedding(ConfigurableLayer):
                                           initializer=tf.keras.initializers.GlorotUniform(seed=self.seed),
                                           trainable=True)
 
-    def compute_mask(inputs, mask=None):
+    def compute_mask(self, inputs, mask=None):
         our_mask = inputs > 0
         if mask:
             return tf.math.logical_or(our_mask, tf.expand_dims(mask, -1), name='combined_mask')

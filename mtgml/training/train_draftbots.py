@@ -52,14 +52,13 @@ if __name__ == "__main__":
         card_names = [c['name'] for c in cards_json]
 
     config_path = Path('ml_files')/args.name/'hyper_config.yaml'
+    data = {}
     if config_path.exists():
         with open(config_path, 'r') as config_file:
-            hyper_config = HyperConfig.from_config(yaml.load(config_file, yaml.Loader))
-            hyper_config.layer_type = DraftBot
-    else:
-        hyper_config = HyperConfig(layer_type=DraftBot, fixed={
-            'num_cards': len(cards_json),
-        })
+            data = yaml.load(config_file, yaml.Loader)
+    hyper_config = HyperConfig(layer_type=DraftBot, data=data, fixed={
+        'num_cards': len(cards_json),
+    })
     batch_size = hyper_config.get_int('batch_size', min=8, max=2048, step=8, logdist=True, default=512,
                                       help='The number of samples to evaluate at a time')
 
@@ -153,7 +152,7 @@ if __name__ == "__main__":
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     num_batches = len(pick_generator_train)
     tensorboard_period = len(pick_generator_test)
-    draftbots = hyper_config.build(name='DraftBot')
+    draftbots = hyper_config.build(name='DraftBot', dynamic=False)
     optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
                                         default='adam', help='The optimizer type to use for optimization')
     learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,

@@ -4,6 +4,7 @@ from mtgml.constants import ACTIVATION_CHOICES
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AdditiveSetEmbedding, AttentiveSetEmbedding, SET_EMBEDDING_CHOICES
+from mtgml.layers.zero_masked import ZeroMasked
 
 
 class ContextualRating(ConfigurableLayer):
@@ -38,16 +39,18 @@ class ContextualRating(ConfigurableLayer):
             'embed_item': embed_item,
             'embed_context': embed_context,
             'bounded_distance': hyper_config.get_bool('bounded_distance', default=False,
-                                                      help='Transform the distance to be in the range (0, 1)')
+                                                      help='Transform the distance to be in the range (0, 1)'),
+            'zero_masked': hyper_config.get_sublayer('ZeroMasked', sub_layer_type=ZeroMasked,
+                                                     help='The layer to zero out masked values.'),
         }
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, mask=None):
         items, contexts = inputs
         item_embeds = self.embed_item(items, training=training)
         context_embeds = self.embed_context(contexts, training=training)
         embed_diffs = tf.math.subtract(item_embeds, tf.expand_dims(context_embeds, 1, name='expanded_context_embeds'),
                                        name='embed_diffs')
-        distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), name='distances')
+        distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), -1, name='distances')
         if self.bounded_distance:
             one = tf.constant(1, dtype=self.compute_dtype)
             nonlinear_distances = tf.math.divide(one, tf.math.add(one, distances,
@@ -55,7 +58,7 @@ class ContextualRating(ConfigurableLayer):
                                                  name='nonlinear_distances')
         else:
             nonlinear_distances = tf.math.negative(distances, name='negative_distances')
-        nonlinear_distances = tf.cast(item_indices > 0, dtype=self.compute_dtype) * nonlinear_distances
+        nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
         # Logging for tensorboard
         tf.summary.histogram('outputs/distances', distances)
         tf.summary.histogram('outputs/nonlinear_distances', nonlinear_distances)

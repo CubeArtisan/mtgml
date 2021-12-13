@@ -189,7 +189,7 @@ def picks_to_pairs(picks, input_file, dest_folder):
     coords = np.memmap(dest_folder/'coords.npy', dtype=np.int8, mode='w+', shape=(context_count, 4, 2))
     coord_weights = np.memmap(dest_folder/'coord_weights.npy', dtype=np.float32, mode='w+', shape=(context_count, 4))
     y_idx = np.memmap(dest_folder/'y_idx.npy', dtype=np.int8, mode='w+', shape=(context_count,))
-    cards_in_pack = np.memmap(dest_folder/'cards_in_pack.npy', dtype=np.int8, mode='w+', shape=(context_count, MAX_CARDS_IN_PACK))
+    cards_in_pack = np.memmap(dest_folder/'cards_in_pack.npy', dtype=np.int16, mode='w+', shape=(context_count, MAX_CARDS_IN_PACK))
     pair_idx = 0
     for context_idx, offset in enumerate(tqdm(picks, leave=False, dynamic_ncols=True, unit='picks',
                                               unit_scale=1, smoothing=0.001)):

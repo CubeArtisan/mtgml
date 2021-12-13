@@ -6,10 +6,12 @@ from mtgml.layers.configurable_layer import ConfigurableLayer
 
 class WrappedLayer(ConfigurableLayer):
     def call(self, *args, **kwargs):
-        self.wrapped_layer(*args, **kwargs)
+        if 'mask' in kwargs:
+            del kwargs['mask']
+        return self.wrapped_layer(*args, **kwargs)
 
 
-class MultiHeadAttention(WrappedLayer):
+class WMultiHeadAttention(WrappedLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         return {
@@ -27,7 +29,7 @@ class MultiHeadAttention(WrappedLayer):
         }
 
     def build(self, input_shapes):
-        super(self, MultiHeadAttention).build(input_shapes)
+        super(WMultiHeadAttention, self).build(input_shapes)
         self.wrapped_layer = tf.keras.layers.MultiHeadAttention(num_heads=self.num_heads, key_dim=self.key_dims,
                                                                 value_dim=self.value_dims, dropout=self.dropout,
                                                                 use_bias=self.use_bias, output_shape=(self.output_dims,),
@@ -35,7 +37,7 @@ class MultiHeadAttention(WrappedLayer):
                                                                 name=self.name)
 
 
-class Dense(WrappedLayer):
+class WDense(WrappedLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         return {
@@ -47,13 +49,13 @@ class Dense(WrappedLayer):
         }
 
     def build(self, input_shapes):
-        super(self, Dense).build(input_shapes)
+        super(WDense, self).build(input_shapes)
         self.wrapped_layer = tf.keras.layers.Dense(self.dims, activation=self.activation, use_bias=self.use_bias,
                                                    kernel_initializer=tf.keras.initializers.GlorotNormal(seed=self.seed),
                                                    name=self.name)
 
 
-class Dropout(WrappedLayer):
+class WDropout(WrappedLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         return {
@@ -64,6 +66,6 @@ class Dropout(WrappedLayer):
         }
 
     def build(self, input_shapes):
-        super(self, Dropout).build(input_shapes)
+        super(WDropout, self).build(input_shapes)
         self.wrapped_layer = tf.keras.layers.Dropout(rate=self.rate, noise_shape=self.noise_shape,
                                                      seed=self.seed, name=self.name)

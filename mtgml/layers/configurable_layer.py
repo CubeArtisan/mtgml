@@ -10,7 +10,7 @@ class ConfigurableLayer(tf.keras.layers.Layer):
 
     def get_config(self):
         config = super(ConfigurableLayer, self).get_config()
-        config.update({ "hyper_config": self.hyper_config.to_dict()})
+        config.update({ "hyper_config": self.hyper_config.get_config()})
         return config
 
     @classmethod
