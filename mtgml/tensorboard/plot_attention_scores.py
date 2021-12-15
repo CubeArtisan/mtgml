@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-SCALING_FACTOR = 4
+WIDTH = 10
 DPI = 100
 CHANNELS = 3
 
@@ -25,17 +25,18 @@ def plot_to_image(figure):
   return image
 
 
-def plot_attention_scores(scores, multihead=False, name=''):
+def plot_attention_scores(scores, mask, multihead=False, name=''):
     if not isinstance(scores, np.ndarray):
         scores = scores.numpy()
     if multihead:
         images = []
         for i, subscores in enumerate(np.split(scores, scores.shape[-3], axis=-3)):
-            images.append(plot_attention_scores(subscores, multihead=False, name=f'{name} Head {i}')[0])
+            images.append(plot_attention_scores(subscores, mask, multihead=False, name=f'{name} Head {i}')[0])
         return images
     scores = scores.reshape((-1, *scores.shape[-2:]))
-    scores = scores[0]
-    figure = plt.figure(figsize=(scores.shape[0] / SCALING_FACTOR, scores.shape[1] / SCALING_FACTOR))
+    count = np.sum(mask[0])
+    scores = scores[0, :count, :count]
+    figure = plt.figure(figsize=(WIDTH, WIDTH))
     plt.imshow(scores, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title(name)
     plt.colorbar()
@@ -51,5 +52,4 @@ def plot_attention_scores(scores, multihead=False, name=''):
         plt.text(j, i, labels[i, j], horizontalalignment="center", color=color, fontsize=6)
     plt.tight_layout()
     image = plot_to_image(figure)
-    SCALE = DPI / SCALING_FACTOR
-    return [tf.ensure_shape(image, (int(SCALE * scores.shape[0]), int(SCALE * scores.shape[1]), CHANNELS))]
+    return [tf.ensure_shape(image, (WIDTH * DPI, WIDTH * DPI, CHANNELS))]

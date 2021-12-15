@@ -18,6 +18,7 @@ class MLP(ConfigurableLayer):
         }
         if num_hidden > 0:
             props['dropout'] = hyper_config.get_sublayer(f'Dropout', sub_layer_type=WDropout, seed_mod=11,
+                                                         fixed={'noise_shape': None},
                                                          help='The dropout applied after each hidden layer.')
         return props
 

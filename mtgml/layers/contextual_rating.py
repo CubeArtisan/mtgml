@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.constants import ACTIVATION_CHOICES
+from mtgml.constants import ACTIVATION_CHOICES, LARGE_INT
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AdditiveSetEmbedding, AttentiveSetEmbedding, SET_EMBEDDING_CHOICES
@@ -57,7 +57,7 @@ class ContextualRating(ConfigurableLayer):
                                                                   name='distances_incremented'),
                                                  name='nonlinear_distances')
         else:
-            nonlinear_distances = tf.math.subtract(tf.constant(1e+09, dtype=self.compute_dtype),
+            nonlinear_distances = tf.math.subtract(tf.constant(LARGE_INT, dtype=self.compute_dtype),
                                                    distances, name='negative_distances')
         nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
         # Logging for tensorboard

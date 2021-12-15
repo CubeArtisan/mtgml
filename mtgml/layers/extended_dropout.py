@@ -19,6 +19,23 @@ class ExtendedDropout(ConfigurableLayer):
             'supports_masking': True,
         }
 
+    def build(self, input_shapes):
+        super(ExtendedDropout, self).build(input_shapes)
+        if self.blank_last_dim:
+            self.noise_shape = list(input_shapes)
+            self.noise_shape[-1] = 1
+        elif self.noise_shape is None:
+            self.noise_shape = input_shapes
+
+    def _get_noise_shape(self, inputs):
+        if self.noise_shape is None:
+          return None
+        concrete_inputs_shape = tf.shape(inputs)
+        noise_shape = []
+        for i, value in enumerate(self.noise_shape):
+          noise_shape.append(concrete_inputs_shape[i] if value is None else value)
+        return tf.convert_to_tensor(noise_shape)
+
     def call(self, inputs, training=False, mask=None):
         if 0 >= self.rate or not training:
             result = inputs
@@ -27,9 +44,7 @@ class ExtendedDropout(ConfigurableLayer):
             result = tf.zeros_like(inputs)
             noise_mask = tf.cast(tf.zeros_like(inputs), tf.bool)
         else:
-            noise_shape = self.noise_shape or tf.shape(inputs)
-            if self.blank_last_dim:
-                noise_shape[-1] = 1
+            noise_shape = self._get_noise_shape(inputs)
             noise = tf.random.uniform(noise_shape, minval=0, maxval=1, dtype=self.compute_dtype,
                                       seed=self.seed, name='noise')
             noise_mult = tf.where((noise + tf.zeros_like(inputs)) >= self.rate, tf.ones_like(inputs),

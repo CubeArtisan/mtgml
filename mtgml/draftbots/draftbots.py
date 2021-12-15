@@ -2,11 +2,12 @@ import math
 
 import tensorflow as tf
 
+from mtgml.constants import LARGE_INT
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.item_embedding import ItemEmbedding
 from mtgml.layers.item_rating import ItemRating
-from mtgml.layers.set_embedding import AdditiveSetEmbedding
+from mtgml.layers.set_embedding import AdditiveSetEmbedding, AttentiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
 from mtgml.tensorboard.timeseries import log_timeseries
 
@@ -33,8 +34,8 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
                                                        seed_mod=31, help='The layer that rates based on the other cards that have been picked.')
                              if pool_context_ratings else None,
             'seen_pack_dims': seen_pack_dims,
-            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AdditiveSetEmbedding,
-                                                    fixed={'Decoder': {'Final': {'dims': seen_pack_dims}}},
+            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AttentiveSetEmbedding,
+                                                    fixed={'Decoder': {'Final': {'dims': seen_pack_dims, 'activation': 'linear'}}},
                                                     seed_mod=37, help='The layer that embeds the packs that have been seen so far.')
                           if seen_context_ratings else None,
             'pack_position_count': input_shapes[2][1] if input_shapes else 45,
@@ -77,8 +78,10 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
             card_choice_embeds = self.embed_cards(inputs[0], training=training)
             pool_embeds = self.embed_cards(inputs[1], training=training)
             seen_pack_embeds = self.embed_cards(inputs[2], training=training)
+            shifts = []
             if self.rate_off_pool:
                 sublayer_scores.append(self.rate_off_pool((card_choice_embeds, pool_embeds), training=training))
+                shifts.append(LARGE_INT)
             if self.rate_off_seen:
                 pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
                 pack_embeds_mask = pack_embeds._keras_mask
@@ -86,14 +89,18 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
                 pack_embeds = tf.constant(math.sqrt(self.seen_pack_dims), self.compute_dtype) * pack_embeds + position_embeds
                 pack_embeds._keras_mask = pack_embeds_mask
                 sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))
+                shifts.append(LARGE_INT)
             if self.rate_card:
                 sublayer_scores.append(self.rate_card(inputs[0], training=training))
+                shifts.append(0.0)
             sublayer_scores = tf.stack(sublayer_scores, axis=-1, name='stacked_sublayer_scores')
             sublayer_weights = tf.math.softplus(self.sublayer_weights(inputs[5:7], training=training))
-            scores = tf.einsum('...ps,...s->...p', sublayer_scores, sublayer_weights)
+            scores = tf.einsum('...ps,...s->...p', sublayer_scores, sublayer_weights, name='scores')
+            shifts = tf.stack(shifts, axis=-1, name='shifts')
+            shifts = tf.einsum('...s,s->...', sublayer_weights, shifts, name='shifts_weighted')
             mask = tf.cast(inputs[0] > 0, dtype=loss_dtype, name='pack_mask')
             scores = tf.cast(scores, dtype=loss_dtype, name='cast_scores') * mask
-            neg_scores = tf.math.negative(scores) + tf.constant(2e+09, dtype=loss_dtype) * mask
+            neg_scores = tf.math.negative(scores) + tf.constant(2 * LARGE_INT, dtype=loss_dtype) * mask
             pos_scores = scores
             scores = tf.where(tf.expand_dims(inputs[7] == 0, -1), pos_scores, neg_scores, name='scores_after_y_idx')
             probs = tf.nn.softmax(scores, axis=-1, name='probs')
@@ -122,7 +129,7 @@ class DraftBot(ConfigurableLayer, tf.keras.models.Model):
             self.add_metric(top_3_accuracy, 'accuracy_top_3')
             self.add_metric(prob_chosen, 'prob_correct')
             #Logging for Tensorboard
-            tf.summary.histogram('outputs/scores', (scores - tf.constant(2e+09, dtype=loss_dtype)) * mask)
+            tf.summary.histogram('outputs/scores', (scores - tf.expand_dims(shifts, -1)) * mask)
             tf.summary.histogram('outputs/score_diffs', score_diffs)
             tf.summary.histogram('outputs/prob_correct', prob_chosen)
             tf.summary.histogram('outputs/log_losses', log_losses)

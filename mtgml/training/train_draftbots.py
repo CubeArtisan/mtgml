@@ -18,9 +18,10 @@ from tensorboard.plugins.hparams import api as hp
 
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.draftbots.draftbots import DraftBot
+from mtgml.generators.picks_generator import PickGenerator
+from mtgml.schedules.warmup_piecewise_constant_decay import PiecewiseConstantDecayWithLinearWarmup
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.tqdm_callback import TQDMProgressBar
-from mtgml.generators.picks_generator import PickGenerator
 from mtgml.utils.range import Range
 
 BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
@@ -157,6 +158,9 @@ if __name__ == "__main__":
                                         default='adam', help='The optimizer type to use for optimization')
     learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
                                            default=1e-03, help=f'The learning rate to use for {optimizer}')
+    if hyper_config.get_bool('linear_warmup', default=False,
+                             help='Whether to linearly ramp up the learning rate from zero for the first epoch.'):
+        learning_rate = PiecewiseConstantDecayWithLinearWarmup(0, len(pick_generator_train), [0], [learning_rate, learning_rate])
     if optimizer == 'adam':
         opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     if optimizer == 'adamax':
@@ -215,7 +219,7 @@ if __name__ == "__main__":
     es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                    mode='max', restore_best_weights=True, verbose=True)
     tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                              update_freq=1024, embeddings_freq=None,
+                              update_freq=512, embeddings_freq=None,
                               profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
     BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
     tqdm_callback = TQDMProgressBar(smoothing=0.01, epoch_bar_format=BAR_FORMAT)
