@@ -30,14 +30,6 @@ class HyperConfigValue(Generic[ValueType]):
 
     def get_config(self):
         config = {'help': self.help, 'value': self.value}
-        # if self.min is not None:
-        #     config['min'] = self.min
-        # if self.max is not None:
-        #     config['max'] = self.max
-        # if self.step is not None:
-        #     config['step'] = self.step
-        # if self.logdist is not None:
-        #     config['logdist'] = self.logdist
         if self.choices is not None:
             config['choices'] = self.choices
         return config
@@ -47,7 +39,7 @@ class HyperConfigValue(Generic[ValueType]):
 class HyperConfig(Generic[LayerType]):
     def __init__(self, data: dict[str, HyperConfigValue] = {}, layer_type: Union[type[LayerType], None] = None,
                  fixed: dict = {}, seed: int = 5723):
-        self.data = dict(data)
+        self.data = dict(data or {})
         self.layer_type = layer_type
         self.fixed = fixed
         self.seed = seed
@@ -141,7 +133,8 @@ class HyperConfig(Generic[LayerType]):
             return self.layer_type(self, *args, **kwargs)
 
     def get_config(self) -> dict:
-        return self.data
+        data = {key: item for key, item in self.data.items() if key != 'seed' and (not isinstance(item.value, HyperConfig) or len(item.value.data) > 1)}
+        return data
 
     @property
     def seed(self):

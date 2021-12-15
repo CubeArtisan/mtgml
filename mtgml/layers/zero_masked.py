@@ -13,6 +13,8 @@ class ZeroMasked(ConfigurableLayer):
         if mask is not None:
             while len(mask.shape) < len(inputs.shape):
                 mask = tf.expand_dims(mask, -1)
-            return tf.cast(mask, self.compute_dtype, name='float_mask') * inputs
+            float_mask = tf.cast(mask, self.compute_dtype, name='float_mask')
+            return float_mask * inputs
         else:
+            print('No mask')
             return inputs
