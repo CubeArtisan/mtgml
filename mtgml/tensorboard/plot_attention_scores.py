@@ -34,7 +34,7 @@ def plot_attention_scores(scores, multihead=False, name=''):
             images.append(plot_attention_scores(subscores, multihead=False, name=f'{name} Head {i}')[0])
         return images
     scores = scores.reshape((-1, *scores.shape[-2:]))
-    scores = np.mean(scores, axis=0)
+    scores = scores[0]
     figure = plt.figure(figsize=(scores.shape[0] / SCALING_FACTOR, scores.shape[1] / SCALING_FACTOR))
     plt.imshow(scores, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title(name)
