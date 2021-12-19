@@ -21,17 +21,23 @@ def combine_kv_chunks(chunk_values, sum_exp_scores, max_scores):
     # combined values is (num_kv_chunks, query_chunk, num_heads, value_embed_dim)
     # max_score and sum_exp_score are (num_kv_chunks, query_chunk, num_heads)
     with tf.name_scope('CombineKVChunks') as scope:
-        max_score = tf.reduce_max(max_scores, axis=-3, keepdims=True, name='max_score')
+        max_score = tf.reduce_max(max_scores, axis=0, keepdims=True, name='max_score')
         scaling_factors = tf.exp(max_scores - max_score, name='scaling_factors')
         chunk_values = tf.multiply(chunk_values, tf.expand_dims(scaling_factors, -1), name='scaled_chunk_values')
         sum_exp_scores = tf.multiply(sum_exp_scores, scaling_factors, name='scaled_sum_exp_scores')
-        combined_values = tf.reduce_sum(chunk_values, axis=-4, name='combined_values')
-        combined_exp_scores = tf.expand_dims(tf.reduce_sum(sum_exp_scores, axis=-3), -1, name='combined_exp_scores')
-        return tf.divide(combined_values, combined_exp_scores, name=scope)
+        combined_values = tf.reduce_sum(chunk_values, axis=0, name='combined_values')
+        combined_exp_scores = tf.expand_dims(tf.reduce_sum(sum_exp_scores, axis=0), -1, name='combined_exp_scores')
+        result = tf.divide(combined_values, combined_exp_scores, name=scope)
+        return result
 
 def process_q_chunk(query, key_chunks, value_chunks):
     with tf.name_scope('ProccessQChunk'):
-        chunk_results = tf.vectorized_map(lambda kv: process_kv_chunk(query, kv[0], kv[1]), (key_chunks, value_chunks))
+        chunk_results = tf.map_fn(lambda kv: process_kv_chunk(query, kv[0], kv[1]),
+                                  (key_chunks, value_chunks), swap_memory=True, parallel_iterations=16,
+                                  infer_shape=False, fn_output_signature=(tf.TensorSpec((*query.shape[:-1], value_chunks.shape[-1]), dtype=query.dtype),
+                                                                          tf.TensorSpec(query.shape[:-1], dtype=query.dtype),
+                                                                          tf.TensorSpec(query.shape[:-1], dtype=query.dtype)))
+
         return combine_kv_chunks(*chunk_results)
 
 
@@ -42,7 +48,7 @@ def calculate_partitions(size, chunk_size):
         partitions.append(extra)
     return partitions
 
-
+@tf.function
 def calculate_attention(query, key, value, query_chunk_size, kv_chunk_size, name=None):
     with tf.name_scope(name or 'MultiHeadAttention') as scope:
         q_partitions = calculate_partitions(query.shape[-3], query_chunk_size)
@@ -53,5 +59,4 @@ def calculate_attention(query, key, value, query_chunk_size, kv_chunk_size, name
         chunk_results = tf.map_fn(lambda q: process_q_chunk(q, key_chunks, value_chunks), query_chunks, swap_memory=True, parallel_iterations=16)
         chunk_results = tf.stack(chunk_results, axis=0, name='chunk_results_stacked')
         chunk_results = tf.reshape(chunk_results, (*query.shape[:-1], value.shape[-1]), name=scope)
-        input()
         return chunk_results
