@@ -26,6 +26,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
             component_embedding_values = tf.gather_nd(self.embeddings, coords, name='component_embedding_values')
             result = tf.einsum('...xe,...x->...e', component_embedding_values, coord_weights,
                                name='embedding_values')
-            return tf.ensure_shape(result, (*coords.shape[:-2], self.dims))
+            result = tf.ensure_shape(result, (None, *coords.shape[1:-2], self.dims))
+            return result
         else:
             return tf.gather_nd(self.embeddings, inputs, name='embedding_values')

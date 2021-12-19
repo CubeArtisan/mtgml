@@ -12,7 +12,7 @@ FIELDS = ('cards_in_pack', 'picked', 'seen', 'seen_coords', 'seen_coord_weights'
 __ALL__ = ('PickGenerator',)
 
 class PickGenerator(tf.keras.utils.Sequence):
-    def __init__(self, batch_size, folder, epochs_per_completion, seed=29):
+    def __init__(self, batch_size, folder, epochs_per_completion, skip_seen=False, seed=29):
         with open(folder / 'counts.json') as count_file:
             counts = json.load(count_file)
             self.context_count = counts['contexts']
@@ -24,7 +24,8 @@ class PickGenerator(tf.keras.utils.Sequence):
         self.epoch_count = -1
         self.epochs_per_completion = epochs_per_completion
         self.on_epoch_end()
-        for FIELD in FIELDS:
+        self.fields = (*FIELDS[0:2], *FIELDS[5:]) if skip_seen else FIELDS
+        for FIELD in self.fields:
             setattr(self, FIELD, load_npy_to_tensor(folder/f'{FIELD}.npy.zstd'))
 
     def reset_rng(self):
@@ -54,5 +55,5 @@ class PickGenerator(tf.keras.utils.Sequence):
         min_idx_offset = idx * self.batch_size + idx_base
         max_idx_offset = min(min_idx_offset + self.batch_size, idx_max)
         context_idxs = self.shuffled_indices[min_idx_offset:max_idx_offset]
-        result = tuple(getattr(self, FIELD)[context_idxs] for FIELD in FIELDS)
+        result = tuple(getattr(self, FIELD)[context_idxs] for FIELD in self.fields)
         return (result, result[-1])

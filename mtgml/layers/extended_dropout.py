@@ -21,11 +21,16 @@ class ExtendedDropout(ConfigurableLayer):
 
     def build(self, input_shapes):
         super(ExtendedDropout, self).build(input_shapes)
+        self.mask_shape = list(input_shapes)
+        self.mask_shape[0] = None
         if self.blank_last_dim:
             self.noise_shape = list(input_shapes)
             self.noise_shape[-1] = 1
+            del self.mask_shape[-1]
         elif self.noise_shape is None:
-            self.noise_shape = input_shapes
+            self.noise_shape = list(input_shapes)
+        self.noise_shape[0] = None
+        self.input_shapes = (None, *input_shapes[1:])
 
     def _get_noise_shape(self, inputs):
         if self.noise_shape is None:
@@ -47,28 +52,17 @@ class ExtendedDropout(ConfigurableLayer):
             noise_shape = self._get_noise_shape(inputs)
             noise = tf.random.uniform(noise_shape, minval=0, maxval=1, dtype=self.compute_dtype,
                                       seed=self.seed, name='noise')
-            noise_mult = tf.where((noise + tf.zeros_like(inputs)) >= self.rate, tf.ones_like(inputs),
+            noise_mult = tf.where(noise >= self.rate, tf.ones_like(inputs),
                                   tf.zeros_like(inputs), name='noise_mult')
-            # if self.scale:
-            #     dropped_inputs = tf.multiply(inputs, noise_mult, name='dropped_inputs')
-            #     if scale == 'sum':
-            #         result = tf.math.multiply(tf.math.divide_no_nan(tf.reduce_sum(inputs, name='sum_pre_drop'),
-            #                                                         tf.reduce_sum(dropped_inputs, name='sum_post_drop') + 1e-04,
-            #                                                         name='scaling_factor'),
-            #                                   dropped_inputs)
-            #     else:
-            #         result = tf.math.multiply(tf.math.divide_no_nan(tf.norm(inputs, axis=-1, keepdims=True, ord=scale, name='norm_pre_drop'),
-            #                                                         tf.norm(dropped_inputs, axis=-1, ord=scale, keepdims=True, name='norm_post_drop') + 1e-04,
-            #                                                         name='scaling_factor'),
-            #                                   dropped_inputs)
-            # else:
             result = tf.math.multiply(inputs, noise_mult)
             noise_mask = noise >= self.rate
+        result = tf.ensure_shape(result, self.input_shapes)
         if self.return_mask:
             if mask is not None:
                 if tf.rank(mask) < tf.rank(noise_mask):
                     mask = tf.expand_dims(mask, -1)
                 noise_mask = tf.math.logical_and(noise_mask, mask, name='combined_mask')
-            return result, tf.ensure_shape(noise_mask, result.shape)
+            noise_mask = tf.ensure_shape(noise_mask, self.mask_shape)
+            return result, noise_mask
         else:
             return result

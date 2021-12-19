@@ -25,14 +25,7 @@ def plot_to_image(figure):
   return image
 
 
-def plot_attention_scores(scores, mask, multihead=False, name=''):
-    if not isinstance(scores, np.ndarray):
-        scores = scores.numpy()
-    if multihead:
-        images = []
-        for i, subscores in enumerate(np.split(scores, scores.shape[-3], axis=-3)):
-            images.append(plot_attention_scores(subscores, mask, multihead=False, name=f'{name} Head {i}')[0])
-        return images
+def plot_attention_head_scores(scores, mask, name=''):
     scores = scores.reshape((-1, *scores.shape[-2:]))
     count = np.sum(mask[0])
     scores = scores[0, :count, :count]
@@ -52,4 +45,15 @@ def plot_attention_scores(scores, mask, multihead=False, name=''):
         plt.text(j, i, labels[i, j], horizontalalignment="center", color=color, fontsize=6)
     plt.tight_layout()
     image = plot_to_image(figure)
-    return [tf.ensure_shape(image, (WIDTH * DPI, WIDTH * DPI, CHANNELS))]
+    image = tf.ensure_shape(image, (WIDTH * DPI, WIDTH * DPI, CHANNELS))
+    return image
+
+
+
+def plot_attention_scores(scores, mask, multihead=False, name='Attention'):
+    if not isinstance(scores, np.ndarray):
+        scores = scores.numpy()
+    images = []
+    for i, subscores in enumerate(np.split(scores, scores.shape[-3], axis=-3)):
+        images.append(plot_attention_head_scores(subscores, mask, name=f'{name} Head {i}'))
+    return images

@@ -3,13 +3,13 @@ CardRating: !hcv
   value: !hc
     bounded: !hcv
       help: Whether to bound the ratings to (0, 1).
-      value: true
+      value: false
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 32
+      value: 128
 EmbedPack: !hcv
   help: The layer that embeds the packs that have been seen so far.
   value: !hc
@@ -19,26 +19,12 @@ EmbedPack: !hcv
         Dropout: !hcv
           help: The dropout applied after each hidden layer.
           value: !hc
-            noise_shape: !hcv
-              help: The shape of the generated noise which will be broadcast as needed.
-              value: null
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.5
+              value: 0.25
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
-            activation: !hcv
-              choices: &id001 !!python/tuple
-              - elu
-              - selu
-              - relu
-              - tanh
-              - sigmoid
-              - linear
-              - swish
-              help: The activation function on the output of the layer.
-              value: selu
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -46,12 +32,11 @@ EmbedPack: !hcv
           help: The 1st hidden layer.
           value: !hc
             activation: !hcv
-              choices: *id001
               help: The activation function on the output of the layer.
-              value: selu
+              value: swish
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -64,9 +49,6 @@ EmbedPack: !hcv
         Dropout: !hcv
           help: The dropout applied after each hidden layer.
           value: !hc
-            noise_shape: !hcv
-              help: The shape of the generated noise which will be broadcast as needed.
-              value: null
             rate: !hcv
               help: The percent of values that get replaced with zero.
               value: 0.5
@@ -74,12 +56,11 @@ EmbedPack: !hcv
           help: The last dense layer in the MLP.
           value: !hc
             activation: !hcv
-              choices: *id001
               help: The activation function on the output of the layer.
-              value: selu
+              value: swish
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -87,9 +68,8 @@ EmbedPack: !hcv
           help: The 1st hidden layer.
           value: !hc
             activation: !hcv
-              choices: *id001
               help: The activation function on the output of the layer.
-              value: selu
+              value: swish
             dims: !hcv
               help: The number of dimensions in the output of this layer.
               value: 128
@@ -102,10 +82,6 @@ EmbedPack: !hcv
     ItemDropout: !hcv
       help: Drops out entire items from the set.
       value: !hc
-        blank_last_dim: !hcv
-          help: Apply dropout to the entire last dimension vs choosing for each element
-            of the last dimension.
-          value: false
         noise_shape: !hcv
           help: The shape of the generated noise which will be broadcast as needed.
           value: null
@@ -133,267 +109,49 @@ RatingFromPool: !hcv
               value: 0.25
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 16
+              value: 4
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 1
+              value: 8
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 16
+              value: 4
         Decoder: !hcv
           help: The mapping from the added item embeddings to the embeddings to return.
           value: !hc
-            Dropout: !hcv
-              help: The dropout applied after each hidden layer.
-              value: !hc
-                noise_shape: !hcv
-                  help: The shape of the generated noise which will be broadcast as
-                    needed.
-                  value: null
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.5
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
-            Hidden_0: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
             num_hidden: !hcv
               help: The number of hidden layers in the MLP.
-              value: 1
+              value: 0
         Encoder: !hcv
           help: The mapping from the item embeddings to the embeddings to add.
           value: !hc
-            Dropout: !hcv
-              help: The dropout applied after each hidden layer.
-              value: !hc
-                noise_shape: !hcv
-                  help: The shape of the generated noise which will be broadcast as
-                    needed.
-                  value: null
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.5
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
                 activation: !hcv
-                  choices: *id001
                   help: The activation function on the output of the layer.
-                  value: selu
+                  value: swish
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            Hidden_0: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
+                  value: 64
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
             num_hidden: !hcv
               help: The number of hidden layers in the MLP.
-              value: 1
-        ItemDropout: !hcv
-          help: Drops out entire items from the set.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.2
-        decoding_dropout_rate: !hcv
-          help: The percent of values to dropout from the result of dense layers in
-            the decoding step.
-          value: 0.25
-        log_scores: !hcv
-          help: Whether to log an image of the attention scores.
-          value: false
-        normalize_sum: !hcv
-          help: Average the sum of embeddings by the number of non-masked items.
-          value: false
-    EmbedItem: !hcv
-      help: Transforms the card embeddings to the embedding used to calculate distances.
-      value: !hc
-        Dropout: !hcv
-          help: The dropout applied after each hidden layer.
-          value: !hc
-            noise_shape: !hcv
-              help: The shape of the generated noise which will be broadcast as needed.
-              value: null
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.5
-        Final: !hcv
-          help: The last dense layer in the MLP.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 128
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        num_hidden: !hcv
-          help: The number of hidden layers in the MLP.
-          value: 1
-    bounded_distance: !hcv
-      help: Transform the distance to be in the range (0, 1)
-      value: true
-    final_activation: !hcv
-      choices: *id001
-      help: The final activation before calculating distance
-      value: linear
-    measure_dims: !hcv
-      help: The number of dimensions to calculate distance in
-      value: 128
-    set_embed_type: !hcv
-      choices: &id002 !!python/tuple
-      - additive
-      - attentive
-      help: The kind of set embedding to use to get the contexts embedding for distance
-        calculation.
-      value: attentive
-RatingFromSeen: !hcv
-  help: The layer that rates based on the embeddings of the packs that have been seen.
-  value: !hc
-    EmbedContext: !hcv
-      help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
-      value: !hc
-        Attention: !hcv
-          help: The mapping from the item embeddings to the embeddings to add.
-          value: !hc
-            dropout: !hcv
-              help: The percent of values to get dropped out
-              value: 0.25
-            key_dims: !hcv
-              help: Size of the attention head for query and key.
-              value: 16
-            num_heads: !hcv
-              help: The number of separate heads of attention to use.
-              value: 1
-            output_dims: !hcv
-              help: The number of output dimensions from this layer.
-              value: 128
-            use_bias: !hcv
-              help: Use bias in the dense layers
-              value: true
-            value_dims: !hcv
-              help: Size of the attention head for value.
-              value: 16
-        Decoder: !hcv
-          help: The mapping from the added item embeddings to the embeddings to return.
-          value: !hc
-            Dropout: !hcv
-              help: The dropout applied after each hidden layer.
-              value: !hc
-                noise_shape: !hcv
-                  help: The shape of the generated noise which will be broadcast as
-                    needed.
-                  value: null
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.5
-            Final: !hcv
-              help: The last dense layer in the MLP.
-              value: !hc
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            Hidden_0: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            num_hidden: !hcv
-              help: The number of hidden layers in the MLP.
-              value: 1
-        Encoder: !hcv
-          help: The mapping from the item embeddings to the embeddings to add.
-          value: !hc
-            Dropout: !hcv
-              help: The dropout applied after each hidden layer.
-              value: !hc
-                noise_shape: !hcv
-                  help: The shape of the generated noise which will be broadcast as
-                    needed.
-                  value: null
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.5
-            Final: !hcv
-              help: The last dense layer in the MLP.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            Hidden_0: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            num_hidden: !hcv
-              help: The number of hidden layers in the MLP.
-              value: 1
+              value: 0
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
@@ -410,15 +168,15 @@ RatingFromSeen: !hcv
         normalize_sum: !hcv
           help: Average the sum of embeddings by the number of non-masked items.
           value: false
+        positional_reduction: !hcv
+          help: Whether to use a positional reduction instead of sum.
+          value: false
     EmbedItem: !hcv
       help: Transforms the card embeddings to the embedding used to calculate distances.
       value: !hc
         Dropout: !hcv
           help: The dropout applied after each hidden layer.
           value: !hc
-            noise_shape: !hcv
-              help: The shape of the generated noise which will be broadcast as needed.
-              value: null
             rate: !hcv
               help: The percent of values that get replaced with zero.
               value: 0.5
@@ -432,12 +190,11 @@ RatingFromSeen: !hcv
           help: The 1st hidden layer.
           value: !hc
             activation: !hcv
-              choices: *id001
               help: The activation function on the output of the layer.
-              value: selu
+              value: swish
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -446,19 +203,140 @@ RatingFromSeen: !hcv
           value: 1
     bounded_distance: !hcv
       help: Transform the distance to be in the range (0, 1)
-      value: true
+      value: false
     final_activation: !hcv
-      choices: *id001
       help: The final activation before calculating distance
       value: linear
     measure_dims: !hcv
       help: The number of dimensions to calculate distance in
-      value: 128
+      value: 32
     set_embed_type: !hcv
-      choices: *id002
+      choices: &id001 !!python/tuple
+      - additive
+      - attentive
       help: The kind of set embedding to use to get the contexts embedding for distance
         calculation.
-      value: attentive
+      value: additive
+RatingFromSeen: !hcv
+  help: The layer that rates based on the embeddings of the packs that have been seen.
+  value: !hc
+    EmbedContext: !hcv
+      help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
+      value: !hc
+        Attention: !hcv
+          help: The mapping from the item embeddings to the embeddings to add.
+          value: !hc
+            dropout: !hcv
+              help: The percent of values to get dropped out
+              value: 0.25
+            key_dims: !hcv
+              help: Size of the attention head for query and key.
+              value: 4
+            num_heads: !hcv
+              help: The number of separate heads of attention to use.
+              value: 8
+            output_dims: !hcv
+              help: The number of output dimensions from this layer.
+              value: 64
+            use_bias: !hcv
+              help: Use bias in the dense layers
+              value: true
+            value_dims: !hcv
+              help: Size of the attention head for value.
+              value: 4
+        Decoder: !hcv
+          help: The mapping from the added item embeddings to the embeddings to return.
+          value: !hc
+            Final: !hcv
+              help: The last dense layer in the MLP.
+              value: !hc
+                use_bias: !hcv
+                  help: Whether to use bias on the output.
+                  value: true
+            num_hidden: !hcv
+              help: The number of hidden layers in the MLP.
+              value: 0
+        Encoder: !hcv
+          help: The mapping from the item embeddings to the embeddings to add.
+          value: !hc
+            Final: !hcv
+              help: The last dense layer in the MLP.
+              value: !hc
+                activation: !hcv
+                  help: The activation function on the output of the layer.
+                  value: swish
+                dims: !hcv
+                  help: The number of dimensions in the output of this layer.
+                  value: 64
+                use_bias: !hcv
+                  help: Whether to use bias on the output.
+                  value: true
+            num_hidden: !hcv
+              help: The number of hidden layers in the MLP.
+              value: 0
+        ItemDropout: !hcv
+          help: Drops out entire items from the set.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.2
+        decoding_dropout_rate: !hcv
+          help: The percent of values to dropout from the result of dense layers in
+            the decoding step.
+          value: 0.25
+        log_scores: !hcv
+          help: Whether to log an image of the attention scores.
+          value: true
+        normalize_sum: !hcv
+          help: Average the sum of embeddings by the number of non-masked items.
+          value: false
+        positional_reduction: !hcv
+          help: Whether to use a positional reduction instead of sum.
+          value: true
+    EmbedItem: !hcv
+      help: Transforms the card embeddings to the embedding used to calculate distances.
+      value: !hc
+        Dropout: !hcv
+          help: The dropout applied after each hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.5
+        Final: !hcv
+          help: The last dense layer in the MLP.
+          value: !hc
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        Hidden_0: !hcv
+          help: The 1st hidden layer.
+          value: !hc
+            activation: !hcv
+              help: The activation function on the output of the layer.
+              value: swish
+            dims: !hcv
+              help: The number of dimensions in the output of this layer.
+              value: 64
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        num_hidden: !hcv
+          help: The number of hidden layers in the MLP.
+          value: 1
+    bounded_distance: !hcv
+      help: Transform the distance to be in the range (0, 1)
+      value: false
+    final_activation: !hcv
+      help: The final activation before calculating distance
+      value: linear
+    measure_dims: !hcv
+      help: The number of dimensions to calculate distance in
+      value: 32
+    set_embed_type: !hcv
+      choices: *id001
+      help: The kind of set embedding to use to get the contexts embedding for distance
+        calculation.
+      value: additive
 adam_learning_rate: !hcv
   help: The learning rate to use for adam
   value: 0.001
@@ -474,16 +352,19 @@ dtype: !hcv
   value: 32
 epochs_per_cycle: !hcv
   help: The number of epochs for a full cycle through the training data
-  value: 1
+  value: 27
 item_ratings: !hcv
   help: Whether to give each card a rating independent of context.
   value: true
+linear_warmup: !hcv
+  help: Whether to linearly ramp up the learning rate from zero for the first epoch.
+  value: false
 log_loss_weight: !hcv
   help: The weight given to log_loss vs triplet_loss. Triplet loss weight is 1 - log_loss_weight
-  value: 0.5
+  value: 0.8
 margin: !hcv
   help: The margin by which we want the correct choice to beat the incorrect choices.
-  value: 2.5
+  value: 5
 optimizer: !hcv
   choices: !!python/tuple
   - adam
@@ -505,7 +386,7 @@ seen_context_ratings: !hcv
   value: true
 seen_pack_dims: !hcv
   help: The number of dimensions to embed seen packs into.
-  value: 32
+  value: 64
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: false
+  value: true

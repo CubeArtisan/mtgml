@@ -64,16 +64,19 @@ if __name__ == "__main__":
                                       help='The number of samples to evaluate at a time')
 
     logging.info('Creating the pick Datasets.')
+    seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=True,
+                                                 help='Whether to rate cards based on the packs seen so far.')
     train_epochs_per_cycle = hyper_config.get_int('epochs_per_cycle', min=1, max=256, default=1,
                                                   help='The number of epochs for a full cycle through the training data')
     # pick_generator_train = PickPairGenerator(args.batch_size, directory/'training_parsed_picks',
     #                                          train_epochs_per_cycle, args.seed)
-    pick_generator_train = PickGenerator(batch_size, directory/'training_parsed_picks',
-                                         train_epochs_per_cycle, args.seed)
+    pick_generator_train = PickGenerator(batch_size=batch_size, folder=directory/'training_parsed_picks',
+                                         epochs_per_completion=train_epochs_per_cycle, seed=args.seed,
+                                         skip_seen=not seen_context_ratings)
     logging.info(f"There are {len(pick_generator_train):,} training batches.")
     # pick_generator_test = pick_generator_train
-    pick_generator_test = PickGenerator(batch_size * 4, directory/'validation_parsed_picks',
-                                        1, args.seed)
+    pick_generator_test = PickGenerator(batch_size=batch_size * 8, folder=directory/'validation_parsed_picks',
+                                        epochs_per_completion=1, seed=args.seed, skip_seen=not seen_context_ratings)
     logging.info(f"There are {len(pick_generator_test):n} validation batches.")
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -219,8 +222,8 @@ if __name__ == "__main__":
     es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                    mode='max', restore_best_weights=True, verbose=True)
     tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                              update_freq=512, embeddings_freq=None,
-                              profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
+                                 update_freq=512, embeddings_freq=None,
+                                 profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
     BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
     tqdm_callback = TQDMProgressBar(smoothing=0.01, epoch_bar_format=BAR_FORMAT)
     callbacks.append(nan_callback)
