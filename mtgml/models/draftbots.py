@@ -12,7 +12,7 @@ from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
 from mtgml.tensorboard.timeseries import log_timeseries
 
 
-class DraftBot(ConfigurableLayer, tf.keras.models.Model):
+class DraftBot(ConfigurableLayer, tf.keras.Model):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         pool_context_ratings = hyper_config.get_bool('pool_context_ratings', default=True,

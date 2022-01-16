@@ -10,8 +10,7 @@ from mtgml.layers.set_embedding import AttentiveSetEmbedding
     and then updated such that each row sums to 1.
     - decoded_for_reg is an output of the model
 """
-
-class CC_Recommender(tf.keras.Model):
+class CubeRecommender(ConfigurableLayer, tf.keras.Model):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
@@ -48,6 +47,7 @@ class CC_Recommender(tf.keras.Model):
         """
         cards = tf.range(1, self.num_cards)
         card_embeds = self.embed_cards(cards, training=training)
+        decoded_for_reg = []
         if isinstance(inputs, tuple):
             x, identity = inputs
             identity_embeds = identity * card_embeds

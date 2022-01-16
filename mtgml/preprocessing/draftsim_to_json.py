@@ -99,24 +99,24 @@ def reconstruct_states(packs, picks):
     return [{ "picks": player_states, "basics": []} for player_states in states_per_player]
 
 
-def process_file(name_to_int, filename):
-    drafter_states = []
-    with open(filename, 'r', newline='') as fp:
-        num_lines = sum(1 for _ in fp)
-    with open(filename, 'r', newline='') as fp:
-        reader = csv.reader(fp)
-        for line in tqdm(reader, total=num_lines, dynamic_ncols=True, unit='draft', unit_scale=True,
-                         smoothing=0.01):
-            picks = tuple(tuple(to_card_index(name, name_to_int) for name in split_not_follow(player))
-                          for player in line[2:])
-            packs = reconstruct_packs(picks)
-            yield from reconstruct_states(packs, picks)
+def process_files(name_to_int, filenames):
+    for filename in filenames:
+        with open(filename, 'r', newline='') as fp:
+            num_lines = sum(1 for _ in fp)
+        with open(filename, 'r', newline='') as fp:
+            reader = csv.reader(fp)
+            for line in tqdm(reader, total=num_lines, dynamic_ncols=True, unit='draft', unit_scale=True,
+                             smoothing=0.01):
+                picks = tuple(tuple(to_card_index(name, name_to_int) for name in split_not_follow(player))
+                              for player in line[2:])
+                packs = reconstruct_packs(picks)
+                yield from reconstruct_states(packs, picks)
 
 
 if __name__ == '__main__':
-    with open(Path(sys.argv[1]).parent/'int_to_card.json') as fp:
+    with open('data/maps/int_to_card.json') as fp:
         int_to_card = json.load(fp)
     name_to_int = {c['name'].replace(' ', '_'): i for i, c in enumerate(int_to_card)}
-    state_iter = process_file(name_to_int, sys.argv[1])
-    with open(sys.argv[2], 'w') as fp:
+    state_iter = process_files(name_to_int, sys.argv[2:])
+    with open(sys.argv[1], 'w') as fp:
         json.dump(state_iter, fp, cls=IterEncoder)

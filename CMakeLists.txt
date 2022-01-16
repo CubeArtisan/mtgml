@@ -24,6 +24,7 @@ list(APPEND CMAKE_PREFIX_PATH "${_tmp_dir}")
 find_package(pybind11 CONFIG REQUIRED)
 
 add_subdirectory(extern/concurrentqueue)
+add_subdirectory(extern/mio)
 
 pybind11_add_module(generator MODULE cpp/generator.cpp)
 
@@ -31,7 +32,7 @@ target_compile_definitions(generator PRIVATE VERSION_INFO=${PROJECT_VERSION})
 
 target_include_directories(generator PRIVATE extern/pcg-cpp/include)
 
-target_link_libraries(generator PRIVATE concurrentqueue)
+target_link_libraries(generator PRIVATE concurrentqueue mio::mio)
 
 target_compile_features(generator PRIVATE cxx_std_20)
 

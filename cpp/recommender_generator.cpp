@@ -49,7 +49,7 @@ std::valarray<std::size_t> sample_no_replacement(const std::size_t count, std::v
     return results;
 }
 
-struct Generator {
+struct CubeGenerator {
     using result_type = std::tuple<std::tuple<py::array_t<double>, py::array_t<double>>,
                                    std::tuple<py::array_t<double>, py::array_t<double>>>;
     using queue_values = std::tuple<std::array<std::size_t, 2>,
@@ -81,10 +81,10 @@ private:
     moodycamel::ConsumerToken result_consumer;
 
 public:
-    Generator(const py::array_t<double, py::array::c_style>& adj_mtx,
-              const py::array_t<double, py::array::c_style>& cubes,
-              std::size_t num_workers, std::size_t batch_size, std::size_t seed,
-              double noise, double noise_std)
+    CubeGenerator(const py::array_t<double, py::array::c_style>& adj_mtx,
+                  const py::array_t<double, py::array::c_style>& cubes,
+                  std::size_t num_workers, std::size_t batch_size, std::size_t seed,
+                  double noise, double noise_std)
             : num_cards{static_cast<std::size_t>(adj_mtx.shape(0))}, num_cubes{static_cast<std::size_t>(cubes.shape(0))},
               num_threads{num_workers},
               max_batch_size{batch_size}, length{(num_cubes + batch_size - 1) / batch_size},
@@ -117,7 +117,7 @@ public:
         neg_sampler_rand = std::uniform_real_distribution<double>(0, replacing_neg_sampler[num_cards - 1]);
     }
 
-    Generator& enter() {
+    CubeGenerator& enter() {
         py::gil_scoped_release release;
         for (size_t i=0; i < num_threads; i++) {
             threads.emplace_back([i, this](std::stop_token st) { this->worker_thread(st, pcg32(this->initial_seed, i)); });
@@ -154,17 +154,18 @@ public:
     }
 
     result_type next() {
-        queue_values result;
+        queue_values* result = new queue_values();
         if (task_queue.size_approx() < num_threads && result_queue.size_approx() < 2 * max_batch_size) queue_new_epoch();
-        result_queue.wait_dequeue(result_consumer, result);
+        result_queue.wait_dequeue(result_consumer, *result);
+        py::capsule free_when_done{result, [](void* ptr) { delete reinterpret_cast<queue_values*>(ptr); }};
         return {
             {
-                py::array_t<double>(std::get<0>(result), &std::get<0>(std::get<1>(result))[0]),
-                py::array_t<double>(std::get<0>(result), &std::get<1>(std::get<1>(result))[0]),
+                py::array_t<double>(std::get<0>(result), &std::get<0>(std::get<1>(result))[0], capsule),
+                py::array_t<double>(std::get<0>(result), &std::get<1>(std::get<1>(result))[0], capsule),
             },
             {
-                py::array_t<double>(std::get<0>(result), &std::get<0>(std::get<2>(result))[0]),
-                py::array_t<double>(std::get<0>(result), &std::get<1>(std::get<2>(result))[0]),
+                py::array_t<double>(std::get<0>(result), &std::get<0>(std::get<2>(result))[0], capsule),
+                py::array_t<double>(std::get<0>(result), &std::get<1>(std::get<2>(result))[0], capsule),
             },
         };
     }
@@ -241,17 +242,16 @@ public:
 
 PYBIND11_MODULE(generator, m) {
     using namespace pybind11::literals;
-    py::object KerasSequence = py::module_::import("tensorflow.keras.utils").attr("Sequence");
-    py::class_<Generator>(m, "Generator")
+    py::class_<CubeGenerator>(m, "CubeGenerator")
         .def(py::init<py::array_t<double, py::array::c_style>,
                       py::array_t<double, py::array::c_style>,
                       std::size_t, std::size_t, std::size_t,
                       double, double>())
                       /* double, double>("adj_mtx"_a, "cubes"_a, "num_workers"_a, "batch_size"_a, */
                       /*                 "seed"_a, "noise"_a=0.3, "noise_std"_a=0.1)) */
-        .def("__enter__", &Generator::enter)
-        .def("__exit__", &Generator::exit)
-        .def("__len__", &Generator::size)
-        .def("__getitem__", &Generator::getitem)
-        .def("on_epoch_end", &Generator::queue_new_epoch);
+        .def("__enter__", &CubeGenerator::enter)
+        .def("__exit__", &CubeGenerator::exit)
+        .def("__len__", &CubeGenerator::size)
+        .def("__getitem__", &CubeGenerator::getitem)
+        .def("on_epoch_end", &CubeGenerator::queue_new_epoch);
 }

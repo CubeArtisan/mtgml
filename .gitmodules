@@ -1,3 +1,6 @@
 [submodule "extern/pcg-cpp"]
 	path = extern/pcg-cpp
 	url = https://github.com/imneme/pcg-cpp.git
+[submodule "extern/mio"]
+	path = extern/mio
+	url = https://github.com/mandreyel/mio

@@ -1,0 +1,184 @@
+#include <array>
+#include <atomic>
+#include <memory>
+#include <tuple>
+#include <vector>
+
+#include <blockingconcurrentqueue.h>
+#include <mio/mmap.hpp>
+#include <pcg_random.hpp>
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+
+namespace py = pybind11;
+
+constexpr std::size_t MAX_CARDS_IN_PACK = 16;
+constexpr std::size_t MAX_BASICS = 16;
+constexpr std::size_t MAX_PICKED = 48;
+constexpr std::size_t MAX_SEEN_PACKS = 48;
+constexpr std::size_t READ_SIZE = 64
+
+using Pack = std::array<std::int16_t, MAX_CARDS_IN_PACK>;
+using CoordPair = std::array<std::int8_t, 2>
+using Coords = std::array<CoordPair, 4>;
+using CoordWeights = std::array<float, 4>;
+using Basics = std::array<std::int16_t, MAX_BASICS>;
+using Pool = std::array<std::int16_t, MAX_PICKED>;
+using SeenPacks = std::array<Pack, MAX_SEEN_PACKS>;
+using SeenPackCoords = std::array<Coords, MAX_SEEN_PACKS>;
+using SeenPackCoordWeights = std::array<CoordWeights, MAX_SEEN_PACKS>;
+
+struct Pick {
+    Pack cards_in_pack{0};
+    Basics basics{0};
+    Pool pool{0};
+    SeenPacks seen_packs{0};
+    SeenPackCoords seen_coords{0};
+    SeenPackCoordWeights seen_coord_weights{0};
+    Coords coords{0};
+    CoordWeights coord_weights{0};
+    std::int8_t is_trashed{0};
+};
+
+struct DraftbotGenerator {
+    using ProcessedValue = std::unique_ptr<std::vector<Pick>>;
+    using Result = std::tuple<
+        std::tuple<
+            py::array_t<std::int16_t>, py::array_t<std::int16_t>, py::array_t<std::int16_t>,
+            py::array_t<std::int16_t>, py::array_t<std::int8_t>, py::array_t<float>,
+            py::array_t<std::int8_t>, py::array_t<float>
+        >,
+        py::array_t<std::int8_t>
+    >;
+
+
+private:
+    mio::basic_mmap_source<std::byte> mmap;
+    std::size_t batch_size;
+    std::size_t seed;
+    std::size_t num_picks;
+    pcg32 main_rng;
+    moodycamel::BlockingConcurrentQueue<std::size_t> chunk_queue;
+    moodycamel::ProducerToken chunk_producer;
+    moodycamel::BlockingConcurrentQueue<ProcessedValue> processed_queue;
+    moodycamel::ConsumerToken processed_consumer;
+    static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 20;
+
+public:
+    DraftbotGenerator(std::string filename, std::size_t batch_size, std::size_t seed)
+            : mmap(filename), batch_size{batch_size}, seed{seed}, num_picks{mmap.size() / sizeof(Pick)},
+              main_rng{seed, 1}, chunk_producer{chunk_queue}, processed_consumer{processed_queue}
+    { }
+
+    DraftbotGenerator& enter() & {
+        py::gil_scoped_release gil_release;
+        worker_thread = std::jthread([i, this](std::stop_token st) { this->worker_func(st, pcg32(this->initial_seed, 0)); });
+        queue_new_epoch();
+        return *this;
+    }
+
+    bool exit(py::object, py::object, py::object) {
+        worker_thread.request_stop();
+        threads.join();
+        return false;
+    }
+
+    std::size_t size() const {
+        return num_picks / batch_size;
+    }
+
+    void queue_new_epoch() & {
+        // We may lose some picks this way but it greatly simplifies the code.
+        std::vector<std::size_t> indices(num_picks / READ_SIZE);
+        std::iota(indices.begin(), indices.end(), 0);
+        std::ranges::shuffle(indices, main_rng);
+        std::size_t read_ratio = batch_size / READ_SIZE;
+        chunk_queue.enqueue_bulk(chunk_producer, std::make_move_iterator(indices.begin()), (indices.size() / read_ratio) * read_ratio);
+    }
+
+    Result next() & {
+        ProcessedValue processed_value;
+        if (!processed_queue.try_dequeue(processed_consumer, processed_value)) {
+            py::gil_scoped_release gil_release;
+            queue_new_epoch();
+            while (!processed_queue.try_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+        }
+        std::vector<Pick>* batched = processed_value.release();
+        py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<Pick>*>(ptr); }};
+        Pick& first_pick = batched->front();
+        return {
+            {
+                py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, front.cards_in_pack.data(), capsule},
+                py::array_t<std::int16_t>{basics_shape(), basics_strides, front.basics.data(), capsule},
+                py::array_t<std::int16_t>{pool_shape(), pool_strides, front.pool.data(), capsule},
+                py::array_t<std::int16_t>{seen_packs_shape(), seen_packs_strides, front.seen_packs[0].data(), capsule},
+                py::array_t<std::int8_t>{seen_pack_coords_shape(), seen_pack_coords_strides, front.seen_pack_coords[0][0].data(), capsule},
+                py::array_t<float>{seen_pack_coord_weights_shape(), seen_pack_coord_weights_strides, front.seen_pack_coord_weights[0].data(), capsule},
+                py::array_t<std::int8_t>{coords_shape(), coords_strides, front.coords[0].data(), capsule},
+                py::array_t<float>{coord_weights_shape(), coord_weights_strides, front.coord_weights[0].data(), capsule},
+            },
+            py::array_t<std::int8>{is_trashed_shape(), is_trashed_strides, &first_pick.is_trashed, capsule},
+        };
+    }
+
+private:
+    static constexpr std::array<std::size_t, 2> cards_in_pack_strides{sizeof(Pick), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 2> pack_strides{sizeof(Pick), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 2> pool_strides{sizeof(Pick), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 3> seen_packs_strides{sizeof(Pick), sizeof(Pack), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 4> seen_coords_strides{sizeof(Pick), sizeof(Coords), sizeof(CoordPair), sizeof(std::int8_t)};
+    static constexpr std::array<std::size_t, 3> seen_coord_weights_strides{sizeof(Pick), sizeof(CoordWeights), sizeof(float)};
+    static constexpr std::array<std::size_t, 3> coords_strides{sizeof(Pick), sizeof(CoordPair), sizeof(std::int8_t)};
+    static constexpr std::array<std::size_t, 2> coord_weights_strides{sizeof(Pick), sizeof(float)};
+    static constexpr std::array<std::size_t, 1> is_trashed_strides{sizeof(Pick)};
+
+    constexpr std::array<std::size_t, 2> cards_in_pack_shape() const noexcept { return { batch_size, MAX_CARDS_IN_PACK }; }
+    constexpr std::array<std::size_t, 2> basics_shape() const noexcept { return { batch_size, MAX_BASICS }; }
+    constexpr std::array<std::size_t, 2> pool_shape() const noexcept { return { batch_size, MAX_PICKED }; }
+    constexpr std::array<std::size_t, 3> seen_packs_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK }; }
+    constexpr std::array<std::size_t, 4> seen_coords_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, 4, 2 }; }
+    constexpr std::array<std::size_t, 3> seen_coord_weights_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, 4 }; }
+    constexpr std::array<std::size_t, 3> coords_shape() const noexcept { return { batch_size, 4, 2 }; }
+    constexpr std::array<std::size_t, 2> coord_weights_shape() const noexcept { return { batch_size, 4 }; }
+    constexpr std::array<std::size_t, 1> is_trashed_shape() const noexcept { return { batch_size }; }
+
+    void worker_func(std::stop_token st, pcg32 rng) {
+        pcg32 sleep_rng{rng};
+        std::uniform_int_distribution<std::size_t> sleep_for(1'000, 39'000);
+        std::uniform_int_distribution<std::size_t> index_selector(0, SHUFFLE_BUFFER_SIZE - 1);
+        auto current_batch = std::make_unique<std::vector<Pick>>(batch_size);
+        std::size_t current_batch_idx = 0;
+        std::vector<Pick> shuffle_buffer;
+        shuffle_buffer.reserve(SHUFFLE_BUFFER_SIZE);
+        moodycamel::ConsumerToken chunk_consumer{chunk_queue};
+        moodycamel::ProducerToken processed_producer{processed_queue};
+        std::array<std::size_t, READ_SIZE> read_indices;
+        while (!st.stop_requested()) {
+            auto iter = read_indices.begin();
+            while (iter != read_indices.end()) {
+                iter += chunk_queue.try_dequeue_bulk(chunk_consumer, iter, std::distance(iter, read_indices.end());
+                if(st.stop_requested()) return;
+            }
+            for (std::size_t read_idx : read_indices) {
+                if (shuffle_buffer.size() < SHUFFLE_BUFFER_SIZE) {
+                    shuffle_buffer.resize(shuffle_buffer.size() + READ_SIZE);
+                    std::memcpy(shuffle_buffer.data() + (shuffle_buffer.size() - READ_SIZE),
+                                mmap.data() + sizeof(Pick) * READ_SIZE * read_idx,
+                                sizeof(Pick) * READ_SIZE);
+                } else {
+                    std::memcpy(current_batch->data() + current_batch_idx,
+                                mmap.data() + sizeof(Pick) * READ_SIZE * read_idx,
+                                sizeof(Pick) * READ_SIZE);
+                    for (std::size_t i=0; i < READ_SIZE; i++) {
+                        std::swap(current_batch->at(current_batch_idx++), shuffle_buffer[index_selector(rng)]);
+                    }
+                    if (current_batch_idx >= batch_size) {
+                        processed_queue.enqueue(processed_producer, std::move(current_batch));
+                        current_batch = std::make_unique<std::vector<Pick>>(batch_size);
+                        current_batch_idx = 0;
+                    }
+                }
+            }
+        }
+    }
+};
