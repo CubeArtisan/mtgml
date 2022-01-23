@@ -4,3 +4,6 @@
 [submodule "extern/mio"]
 	path = extern/mio
 	url = https://github.com/mandreyel/mio
+[submodule "extern/concurrentqueue"]
+	path = extern/concurrentqueue
+	url = https://github.com/cameron314/concurrentqueue.git

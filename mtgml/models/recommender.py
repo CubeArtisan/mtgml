@@ -16,7 +16,6 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
                                          help='The number of cards that must be embedded. Should be 1 + maximum index in the input.')
         return {
-            'num_cards': num_cards,
             'embed_cards': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
                                                      fixed={'num_items': num_cards},
                                                      help='The card embeddings.'),
@@ -45,21 +44,25 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         embedded in the recommendations. As the individual items must pull towards items
         represented strongly within the graph.
         """
-        cards = tf.range(1, self.num_cards)
-        card_embeds = self.embed_cards(cards, training=training)
-        decoded_for_reg = []
-        if isinstance(inputs, tuple):
-            x, identity = inputs
-            identity_embeds = identity * card_embeds
-            encode_for_reg = self.embed_cube(identity_embeds, training=training)
-            decoded_for_reg = self.recover_adj_mtx(encode_for_reg, training=training)
+        if len(inputs) == 2:
+            noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
+            true_cube = tf.cast(inputs[1], dtype=self.compute_dtype, name='true_cube')
         else:
-            x = inputs
-        cube_card_embeds = card_embeds * x
-        encoded = self.embed_cube(cube_card_embeds, training=training)
-        reconstruction = self.recover_cube(encoded, training=training)
-        if isinstance(inputs, tuple):
-            return reconstruction, decoded_for_reg
-        else:
-            return reconstruction
+            noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
+            single_card = tf.cast(inputs[1], dtype=tf.int32, name='single_card')
+            true_cube = tf.cast(inputs[2], dtype=self.compute_dtype, name='true_cube')
+            adj_row = tf.cast(inputs[3], dtype=self.compute_dtype, name='adj_row')
+            embed_single_card = self.embed_cards(single_card, training=training)
+            encoded_single_card = self.embed_cube(embed_single_card, training=training)
+            decoded_single_card = self.recover_adj_mtx(encoded_single_card, training=training)
+            card_losses = tf.keras.losses.kl_divergence(adj_row, decoded_single_card)
+            self.add_loss(tf.math.reduce_mean(card_losses, axis=-1) * tf.constant(self.card_loss_weight, dtype=self.compute_dtype))
+            self.add_metric(card_losses, 'card_losses')
+        embed_noisy_cube = self.embed_cards(noisy_cube, training=training)
+        encoded_noisy_cube = self.embed_cube(embed_noisy_cube, training=training)
+        decoded_noisy_cube = self.recover_cube(encoded_noisy_cube, training=training)
+        cube_losses = tf.keras.losses.binary_cross_entropy(true_cube, decoded_noisy_cube)
+        self.add_loss(tf.math.reduce_mean(cube_losses, axis=-1) * tf.constant(self.cube_loss_weight, dtype=self.compute_dtype))
+        self.add_metric(cube_losses, 'card_losses')
+        return true_cube
 

@@ -1,14 +1,19 @@
 import argparse
 import datetime
+import io
 import json
 import locale
 import logging
+import math
 import os
+import random
 from pathlib import Path
 
+import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
+import zstandard as zstd
 from tensorboard.plugins.hparams import api as hp
 
 from mtgml.config.hyper_config import HyperConfig
@@ -17,6 +22,7 @@ from mtgml.generators.picks_generator import PickGenerator
 from mtgml.schedules.warmup_piecewise_constant_decay import PiecewiseConstantDecayWithLinearWarmup
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.tqdm_callback import TQDMProgressBar
+from mtgml.utils.range import Range
 
 BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
 EMBED_DIMS_CHOICES = tuple(2 ** i + j for i in range(0, 10) for j in range(2))
@@ -56,22 +62,6 @@ if __name__ == "__main__":
     })
     batch_size = hyper_config.get_int('batch_size', min=8, max=2048, step=8, logdist=True, default=512,
                                       help='The number of samples to evaluate at a time')
-
-    logging.info('Creating the pick Datasets.')
-    seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=True,
-                                                 help='Whether to rate cards based on the packs seen so far.')
-    train_epochs_per_cycle = hyper_config.get_int('epochs_per_cycle', min=1, max=256, default=1,
-                                                  help='The number of epochs for a full cycle through the training data')
-    # pick_generator_train = PickPairGenerator(args.batch_size, directory/'training_parsed_picks',
-    #                                          train_epochs_per_cycle, args.seed)
-    pick_generator_train = PickGenerator(batch_size=batch_size, folder=directory/'training_parsed_picks',
-                                         epochs_per_completion=train_epochs_per_cycle, seed=args.seed,
-                                         skip_seen=not seen_context_ratings)
-    logging.info(f"There are {len(pick_generator_train):,} training batches.")
-    # pick_generator_test = pick_generator_train
-    pick_generator_test = PickGenerator(batch_size=batch_size * 8, folder=directory/'validation_parsed_picks',
-                                        epochs_per_completion=1, seed=args.seed, skip_seen=not seen_context_ratings)
-    logging.info(f"There are {len(pick_generator_test):n} validation batches.")
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
@@ -148,39 +138,39 @@ if __name__ == "__main__":
     logging.info('Loading DraftBot model.')
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    num_batches = len(pick_generator_train)
-    tensorboard_period = len(pick_generator_test)
     draftbots = hyper_config.build(name='DraftBot', dynamic=False)
     optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
                                         default='adam', help='The optimizer type to use for optimization')
     learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
                                            default=1e-03, help=f'The learning rate to use for {optimizer}')
-    if hyper_config.get_bool('linear_warmup', default=False,
-                             help='Whether to linearly ramp up the learning rate from zero for the first epoch.'):
-        learning_rate = PiecewiseConstantDecayWithLinearWarmup(0, len(pick_generator_train), [0], [learning_rate, learning_rate])
+    # if hyper_config.get_bool('linear_warmup', default=False,
+    #                          help='Whether to linearly ramp up the learning rate from zero for the first epoch.'):
+    #     learning_rate = PiecewiseConstantDecayWithLinearWarmup(0, len(pick_generator_train), [0], [learning_rate, learning_rate])
     if optimizer == 'adam':
         opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    if optimizer == 'adamax':
+    elif optimizer == 'adamax':
         opt = tf.keras.optimizers.Adamax(learning_rate=learning_rate)
-    if optimizer == 'adadelta':
+    elif optimizer == 'adadelta':
         opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate)
-    if optimizer == 'nadam':
+    elif optimizer == 'nadam':
         opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
-    if optimizer == 'sgd':
+    elif optimizer == 'sgd':
         momentum = hyper_config.get_float('sgd_momentum', min=1e-05, max=1e-01, logdist=True,
                                           default=1e-04, help='The momentum for sgd optimization.')
         nesterov = hyper_config.get_bool('sgd_nesterov', default=False, help='Whether to use nesterov momentum for sgd.')
         opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum)
-    if optimizer == 'lazyadam':
+    elif optimizer == 'lazyadam':
         opt = tfa.optimizers.LazyAdam(learning_rate=learning_rate)
-    if optimizer == 'rectadam':
+    elif optimizer == 'rectadam':
         weight_decay = hyper_config.get_float('rectadam_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
                                               help='The weight decay for rectadam optimization per batch.')
         opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=weight_decay)
-    if optimizer == 'novograd':
+    elif optimizer == 'novograd':
         weight_decay = hyper_config.get_float('novograd_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
                                               help='The weight decay for novograd optimization per batch.')
         opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
+    else:
+        raise Exception('Need to specify a valid optimizer type')
     draftbots.compile(optimizer=opt, loss=lambda y_true, y_pred: 0.0)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
@@ -237,3 +227,4 @@ if __name__ == "__main__":
         logging.info('Saving final model.')
         Path(f'{output_dir}/final').mkdir(parents=True, exist_ok=True)
         draftbots.save(f'{output_dir}/final', save_format='tf')
+

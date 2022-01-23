@@ -4,12 +4,12 @@ from skbuild import setup
 from setuptools import find_packages
 
 setup(
-    name="cubecobra-recommender-generator",
+    name="mtgml-native-generators",
     version="0.0.1",
     description="A faster more scalable version of the pure python keras Sequence.",
     license="AGPL",
-    packages=find_packages(where='src'),
-    package_dir={"": "src"},
-    cmake_install_dir="src/generated",
+    packages=find_packages(where='mtgml'),
+    package_dir={"": "mtgml"},
+    cmake_install_dir="mtgml/generated",
     include_package_data=True,
 )

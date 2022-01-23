@@ -16,10 +16,10 @@ constexpr std::size_t MAX_CARDS_IN_PACK = 16;
 constexpr std::size_t MAX_BASICS = 16;
 constexpr std::size_t MAX_PICKED = 48;
 constexpr std::size_t MAX_SEEN_PACKS = 48;
-constexpr std::size_t READ_SIZE = 64
+constexpr std::size_t READ_SIZE = 64;
 
 using Pack = std::array<std::int16_t, MAX_CARDS_IN_PACK>;
-using CoordPair = std::array<std::int8_t, 2>
+using CoordPair = std::array<std::int8_t, 2>;
 using Coords = std::array<CoordPair, 4>;
 using CoordWeights = std::array<float, 4>;
 using Basics = std::array<std::int16_t, MAX_BASICS>;
@@ -62,6 +62,8 @@ private:
     moodycamel::ProducerToken chunk_producer;
     moodycamel::BlockingConcurrentQueue<ProcessedValue> processed_queue;
     moodycamel::ConsumerToken processed_consumer;
+    std::jthread worker_thread;
+
     static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 20;
 
 public:
@@ -72,14 +74,14 @@ public:
 
     DraftbotGenerator& enter() & {
         py::gil_scoped_release gil_release;
-        worker_thread = std::jthread([i, this](std::stop_token st) { this->worker_func(st, pcg32(this->initial_seed, 0)); });
+        worker_thread = std::jthread([this](std::stop_token st) { this->worker_func(st, pcg32(this->seed, 0)); });
         queue_new_epoch();
         return *this;
     }
 
     bool exit(py::object, py::object, py::object) {
         worker_thread.request_stop();
-        threads.join();
+        worker_thread.join();
         return false;
     }
 
@@ -98,30 +100,35 @@ public:
 
     Result next() & {
         ProcessedValue processed_value;
-        if (!processed_queue.try_dequeue(processed_consumer, processed_value)) {
+        if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
             py::gil_scoped_release gil_release;
             queue_new_epoch();
-            while (!processed_queue.try_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+            while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
         }
         std::vector<Pick>* batched = processed_value.release();
         py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<Pick>*>(ptr); }};
         Pick& first_pick = batched->front();
         return {
             {
-                py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, front.cards_in_pack.data(), capsule},
-                py::array_t<std::int16_t>{basics_shape(), basics_strides, front.basics.data(), capsule},
-                py::array_t<std::int16_t>{pool_shape(), pool_strides, front.pool.data(), capsule},
-                py::array_t<std::int16_t>{seen_packs_shape(), seen_packs_strides, front.seen_packs[0].data(), capsule},
-                py::array_t<std::int8_t>{seen_pack_coords_shape(), seen_pack_coords_strides, front.seen_pack_coords[0][0].data(), capsule},
-                py::array_t<float>{seen_pack_coord_weights_shape(), seen_pack_coord_weights_strides, front.seen_pack_coord_weights[0].data(), capsule},
-                py::array_t<std::int8_t>{coords_shape(), coords_strides, front.coords[0].data(), capsule},
-                py::array_t<float>{coord_weights_shape(), coord_weights_strides, front.coord_weights[0].data(), capsule},
+                py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, first_pick.cards_in_pack.data(), free_when_done},
+                py::array_t<std::int16_t>{basics_shape(), basics_strides, first_pick.basics.data(), free_when_done},
+                py::array_t<std::int16_t>{pool_shape(), pool_strides, first_pick.pool.data(), free_when_done},
+                py::array_t<std::int16_t>{seen_packs_shape(), seen_packs_strides, first_pick.seen_packs[0].data(), free_when_done},
+                py::array_t<std::int8_t>{seen_coords_shape(), seen_coords_strides, first_pick.seen_coords[0][0].data(), free_when_done},
+                py::array_t<float>{seen_coord_weights_shape(), seen_coord_weights_strides, first_pick.seen_coord_weights[0].data(), free_when_done},
+                py::array_t<std::int8_t>{coords_shape(), coords_strides, first_pick.coords[0].data(), free_when_done},
+                py::array_t<float>{coord_weights_shape(), coord_weights_strides, first_pick.coord_weights.data(), free_when_done},
             },
-            py::array_t<std::int8>{is_trashed_shape(), is_trashed_strides, &first_pick.is_trashed, capsule},
+            py::array_t<std::int8_t>{is_trashed_shape(), is_trashed_strides, &first_pick.is_trashed, free_when_done},
         };
     }
 
+    Result getitem(std::size_t) & {
+        return next();
+    }
+
 private:
+    static constexpr std::array<std::size_t, 2> basics_strides{sizeof(Pick), sizeof(std::int16_t)};
     static constexpr std::array<std::size_t, 2> cards_in_pack_strides{sizeof(Pick), sizeof(std::int16_t)};
     static constexpr std::array<std::size_t, 2> pack_strides{sizeof(Pick), sizeof(std::int16_t)};
     static constexpr std::array<std::size_t, 2> pool_strides{sizeof(Pick), sizeof(std::int16_t)};
@@ -156,7 +163,7 @@ private:
         while (!st.stop_requested()) {
             auto iter = read_indices.begin();
             while (iter != read_indices.end()) {
-                iter += chunk_queue.try_dequeue_bulk(chunk_consumer, iter, std::distance(iter, read_indices.end());
+                iter += chunk_queue.try_dequeue_bulk(chunk_consumer, iter, std::distance(iter, read_indices.end()));
                 if(st.stop_requested()) return;
             }
             for (std::size_t read_idx : read_indices) {
@@ -182,3 +189,15 @@ private:
         }
     }
 };
+
+PYBIND11_MODULE(generators, m) {
+    using namespace pybind11::literals;
+    py::class_<DraftbotGenerator>(m, "DraftbotGenerator")
+        .def(py::init<std::string, std::size_t, std::size_t>())
+        .def("__enter__", &DraftbotGenerator::enter)
+        .def("__exit__", &DraftbotGenerator::exit)
+        .def("__len__", &DraftbotGenerator::size)
+        .def("__getitem__", &DraftbotGenerator::getitem)
+        .def("next", &DraftbotGenerator::next)
+        .def("on_epoch_end", &DraftbotGenerator::queue_new_epoch);
+}

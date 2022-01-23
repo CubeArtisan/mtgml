@@ -20,7 +20,8 @@
           devShell = pkgs.mkShell {
             name = "mtgdraftbots-model";
             buildInputs = [
-              pkgs.stdenv.cc.cc.lib
+              pkgs.clang_12
+              pkgs.llvmPackages_12.libclang
               pkgs.cudaPackages.cudatoolkit_11
               pkgs.cutensor_cudatoolkit_11_2
               pkgs.cudnn_cudatoolkit_11_2
@@ -34,6 +35,7 @@
             ];
 
             shellHook = ''
+              export LIBCLANG_PATH="${pkgs.llvmPackages_12.libclang}/lib";
               export CUDATOOLKIT=${pkgs.cudaPackages.cudatoolkit_11}
               export CUDATOOLKIT_LIB=${pkgs.cudaPackages.cudatoolkit_11.lib}
               export CUDNN=${pkgs.cudnn_cudatoolkit_11_2}

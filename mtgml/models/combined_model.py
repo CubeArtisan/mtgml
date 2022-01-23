@@ -2,6 +2,7 @@ import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.item_embedding import ItemEmbedding
+from mtgml.models.draftbots import DraftBot
 
 
 class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
@@ -14,5 +15,18 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                                              seed_mod=29, help='The embeddings for the card objects.'),
         return {
             'embed_cards': embed_cards,
-            'draftbots': DrafBots
+            'draftbots': hyper_config.add_sublayer('DraftBots', sub_layer_type=DraftBot,
+                                                   fixed={'num_cards': num_cards, 'EmbedCards': {'dims': 1}},
+                                                   help='The model for the draftbots'),
+            'cube_recommender': hyper_config.add_sublayer('CubeRecommender', sub_layer_type=DraftBot,
+                                                          fixed={'num_cards': num_cards, 'EmbedCards': {'dims': 1}},
+                                                          help='The model for the draftbots'),
         }
+
+    def build(self, input_shapes):
+        super(CombinedModel, self).build(input_shapes)
+        self.draftbots.embed_cards = self.embed_cards
+        self.cube_recommender.embed_cards = self.embed_cards
+
+    def call(self, inputs, training=False):
+        return self.draftbots(inputs[0], training=training), self.cube_recommender(inputs[1], training=training)
