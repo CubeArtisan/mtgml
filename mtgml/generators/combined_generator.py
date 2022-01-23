@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 class CombinedGenerator(tf.keras.utils.Sequence):
-    def __init__(self, generators):
+    def __init__(self, *generators):
         self.generators = generators
 
     def __len__(self):

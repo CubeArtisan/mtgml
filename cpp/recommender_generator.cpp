@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <csignal>
 #include <numeric>
 #include <queue>
 #include <random>
@@ -12,6 +13,7 @@
 #include <blockingconcurrentqueue.h>
 #include <mio/mmap.hpp>
 #include <pcg_random.hpp>
+#include <pybind11/iostream.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
@@ -70,16 +72,16 @@ struct CubeData {
 };
 
 struct CubeGenerator {
-    using Result = std::tuple<std::tuple<py::array_t<std::uint16_t>, py::array_t<std::uint16_t>>,
-                              std::tuple<py::array_t<std::uint16_t>, py::array_t<float>>>;
+    using Result = std::tuple<py::array_t<std::uint16_t>, py::array_t<std::uint16_t>,
+                              py::array_t<std::uint16_t>, py::array_t<float>>;
     using ProcessedValue = std::unique_ptr<std::vector<CubeData>>;
 
 private:
+    const std::size_t num_cards;
     mio::basic_mmap_source<std::byte> cube_mmap;
+    const std::size_t num_cubes;
     mio::basic_mmap_source<std::byte> deck_mmap;
-    std::size_t num_cards;
-    std::size_t num_cubes;
-    std::size_t num_decks;
+    const std::size_t num_decks;
     std::size_t batch_size;
     std::size_t length;
     std::size_t initial_seed;
@@ -99,28 +101,31 @@ private:
     moodycamel::ProducerToken task_producer;
     moodycamel::BlockingConcurrentQueue<ProcessedValue> processed_queue;
     moodycamel::ConsumerToken processed_consumer;
+    std::valarray<float> x1;
+    std::valarray<float> y1;
 
 public:
     CubeGenerator(std::string cube_filename, std::string decks_filename, std::size_t num_cards,
-                  std::size_t batch_size, std::size_t seed, float noise, float noise_std)
-            : cube_mmap(cube_filename), num_cubes{cube_mmap.size() / sizeof(CubeCards)},
+                  std::size_t batch_size, std::size_t seed, double noise, double noise_std)
+            : num_cards{num_cards}, cube_mmap(cube_filename), num_cubes{cube_mmap.size() / sizeof(CubeCards)},
               deck_mmap(decks_filename), num_decks{deck_mmap.size() / sizeof(Deck)},
-              batch_size{batch_size}, length{(num_cubes + batch_size - 1) / batch_size},
+              batch_size{batch_size}, length{num_cubes / batch_size},
               initial_seed{seed}, adj_mtx(0.0, num_cards * num_cards),
-              neg_sampler(0.0, num_cards), true_indices(0, num_cards),
+              neg_sampler(0.0, num_cards), true_indices(num_cards, 0),
               replacing_neg_sampler(0.0, num_cards),
               noise_dist(noise, noise_std), main_rng{initial_seed, 1},
-              task_producer{task_queue}, processed_consumer{processed_queue}
+              task_producer{task_queue}, processed_consumer{processed_queue},
+              x1(0.0, num_cards), y1(0.0, num_cards)
     {
         py::gil_scoped_release release;
-        auto deck_file_start = reinterpret_cast<const std::uint16_t*>(deck_mmap.data());
+        auto deck_file_start = reinterpret_cast<const Deck*>(deck_mmap.data());
         for (std::size_t i=0; i < num_decks; i++) {
-            const std::uint16_t* row = deck_file_start + sizeof(Deck) * i / 2;
+            const Deck& row = deck_file_start[i];
             for (std::size_t j=0; j < MAX_DECK_SIZE; j++) {
-                std::uint16_t j_val = row[j];
+                std::uint16_t j_val = row.main[j];
                 if (j_val == 0) break;
                 for (std::size_t k=0; k <= j; k++) {
-                    std::uint16_t k_val = row[k];
+                    std::uint16_t k_val = row.main[k];
                     adj_mtx[(j_val - 1) * num_cards + (k_val - 1)] += 1;
                     adj_mtx[(k_val - 1) * num_cards + (j_val - 1)] += 1;
                 }
@@ -142,13 +147,13 @@ public:
             if (row_sum == 0) adj_mtx[i * (num_cards + 1)] = 1.0;
             else slice /= std::valarray(row_sum, num_cards);
         }
-        auto cube_file_start = reinterpret_cast<const std::uint16_t*>(deck_mmap.data());
+        auto cube_file_start = reinterpret_cast<const CubeCards*>(cube_mmap.data());
         std::vector<float> cube_counts(num_cards, 0.0);
         for (std::size_t i=0; i < num_cubes; i++) {
-            const std::uint16_t* row = cube_file_start + sizeof(CubeCards) * i / 2;
-            for (std::size_t j=0; j < MAX_CUBE_SIZE; j++) {
-                if (row[i] == 0) break;
-                cube_counts[row[i] - 1] += 1.0;
+            const CubeCards& row = cube_file_start[i];
+            for (const auto card_idx : row) {
+                if (card_idx == 0) break;
+                cube_counts[card_idx - 1] += 1.0;
             }
         }
         std::vector<std::pair<float, std::size_t>> sortable_sampler;
@@ -156,7 +161,7 @@ public:
         for (size_t i=0; i < num_cards; i++) {
             float count = cube_counts[i];
             if (count == 0) count = 1;
-            sortable_sampler.emplace_back(count, i);
+            sortable_sampler.push_back(std::pair<float, std::size_t>{count, i});
         }
         std::ranges::sort(sortable_sampler, [](const auto& p1, const auto& p2) { return p1.first > p2.first; });
         std::ranges::transform(sortable_sampler, std::begin(neg_sampler), [](const auto& p) { return p.first; });
@@ -197,24 +202,23 @@ public:
     }
 
     Result next() & {
-        ProcessedValue processed_value;
-        if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
+        std::vector<CubeData>* batched;
+        {
             py::gil_scoped_release gil_release;
-            queue_new_epoch();
-            while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+            ProcessedValue processed_value;
+            if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
+                queue_new_epoch();
+                while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+            }
+            batched = processed_value.release();
         }
-        std::vector<CubeData>* batched = processed_value.release();
         py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<CubeData>*>(ptr); }};
         CubeData& first_sample = batched->front();
         return {
-            {
                 py::array_t<std::uint16_t>{noisy_cube_shape(), noisy_cube_strides, first_sample.noisy_cube.data(), free_when_done},
                 py::array_t<std::uint16_t>{single_card_cube_shape(), single_card_cube_strides, first_sample.single_card_cube.data(), free_when_done},
-            },
-            {
                 py::array_t<std::uint16_t>{true_cube_shape(), true_cube_strides, first_sample.true_cube.data(), free_when_done},
                 py::array_t<float>{adj_mtx_row_shape(), adj_mtx_row_strides, first_sample.adj_mtx_row.data(), free_when_done},
-            },
         };
     }
 
@@ -224,8 +228,8 @@ public:
 
     CubeData process_cube(const std::size_t index, pcg32& rng) {
         float noise = std::ranges::clamp(noise_dist(rng), 0.3f, 0.9f);
-        std::valarray<float> x1(0.0, num_cards);
-        auto row_start = reinterpret_cast<const std::uint16_t*>(cube_mmap.data()) + index * MAX_CUBE_SIZE;
+        for (auto& x : x1) x = 0.0;
+        const auto& row_start = reinterpret_cast<const CubeCards*>(cube_mmap.data())[index];
         for (std::size_t i=0; i < MAX_CUBE_SIZE; i++) {
             if (row_start[i] == 0) break;
             x1[row_start[i] - 1] += 1;
@@ -233,7 +237,7 @@ public:
         std::size_t count = static_cast<std::size_t>(x1.sum());
         size_t to_flip = std::ranges::clamp(noise * count, 1.0f, count - 1.0f);
 
-        std::valarray<float> y1 = x1;
+        y1 = x1;
         auto to_exclude = sample_no_replacement(to_flip, x1, true_indices, rng);
         auto to_include = sample_no_replacement(to_flip, neg_sampler * x1, true_indices, rng);
         std::valarray<float> to_exclude_sampler(0.0, num_cards);

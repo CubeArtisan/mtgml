@@ -14,3 +14,4 @@ ml_files/
 _skbuild/
 dist/
 build/
+mtgml_native_generators.egg-info/

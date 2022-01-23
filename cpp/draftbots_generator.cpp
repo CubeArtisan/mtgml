@@ -43,11 +43,9 @@ struct Pick {
 struct DraftbotGenerator {
     using ProcessedValue = std::unique_ptr<std::vector<Pick>>;
     using Result = std::tuple<
-        std::tuple<
-            py::array_t<std::int16_t>, py::array_t<std::int16_t>, py::array_t<std::int16_t>,
-            py::array_t<std::int16_t>, py::array_t<std::int8_t>, py::array_t<float>,
-            py::array_t<std::int8_t>, py::array_t<float>
-        >,
+        py::array_t<std::int16_t>, py::array_t<std::int16_t>, py::array_t<std::int16_t>,
+        py::array_t<std::int16_t>, py::array_t<std::int8_t>, py::array_t<float>,
+        py::array_t<std::int8_t>, py::array_t<float>,
         py::array_t<std::int8_t>
     >;
 
@@ -99,17 +97,19 @@ public:
     }
 
     Result next() & {
-        ProcessedValue processed_value;
-        if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
+        std::vector<Pick>* batched;
+        {
             py::gil_scoped_release gil_release;
-            queue_new_epoch();
-            while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+            ProcessedValue processed_value;
+            if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
+                queue_new_epoch();
+                while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+            }
+            batched = processed_value.release();
         }
-        std::vector<Pick>* batched = processed_value.release();
         py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<Pick>*>(ptr); }};
         Pick& first_pick = batched->front();
         return {
-            {
                 py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, first_pick.cards_in_pack.data(), free_when_done},
                 py::array_t<std::int16_t>{basics_shape(), basics_strides, first_pick.basics.data(), free_when_done},
                 py::array_t<std::int16_t>{pool_shape(), pool_strides, first_pick.pool.data(), free_when_done},
@@ -118,7 +118,6 @@ public:
                 py::array_t<float>{seen_coord_weights_shape(), seen_coord_weights_strides, first_pick.seen_coord_weights[0].data(), free_when_done},
                 py::array_t<std::int8_t>{coords_shape(), coords_strides, first_pick.coords[0].data(), free_when_done},
                 py::array_t<float>{coord_weights_shape(), coord_weights_strides, first_pick.coord_weights.data(), free_when_done},
-            },
             py::array_t<std::int8_t>{is_trashed_shape(), is_trashed_strides, &first_pick.is_trashed, free_when_done},
         };
     }
@@ -190,7 +189,7 @@ private:
     }
 };
 
-PYBIND11_MODULE(generators, m) {
+PYBIND11_MODULE(draftbot_generator, m) {
     using namespace pybind11::literals;
     py::class_<DraftbotGenerator>(m, "DraftbotGenerator")
         .def(py::init<std::string, std::size_t, std::size_t>())

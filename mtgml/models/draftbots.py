@@ -2,7 +2,7 @@ import math
 
 import tensorflow as tf
 
-from mtgml.constants import LARGE_INT
+from mtgml.constants import LARGE_INT, MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.item_embedding import ItemEmbedding
@@ -15,6 +15,7 @@ from mtgml.tensorboard.timeseries import log_timeseries
 class DraftBot(ConfigurableLayer, tf.keras.Model):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
+        print(input_shapes)
         pool_context_ratings = hyper_config.get_bool('pool_context_ratings', default=True,
                                                      help='Whether to rate cards based on how the go with the other cards in the pool so far.')
         seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=True,
@@ -38,7 +39,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                     fixed={'Decoder': {'Final': {'dims': seen_pack_dims, 'activation': 'linear'}}},
                                                     seed_mod=37, help='The layer that embeds the packs that have been seen so far.')
                           if seen_context_ratings else None,
-            'pack_position_count': input_shapes[2][1] if input_shapes else 45,
+            'pack_position_count': input_shapes[3][1] if input_shapes else 45,
             'embed_pack_position': hyper_config.get_sublayer('EmbedPackPosition',
                                                              sub_layer_type=TimeVaryingEmbedding,
                                                              fixed={'dims': seen_pack_dims,
@@ -63,17 +64,18 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
 
     def call(self, inputs, training=False):
         if self.rate_off_seen:
-            card_choices = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='card_choices'), (None, 15))
-            pool = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name='pool'), (None, 43))
-            seen_packs = tf.ensure_shape(tf.cast(inputs[2], dtype=tf.int32, name='seen_packs'), (None, 44, 15))
-            seen_coords = tf.ensure_shape(tf.cast(inputs[3], dtype=tf.int32, name='seen_coords'), (None, 4, 2))
-            seen_coord_weights = tf.ensure_shape(tf.cast(inputs[4], dtype=tf.float32, name='seen_coord_weights'), (None, 4))
-            coords = tf.ensure_shape(tf.cast(inputs[5], dtype=tf.int32, name='coords'), (None, 4, 2))
-            coord_weights = tf.ensure_shape(tf.cast(inputs[6], dtype=tf.float32, name='coord_weights'), (None, 4))
-            y_idx = tf.ensure_shape(tf.cast(inputs[7], dtype=tf.int32, name='y_idx'), (None,))
+            card_choices = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='card_choices'), (None, MAX_CARDS_IN_PACK))
+            basics = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name='basics'), (None, MAX_BASICS))
+            pool = tf.ensure_shape(tf.cast(inputs[2], dtype=tf.int32, name='pool'), (None, MAX_PICKED))
+            seen_packs = tf.ensure_shape(tf.cast(inputs[3], dtype=tf.int32, name='seen_packs'), (None, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK))
+            seen_coords = tf.ensure_shape(tf.cast(inputs[4], dtype=tf.int32, name='seen_coords'), (None, MAX_SEEN_PACKS, 4, 2))
+            seen_coord_weights = tf.ensure_shape(tf.cast(inputs[5], dtype=tf.float32, name='seen_coord_weights'), (None, MAX_SEEN_PACKS, 4))
+            coords = tf.ensure_shape(tf.cast(inputs[6], dtype=tf.int32, name='coords'), (None, 4, 2))
+            coord_weights = tf.ensure_shape(tf.cast(inputs[7], dtype=tf.float32, name='coord_weights'), (None, 4))
+            y_idx = tf.ensure_shape(tf.cast(inputs[8], dtype=tf.int32, name='y_idx'), (None,))
         else:
-            card_choices = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='card_choices'), (None, 15))
-            pool = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name='pool'), (None, 43))
+            card_choices = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='card_choices'), (None, MAX_CARDS_IN_PACK))
+            pool = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name='pool'), (None, MAX_PICKED))
             coords = tf.ensure_shape(tf.cast(inputs[2], dtype=tf.int32, name='coords'), (None, 4, 2))
             coord_weights = tf.ensure_shape(tf.cast(inputs[3], dtype=tf.float32, name='coord_weights'), (None, 4))
             y_idx = tf.ensure_shape(tf.cast(inputs[4], dtype=tf.int32, name='y_idx'), (None,))
@@ -89,7 +91,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             seen_pack_embeds = self.embed_cards(seen_packs, training=training)
             pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
             pack_embeds_mask = pack_embeds._keras_mask
-            position_embeds = tf.expand_dims(self.embed_pack_position((seen_coords, seen_coord_weights), training=training), -2)
+            position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
             pack_embeds = tf.constant(math.sqrt(self.seen_pack_dims), self.compute_dtype) * pack_embeds + position_embeds
             pack_embeds._keras_mask = pack_embeds_mask
             sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))

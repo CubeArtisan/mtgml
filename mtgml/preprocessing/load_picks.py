@@ -206,9 +206,9 @@ def dump_picks(picks, input_file, dest_folder):
 
 
 if __name__ == '__main__':
-    train_filename = Path('data/train_picks.json')
-    validation_filename = Path('data/validation_picks.json')
-    evaluation_filename = Path('data/evaluation_picks.json')
+    train_filename = Path('data/train_picks.bin')
+    validation_filename = Path('data/validation_picks.bin')
+    evaluation_filename = Path('data/evaluation_picks.bin')
     with open(train_filename, 'wb') as train_file, open(validation_filename, 'wb') as validation_file, \
           open(evaluation_filename, 'wb') as evaluation_file:
         output_files = [train_file, validation_file, evaluation_file]

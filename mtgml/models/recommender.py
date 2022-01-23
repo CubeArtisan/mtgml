@@ -16,15 +16,18 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
                                          help='The number of cards that must be embedded. Should be 1 + maximum index in the input.')
         return {
+            "num_cards": num_cards,
             'embed_cards': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
                                                      fixed={'num_items': num_cards},
                                                      help='The card embeddings.'),
             'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=AttentiveSetEmbedding,
                                                     help='Combine the card embeddings to get an embedding for the cube.'),
             'recover_adj_mtx': hyper_config.get_sublayer('RecoverAdjMtx', sub_layer_type=MLP,
-                                                         fixed={'Final': {'activation': 'softmax', 'dims': num_cards - 1}}),
+                                                         fixed={'Final': {'activation': 'softmax', 'dims': num_cards - 1}},
+                                                         help='The MLP layer that tries to reconstruct the adjacency matrix row for the single card cube'),
             'recover_cube': hyper_config.get_sublayer('RecoverCube', sub_layer_type=MLP,
-                                                      fixed={'Final': {'activation': 'softmax', 'dims': num_cards - 1}}),
+                                                      fixed={'Final': {'activation': 'softmax', 'dims': num_cards - 1}},
+                                                      help='The MLP that tries to reconstruct the one hot encoding of the cube'),
         }
 
     def call(self, inputs, training=None):
@@ -46,11 +49,13 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         """
         if len(inputs) == 2:
             noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
-            true_cube = tf.cast(inputs[1], dtype=self.compute_dtype, name='true_cube')
+            true_cube = tf.cast(inputs[1], dtype=tf.int32, name='true_cube_arr')
+            true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards, axis=-1), axis=-2)
         else:
             noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
             single_card = tf.cast(inputs[1], dtype=tf.int32, name='single_card')
-            true_cube = tf.cast(inputs[2], dtype=self.compute_dtype, name='true_cube')
+            true_cube = tf.cast(inputs[2], dtype=tf.int32, name='true_cube')
+            true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards, axis=-1), axis=-2)
             adj_row = tf.cast(inputs[3], dtype=self.compute_dtype, name='adj_row')
             embed_single_card = self.embed_cards(single_card, training=training)
             encoded_single_card = self.embed_cube(embed_single_card, training=training)

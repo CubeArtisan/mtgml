@@ -79,9 +79,9 @@ def write_deck(deck, output_file):
 
 
 if __name__ == '__main__':
-    train_filename = Path('data/train_decks.json')
-    validation_filename = Path('data/validation_decks.json')
-    evaluation_filename = Path('data/evaluation_decks.json')
+    train_filename = Path('data/train_decks.bin')
+    validation_filename = Path('data/validation_decks.bin')
+    evaluation_filename = Path('data/evaluation_decks.bin')
     with open(train_filename, 'wb') as train_file, open(validation_filename, 'wb') as validation_file, \
           open(evaluation_filename, 'wb') as evaluation_file:
         output_files = [train_file, validation_file, evaluation_file]

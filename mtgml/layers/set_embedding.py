@@ -95,9 +95,9 @@ class AttentiveSetEmbedding(ConfigurableLayer):
 
     def build(self, input_shapes):
         super(AttentiveSetEmbedding, self).build(input_shapes)
-        if self.positional_reduction:
-            self.position_weights = self.add_weight('positional_weights', initializer=tf.ones_initializer(),
-                                                    shape=(input_shapes[-2],input_shapes[-2]), trainable=True)
+        # if self.positional_reduction:
+        #     self.position_weights = self.add_weight('positional_weights', initializer=tf.ones_initializer(),
+        #                                             shape=(input_shapes[-2],input_shapes[-2]), trainable=True)
         self.final_atten_shape = (-1, *input_shapes[1:-1], self.atten_output_dims)
         self.flattened_shape = (-1, *input_shapes[-2:])
         self.mask_shape = (-1, *self.flattened_shape[1:-1])
@@ -118,12 +118,12 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         encoded_items, attention_scores = self.attention(encoded_items, encoded_items, training=training,
                                                          attention_mask=product_mask,
                                                          return_attention_scores=True)
-        if self.positional_reduction:
-            position_weights = tf.gather(self.position_weights, tf.reduce_sum(tf.cast(dropout_mask, tf.int32), axis=-1))
-            position_weights = position_weights + tf.constant(LARGE_INT, dtype=self.compute_dtype) * tf.cast(dropout_mask, dtype=self.compute_dtype)
-            position_weights = tf.nn.softmax(position_weights, axis=-1)
-            encoded_items = tf.expand_dims(position_weights, -1) * encoded_items
-            attention_scores = tf.expand_dims(tf.expand_dims(position_weights, -2), -1) * attention_scores
+        # if self.positional_reduction:
+        #     position_weights = tf.gather(self.position_weights, tf.reduce_sum(tf.cast(dropout_mask, tf.int32), axis=-1))
+        #     position_weights = position_weights + tf.constant(LARGE_INT, dtype=self.compute_dtype) * tf.cast(dropout_mask, dtype=self.compute_dtype)
+        #     position_weights = tf.nn.softmax(position_weights, axis=-1)
+        #     encoded_items = tf.expand_dims(position_weights, -1) * encoded_items
+        #     attention_scores = tf.expand_dims(tf.expand_dims(position_weights, -2), -1) * attention_scores
         encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
         dropped_inputs = self.zero_masked(encoded_items, mask=tf.reshape(dropout_mask, self.original_mask))
         summed_embeds = tf.math.reduce_sum(dropped_inputs, -2, name='summed_embeds')

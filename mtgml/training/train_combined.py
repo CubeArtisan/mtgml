@@ -1,28 +1,23 @@
 import argparse
 import datetime
-import io
 import json
 import locale
 import logging
-import math
 import os
-import random
 from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
-import zstandard as zstd
-from tensorboard.plugins.hparams import api as hp
 
+from mtgml_native.generators.draftbot_generator import DraftbotGenerator
+from mtgml_native.generators.recommender_generator import RecommenderGenerator
+from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.models.draftbots import DraftBot
-from mtgml.generators.picks_generator import PickGenerator
-from mtgml.schedules.warmup_piecewise_constant_decay import PiecewiseConstantDecayWithLinearWarmup
+from mtgml.models.combined_model import CombinedModel
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.tqdm_callback import TQDMProgressBar
-from mtgml.utils.range import Range
 
 BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
 EMBED_DIMS_CHOICES = tuple(2 ** i + j for i in range(0, 10) for j in range(2))
@@ -40,14 +35,12 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true', help='Enable debug dumping of tensor stats.')
     parser.add_argument('--profile', action='store_true', help='Enable profiling a range of batches from the first epoch.')
     parser.add_argument('--deterministic', action='store_true', help='Try to keep the run deterministic so results can be reproduced.')
-    parser.add_argument('--dir', type=str, required=True, help='The soure directory where the training and validation data are stored.')
     parser.set_defaults(float_type=tf.float32, use_xla=True)
     args = parser.parse_args()
     tf.keras.utils.set_random_seed(args.seed)
-    directory = Path(args.dir)
 
     logging.info('Loading card data for seeding weights.')
-    with open(directory/'int_to_card.json', 'r') as cards_file:
+    with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
         card_ratings = [(c.get('elo', 1200) / 1200) - 1  for c in cards_json]
         card_names = [c['name'] for c in cards_json]
@@ -57,7 +50,7 @@ if __name__ == "__main__":
     if config_path.exists():
         with open(config_path, 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
-    hyper_config = HyperConfig(layer_type=DraftBot, data=data, fixed={
+    hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
         'num_cards': len(cards_json),
     })
     batch_size = hyper_config.get_int('batch_size', min=8, max=2048, step=8, logdist=True, default=512,
@@ -135,10 +128,10 @@ if __name__ == "__main__":
         for i, card in enumerate(cards_json):
             f.write(f'{i+1}\t"{card["name"]}"\t{"".join(color_name[x] for x in sorted(card.get("color_identity")))}\t{card["cmc"]}\t{card.get("type")}\n')
 
-    logging.info('Loading DraftBot model.')
+    logging.info('Loading Combined model.')
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    draftbots = hyper_config.build(name='DraftBot', dynamic=False)
+    model = hyper_config.build(name='CombinedModel', dynamic=False)
     optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
                                         default='adam', help='The optimizer type to use for optimization')
     learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
@@ -171,60 +164,77 @@ if __name__ == "__main__":
         opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
     else:
         raise Exception('Need to specify a valid optimizer type')
-    draftbots.compile(optimizer=opt, loss=lambda y_true, y_pred: 0.0)
+    model.compile(optimizer=opt, loss=lambda y_true, y_pred: 0.0)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
         logging.info('Loading Checkpoint.')
-        draftbots.load_weights(latest)
+        model.load_weights(latest)
     with open(config_path, 'w') as config_file:
         yaml.dump(hyper_config.get_config(), config_file)
     with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
         yaml.dump(hyper_config.get_config(), config_file)
 
+    print('Initializing Generators')
+    noise_mean = hyper_config.get_float('cube_noise_mean', min=0, max=1, default=0.7,
+                                        help='The median of the noise distribution for cubes.')
+    noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
+                                       help='The median of the noise distribution for cubes.')
+    # with DraftbotGenerator('data/train_picks.json', batch_size, args.seed) as draftbot_train_generator, \
+    #      DraftbotGenerator('data/validation_picks.json', batch_size, args.seed) as draftbot_validation_generator, \
+    #      RecommenderGenerator('data/train_cubes.json', 'data/train_decks.json', len(cards_json),
+    #                           batch_size, args.seed, noise_mean, noise_std) as recommender_train_generator, \
+    #      RecommenderGenerator('data/validation_cubes.json', 'data/validation_decks.json', len(cards_json),
+    #                           batch_size, args.seed, 0, 0) as recommender_validation_generator:
+    draftbot_train_generator = DraftbotGenerator('data/train_picks.json', batch_size, args.seed)
+    recommender_train_generator = RecommenderGenerator('data/train_cubes.json', 'data/train_decks.json', len(cards_json),
+                                                       batch_size, args.seed, noise_mean, noise_std)
     logging.info('Starting training')
-    callbacks = []
-    if not args.debug:
-        mcp_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath=output_dir + 'model',
-            monitor='val_accuracy_top_1',
-            verbose=False,
-            save_best_only=True,
-            save_weights_only=True,
-            mode='max',
-            save_freq='epoch')
-        cp_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath=log_dir + '/model-{epoch:04d}.ckpt',
-            monitor='val_accuracy_top_1',
-            verbose=False,
-            save_best_only=False,
-            save_weights_only=True,
-            mode='max',
-            save_freq='epoch')
-        callbacks.append(mcp_callback)
-        callbacks.append(cp_callback)
-    nan_callback = tf.keras.callbacks.TerminateOnNaN()
-    es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
-                                                   mode='max', restore_best_weights=True, verbose=True)
-    tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                                 update_freq=512, embeddings_freq=None,
-                                 profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
-    BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
-    tqdm_callback = TQDMProgressBar(smoothing=0.01, epoch_bar_format=BAR_FORMAT)
-    callbacks.append(nan_callback)
-    # callbacks.append(es_callback)
-    callbacks.append(tb_callback)
-    callbacks.append(tqdm_callback)
-    draftbots.fit(
-        pick_generator_train,
-        validation_data=pick_generator_test,
-        validation_freq=1,
-        epochs=args.epochs,
-        callbacks=callbacks,
-        verbose=0,
-        max_queue_size=2**10,
-    )
+    with draftbot_train_generator, recommender_train_generator:
+        train_generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator)
+        # validation_generator = CombinedGenerator(draftbot_validation_generator, recommender_validation_generator)
+        callbacks = []
+        if not args.debug:
+            mcp_callback = tf.keras.callbacks.ModelCheckpoint(
+                filepath=output_dir + 'model',
+                monitor='val_accuracy_top_1',
+                verbose=False,
+                save_best_only=True,
+                save_weights_only=True,
+                mode='max',
+                save_freq='epoch')
+            cp_callback = tf.keras.callbacks.ModelCheckpoint(
+                filepath=log_dir + '/model-{epoch:04d}.ckpt',
+                monitor='val_accuracy_top_1',
+                verbose=False,
+                save_best_only=False,
+                save_weights_only=True,
+                mode='max',
+                save_freq='epoch')
+            callbacks.append(mcp_callback)
+            callbacks.append(cp_callback)
+        nan_callback = tf.keras.callbacks.TerminateOnNaN()
+        num_batches = len(train_generator)
+        es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
+                                                       mode='max', restore_best_weights=True, verbose=True)
+        tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
+                                     update_freq=512, embeddings_freq=None,
+                                     profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
+        BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
+        tqdm_callback = TQDMProgressBar(smoothing=0.01, epoch_bar_format=BAR_FORMAT)
+        callbacks.append(nan_callback)
+        # callbacks.append(es_callback)
+        callbacks.append(tb_callback)
+        callbacks.append(tqdm_callback)
+        model.fit(
+            train_generator,
+            # validation_data=validation_generator,
+            # validation_freq=1,
+            epochs=args.epochs,
+            callbacks=callbacks,
+            verbose=0,
+            max_queue_size=2**10,
+        )
     if not args.debug:
         logging.info('Saving final model.')
         Path(f'{output_dir}/final').mkdir(parents=True, exist_ok=True)
-        draftbots.save(f'{output_dir}/final', save_format='tf')
-
+        model.save(f'{output_dir}/final', save_format='tf')
