@@ -5,7 +5,8 @@ from mtgml.config.hyper_config import HyperConfig
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
-from mtgml.layers.wrapped import WDropout, WMultiHeadAttention
+from mtgml.layers.wrapped import WDropout
+from mtgml.layers.attention import MultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
 from mtgml.tensorboard.plot_attention_scores import plot_attention_scores
 
@@ -69,7 +70,7 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         return {
             'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=MLP, seed_mod=13,
                                                  help='The mapping from the item embeddings to the embeddings to add.'),
-            'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=37,
+            'attention': hyper_config.get_sublayer('Attention', sub_layer_type=MultiHeadAttention, seed_mod=37,
                                                    fixed={'output_dims': attention_output_dims},
                                                    help='The mapping from the item embeddings to the embeddings to add.'),
             'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
@@ -115,18 +116,16 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         product_mask = tf.logical_and(tf.expand_dims(dropout_mask, -1), tf.expand_dims(dropout_mask, -2), name='product_mask')
         product_mask = tf.logical_and(product_mask, diffs >= 0)
         encoded_items = self.encoder(dropped, training=training)
-        encoded_items, attention_scores = self.attention(encoded_items, encoded_items, training=training,
-                                                         attention_mask=product_mask,
-                                                         return_attention_scores=True)
+        encoded_items = self.attention((encoded_items, encoded_items, encoded_items), training=training)
         # if self.positional_reduction:
         #     position_weights = tf.gather(self.position_weights, tf.reduce_sum(tf.cast(dropout_mask, tf.int32), axis=-1))
         #     position_weights = position_weights + tf.constant(LARGE_INT, dtype=self.compute_dtype) * tf.cast(dropout_mask, dtype=self.compute_dtype)
         #     position_weights = tf.nn.softmax(position_weights, axis=-1)
         #     encoded_items = tf.expand_dims(position_weights, -1) * encoded_items
         #     attention_scores = tf.expand_dims(tf.expand_dims(position_weights, -2), -1) * attention_scores
-        encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
-        dropped_inputs = self.zero_masked(encoded_items, mask=tf.reshape(dropout_mask, self.original_mask))
-        summed_embeds = tf.math.reduce_sum(dropped_inputs, -2, name='summed_embeds')
+        # encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
+        # dropped_inputs = self.zero_masked(encoded_items, mask=tf.reshape(dropout_mask, self.original_mask))
+        summed_embeds = tf.math.reduce_sum(encoded_items, -2, name='summed_embeds')
         if self.normalize_sum:
             num_valid = tf.math.reduce_sum(tf.cast(dropout_mask, dtype=self.compute_dtype, name='mask'),
                                            axis=-1, keepdims=True, name='num_valid')
