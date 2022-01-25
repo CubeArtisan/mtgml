@@ -22,9 +22,9 @@
             buildInputs = [
               pkgs.clang_12
               pkgs.llvmPackages_12.libclang
-              pkgs.cudaPackages.cudatoolkit_11
-              pkgs.cutensor_cudatoolkit_11_2
-              pkgs.cudnn_cudatoolkit_11_2
+              pkgs.cudaPackages.cudatoolkit_11_4
+              pkgs.cutensor_cudatoolkit_11_4
+              pkgs.cudnn_cudatoolkit_11_4
               pkgs.linuxPackages.nvidia_x11
               pkgs.python39Packages.python
               pkgs.cmake
@@ -36,18 +36,18 @@
 
             shellHook = ''
               export LIBCLANG_PATH="${pkgs.llvmPackages_12.libclang}/lib";
-              export CUDATOOLKIT=${pkgs.cudaPackages.cudatoolkit_11}
-              export CUDATOOLKIT_LIB=${pkgs.cudaPackages.cudatoolkit_11.lib}
-              export CUDNN=${pkgs.cudnn_cudatoolkit_11_2}
-              export CUTENSOR=${pkgs.cutensor_cudatoolkit_11_2}
-              export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11}/lib:${pkgs.cudaPackages.cudatoolkit_11.lib}/lib:$LD_LIBRARY_PATH
-              export LD_LIBRARY_PATH=${pkgs.cudnn_cudatoolkit_11_2}/lib:${pkgs.cutensor_cudatoolkit_11_2}/lib:$LD_LIBRARY_PATH
+              export CUDATOOLKIT=${pkgs.cudaPackages.cudatoolkit_11_4}
+              export CUDATOOLKIT_LIB=${pkgs.cudaPackages.cudatoolkit_11_4.lib}
+              export CUDNN=${pkgs.cudnn_cudatoolkit_11_4}
+              export CUTENSOR=${pkgs.cutensor_cudatoolkit_11_4}
+              export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11_4}/lib:${pkgs.cudaPackages.cudatoolkit_11.lib}/lib:$LD_LIBRARY_PATH
+              export LD_LIBRARY_PATH=${pkgs.cudnn_cudatoolkit_11_4}/lib:${pkgs.cutensor_cudatoolkit_11_4}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.linuxPackages.nvidia_x11}/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH
-              export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11}/nvvm/libdevice:$LD_LIBRARY_PATH
+              export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11_4}/nvvm/libdevice:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.zlib.out}/lib:$LD_LIBRARY_PATH
               SOURCE_DATE_EPOCH=$(date +%s)
-              export TF_GPU_ALLOCATOR=cuda_malloc_async
-              export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${pkgs.cudaPackages.cudatoolkit_11}"
+              export TF_GPU_ALLOCATOR=cuda_malloc
+              export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${pkgs.cudaPackages.cudatoolkit_11_4}"
               export TF_XLA_FLAGS="--tf_xla_cpu_global_jit --tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
               # export TF_XLA_FLAGS="$TF_XLA_FLAGS --tf_mlir_enable_mlir_bridge --tf_mlir_enable_merge_control_flow_pass"
               export TF_GPU_THREAD_MODE=gpu_private

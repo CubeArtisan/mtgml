@@ -51,10 +51,12 @@ if __name__ == "__main__":
         with open(config_path, 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
     hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
-        'num_cards': len(cards_json),
+        'num_cards': len(cards_json) + 1,
     })
-    batch_size = hyper_config.get_int('batch_size', min=8, max=2048, step=8, logdist=True, default=512,
-                                      help='The number of samples to evaluate at a time')
+    cube_batch_size = hyper_config.get_int('cube_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
+                                           help='The number of cube samples to evaluate at a time')
+    pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
+                                           help='The number of picks to evaluate at a time')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
@@ -164,7 +166,7 @@ if __name__ == "__main__":
         opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
     else:
         raise Exception('Need to specify a valid optimizer type')
-    model.compile(optimizer=opt, loss=lambda y_true, y_pred: 0.0)
+    model.compile(optimizer=opt)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
         logging.info('Loading Checkpoint.')
@@ -179,19 +181,20 @@ if __name__ == "__main__":
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
-    # with DraftbotGenerator('data/train_picks.json', batch_size, args.seed) as draftbot_train_generator, \
-    #      DraftbotGenerator('data/validation_picks.json', batch_size, args.seed) as draftbot_validation_generator, \
-    #      RecommenderGenerator('data/train_cubes.json', 'data/train_decks.json', len(cards_json),
-    #                           batch_size, args.seed, noise_mean, noise_std) as recommender_train_generator, \
-    #      RecommenderGenerator('data/validation_cubes.json', 'data/validation_decks.json', len(cards_json),
-    #                           batch_size, args.seed, 0, 0) as recommender_validation_generator:
-    draftbot_train_generator = DraftbotGenerator('data/train_picks.json', batch_size, args.seed)
+    draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
+    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', pick_batch_size, args.seed)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.json', 'data/train_decks.json', len(cards_json),
-                                                       batch_size, args.seed, noise_mean, noise_std)
+                                                       cube_batch_size, args.seed, noise_mean, noise_std)
+    recommender_validation_generator = RecommenderGenerator('data/validation_cubes.json', 'data/validation_decks.json', len(cards_json),
+                                                            cube_batch_size, args.seed, noise_mean, noise_std)
+    print(f'There are {len(draftbot_train_generator)} training pick batches')
+    print(f'There are {len(draftbot_validation_generator)} validation pick batches')
+    print(f'There are {len(recommender_train_generator)} training recommender batches')
+    print(f'There are {len(recommender_validation_generator)} validation recommender batches')
     logging.info('Starting training')
-    with draftbot_train_generator, recommender_train_generator:
+    with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
         train_generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator)
-        # validation_generator = CombinedGenerator(draftbot_validation_generator, recommender_validation_generator)
+        validation_generator = CombinedGenerator(draftbot_validation_generator, recommender_validation_generator)
         callbacks = []
         if not args.debug:
             mcp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -217,18 +220,18 @@ if __name__ == "__main__":
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
         tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                                     update_freq=512, embeddings_freq=None,
-                                     profile_batch=0 if args.debug or not args.profile else (num_batches // 2 - 16, num_batches // 2 + 15))
+                                     update_freq=1024, embeddings_freq=None,
+                                     profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
-        tqdm_callback = TQDMProgressBar(smoothing=0.01, epoch_bar_format=BAR_FORMAT)
+        tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)
         callbacks.append(nan_callback)
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
         model.fit(
             train_generator,
-            # validation_data=validation_generator,
-            # validation_freq=1,
+            validation_data=validation_generator,
+            validation_freq=1,
             epochs=args.epochs,
             callbacks=callbacks,
             verbose=0,

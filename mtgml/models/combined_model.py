@@ -28,7 +28,6 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
         super(CombinedModel, self).build(input_shapes)
         self.draftbots.embed_cards = self.embed_cards
         self.cube_recommender.embed_cards = self.embed_cards
-        print(input_shapes)
 
     def call(self, inputs, training=False):
         return self.draftbots(inputs[0], training=training), self.cube_recommender(inputs[1], training=training)

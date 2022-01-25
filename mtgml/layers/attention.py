@@ -32,10 +32,10 @@ def combine_kv_chunks(chunk_values, sum_exp_scores, max_scores):
         result = tf.divide(combined_values, combined_exp_scores, name=scope)
         return result
 
-def process_q_chunk(query, key_chunks, value_chunks):
+def process_q_chunk(query, key_chunks, value_chunks, kv_partitions):
     with tf.name_scope('ProccessQChunk'):
         chunk_results = tf.map_fn(lambda kv: process_kv_chunk(query, kv[0], kv[1]),
-                                  (key_chunks, value_chunks), swap_memory=True, parallel_iterations=16,
+                                  (key_chunks, value_chunks), swap_memory=True, parallel_iterations=kv_partitions,
                                   infer_shape=False, fn_output_signature=(tf.TensorSpec((*query.shape[:-1], value_chunks.shape[-1]), dtype=query.dtype),
                                                                           tf.TensorSpec(query.shape[:-1], dtype=query.dtype),
                                                                           tf.TensorSpec(query.shape[:-1], dtype=query.dtype)))
@@ -58,18 +58,19 @@ def calculate_attention(query, key, value, query_chunk_size, kv_chunk_size, name
         query_chunks = tf.stack(tf.split(query, q_partitions, axis=-3, name='query_chunks'), axis=0)
         key_chunks = tf.stack(tf.split(key, kv_partitions, axis=-3, name='key_chunks'), axis=0)
         value_chunks = tf.stack(tf.split(value, kv_partitions, axis=-3, name='value_chunks'), axis=0)
-        chunk_results = tf.map_fn(lambda q: process_q_chunk(q, key_chunks, value_chunks), query_chunks, swap_memory=True, parallel_iterations=16)
+        chunk_results = tf.map_fn(lambda q: process_q_chunk(q, key_chunks, value_chunks, len(kv_partitions)),
+                                  query_chunks, swap_memory=True, parallel_iterations=len(q_partitions))
         chunk_results = tf.stack(chunk_results, axis=0, name='chunk_results_stacked')
-        chunk_results = tf.reshape(chunk_results, (*query.shape[:-1], value.shape[-1]), name=scope)
+        chunk_results = tf.reshape(chunk_results, (-1, *query.shape[1:-1], value.shape[-1]), name=scope)
         return chunk_results
 
 
 def find_chunk_size(n):
-    if n < 64: return n
-    p = int(math.sqrt(n))
+    if n <= 32: return n
+    p = 2 * int(math.sqrt(n))
     for i in range(p, 0, -1):
         if n % i == 0:
-            if i < 8: return n // i
+            if i < 64 and n // i > i: return n // i
             else: return i
 
 
@@ -79,11 +80,11 @@ class MultiHeadAttention(ConfigurableLayer):
         return {
             'num_heads': hyper_config.get_int('num_heads', min=1, max=64, default=8,
                                               help='The number of separate heads of attention to use.'),
-            'key_dims': hyper_config.get_int('key_dims', min=1, max=64, default=16,
+            'key_dims': hyper_config.get_int('key_dims', min=1, max=64, default=8,
                                              help='Size of the attention head for query and key.'),
             'value_dims': hyper_config.get_int('value_dims', min=1, max=64, default=16,
                                                help='Size of the attention head for value.'),
-            'output_dims': hyper_config.get_int('output_dims', min=8, max=512, default=128,
+            'output_dims': hyper_config.get_int('output_dims', min=8, max=512, default=64,
                                                 help='The number of output dimensions from this layer.'),
             'query_sequence_length': input_shapes[0][-2] if input_shapes else None,
             'key_sequence_length': input_shapes[1][-2] if input_shapes else None,
@@ -99,12 +100,12 @@ class MultiHeadAttention(ConfigurableLayer):
                                             trainable=True)
         self.output_matrix = self.add_weight('output_matrix', shape=(self.num_heads * self.value_dims, self.output_dims), trainable=True)
         self.query_chunk_size = find_chunk_size(self.query_sequence_length)
-        self.kv_chunk_size = find_chunk_size(self.key_sequence_length)
+        self.kv_chunk_size = self.key_sequence_length # find_chunk_size(self.key_sequence_length)
 
     def call(self, inputs, training=False):
         query, key, value = inputs
-        query = tf.transpose(tf.reshape(query @ self.query_matrix, (-1, self.num_heads, self.query_sequence_length, self.key_dims)), (0, 2, 1, 3))
-        key = tf.transpose(tf.reshape(key @ self.key_matrix, (-1, self.num_heads, self.key_sequence_length, self.key_dims)), (0, 2, 1, 3))
-        value = tf.transpose(tf.reshape(value @ self.value_matrix, (-1, self.num_heads, self.key_sequence_length, self.value_dims)), (0, 2, 1, 3))
+        query = tf.reshape(query @ self.query_matrix, (-1, self.query_sequence_length, self.num_heads, self.key_dims)) / tf.constant(self.key_dims, dtype=self.compute_dtype)
+        key = tf.reshape(key @ self.key_matrix, (-1, self.key_sequence_length, self.num_heads, self.key_dims))
+        value = tf.reshape(value @ self.value_matrix, (-1, self.key_sequence_length, self.num_heads, self.value_dims))
         attended = calculate_attention(query, key, value, self.query_chunk_size, self.kv_chunk_size, name='DistributedAttention')
         return tf.reshape(attended, (-1, self.key_sequence_length, self.value_dims * self.num_heads)) @ self.output_matrix

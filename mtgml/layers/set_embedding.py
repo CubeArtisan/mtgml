@@ -16,7 +16,7 @@ SET_EMBEDDING_CHOICES = ('additive', 'attentive')
 class AdditiveSetEmbedding(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.25,
+        decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.1,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         return {
             'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=MLP, seed_mod=13,
@@ -61,15 +61,13 @@ class AdditiveSetEmbedding(ConfigurableLayer):
 class AttentiveSetEmbedding(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.25,
+        decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.1,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         positional_reduction = hyper_config.get_bool('positional_reduction', default=True,
                                                      help='Whether to use a positional reduction instead of sum.')
         attention_output_dims = hyper_config.get_int('atten_output_dims', min=8, max=512, step=8, default=64,
                                                      help='The number of dimensions in the output of the attention layer.')
         return {
-            'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=MLP, seed_mod=13,
-                                                 help='The mapping from the item embeddings to the embeddings to add.'),
             'attention': hyper_config.get_sublayer('Attention', sub_layer_type=MultiHeadAttention, seed_mod=37,
                                                    fixed={'output_dims': attention_output_dims},
                                                    help='The mapping from the item embeddings to the embeddings to add.'),
@@ -101,7 +99,7 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         #                                             shape=(input_shapes[-2],input_shapes[-2]), trainable=True)
         self.final_atten_shape = (-1, *input_shapes[1:-1], self.atten_output_dims)
         self.flattened_shape = (-1, *input_shapes[-2:])
-        self.mask_shape = (-1, *self.flattened_shape[1:-1])
+        self.mask_shape = self.flattened_shape[0:-1]
         self.original_mask = (-1, *input_shapes[1:-1])
 
     def call(self, inputs, training=False, mask=None):
@@ -111,20 +109,9 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         dropped, dropout_mask = self.item_dropout(inputs, training=training, mask=mask)
         dropout_mask = tf.cast(dropout_mask, tf.bool)
         dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
-        counting_range = tf.range(tf.shape(dropout_mask)[-1])
-        diffs = tf.expand_dims(counting_range, 1) - tf.expand_dims(counting_range, 0)
-        product_mask = tf.logical_and(tf.expand_dims(dropout_mask, -1), tf.expand_dims(dropout_mask, -2), name='product_mask')
-        product_mask = tf.logical_and(product_mask, diffs >= 0)
-        encoded_items = self.encoder(dropped, training=training)
+        encoded_items = self.zero_masked(dropped, mask=dropout_mask)
         encoded_items = self.attention((encoded_items, encoded_items, encoded_items), training=training)
-        # if self.positional_reduction:
-        #     position_weights = tf.gather(self.position_weights, tf.reduce_sum(tf.cast(dropout_mask, tf.int32), axis=-1))
-        #     position_weights = position_weights + tf.constant(LARGE_INT, dtype=self.compute_dtype) * tf.cast(dropout_mask, dtype=self.compute_dtype)
-        #     position_weights = tf.nn.softmax(position_weights, axis=-1)
-        #     encoded_items = tf.expand_dims(position_weights, -1) * encoded_items
-        #     attention_scores = tf.expand_dims(tf.expand_dims(position_weights, -2), -1) * attention_scores
-        # encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
-        # dropped_inputs = self.zero_masked(encoded_items, mask=tf.reshape(dropout_mask, self.original_mask))
+        encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
         summed_embeds = tf.math.reduce_sum(encoded_items, -2, name='summed_embeds')
         if self.normalize_sum:
             num_valid = tf.math.reduce_sum(tf.cast(dropout_mask, dtype=self.compute_dtype, name='mask'),

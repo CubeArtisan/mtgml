@@ -28,7 +28,7 @@ std::exponential_distribution<float> exp_dist(1);
 
 std::valarray<std::size_t> sample_no_replacement(const std::size_t count, std::valarray<float> weights,
                                                  const std::vector<std::size_t>& actual_indices, pcg32& rng) {
-    weights /= weights.sum();
+    weights /= std::max(weights.sum(), 1.f);
     std::vector<float> cum_sum(weights.size());
     std::inclusive_scan(std::begin(weights), std::end(weights), std::begin(cum_sum));
     std::priority_queue<std::pair<float, std::size_t>> reservoir;
@@ -66,7 +66,7 @@ using CubeCards = std::array<std::uint16_t, MAX_CUBE_SIZE>;
 
 struct CubeData {
     CubeCards noisy_cube{0};
-    CubeCards single_card_cube{0};
+    std::uint16_t single_card{0};
     CubeCards true_cube{0};
     std::array<float, 1 << 15> adj_mtx_row{0.f};
 };
@@ -124,7 +124,7 @@ public:
             for (std::size_t j=0; j < MAX_DECK_SIZE; j++) {
                 std::uint16_t j_val = row.main[j];
                 if (j_val == 0) break;
-                for (std::size_t k=0; k <= j; k++) {
+                for (std::size_t k=0; k < j; k++) {
                     std::uint16_t k_val = row.main[k];
                     adj_mtx[(j_val - 1) * num_cards + (k_val - 1)] += 1;
                     adj_mtx[(k_val - 1) * num_cards + (j_val - 1)] += 1;
@@ -138,6 +138,9 @@ public:
             const float column_sum = column.sum();
             if (column_sum == 0) adj_mtx[i * (num_cards + 1)] = 1.0;
             else slice /= std::valarray(column_sum, num_cards);
+        }
+        for (auto& x : adj_mtx) {
+            if (x < 1e-03) x = 0;
         }
         for (std::size_t i=0; i < num_cards; i++) {
             // We need to materialize the valarray here to have it read nicely since you can't sum a slice.
@@ -210,13 +213,14 @@ public:
                 queue_new_epoch();
                 while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
             }
+            if (processed_queue.size_approx() < 256) queue_new_epoch();
             batched = processed_value.release();
         }
         py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<CubeData>*>(ptr); }};
         CubeData& first_sample = batched->front();
         return {
                 py::array_t<std::uint16_t>{noisy_cube_shape(), noisy_cube_strides, first_sample.noisy_cube.data(), free_when_done},
-                py::array_t<std::uint16_t>{single_card_cube_shape(), single_card_cube_strides, first_sample.single_card_cube.data(), free_when_done},
+                py::array_t<std::uint16_t>{single_card_shape(), single_card_strides, &first_sample.single_card, free_when_done},
                 py::array_t<std::uint16_t>{true_cube_shape(), true_cube_strides, first_sample.true_cube.data(), free_when_done},
                 py::array_t<float>{adj_mtx_row_shape(), adj_mtx_row_strides, first_sample.adj_mtx_row.data(), free_when_done},
         };
@@ -269,10 +273,7 @@ public:
             adj_mtx_row[i] = adj_mtx[actual_index * num_cards + i];
         }
 
-        std::array<std::uint16_t, MAX_CUBE_SIZE> single_card_cube{0};
-        single_card_cube[0] = actual_index;
-
-        return {noisy_cube, single_card_cube, true_cube, adj_mtx_row};
+        return {noisy_cube, static_cast<std::uint16_t>(actual_index), true_cube, adj_mtx_row};
     }
 
     void worker_func(std::stop_token st, pcg32 rng) {
@@ -294,12 +295,12 @@ public:
 
 private:
     constexpr std::array<std::size_t, 2> noisy_cube_shape() { return {batch_size, MAX_CUBE_SIZE}; }
-    constexpr std::array<std::size_t, 2> single_card_cube_shape() { return {batch_size, MAX_CUBE_SIZE}; }
+    constexpr std::array<std::size_t, 1> single_card_shape() { return {batch_size}; }
     constexpr std::array<std::size_t, 2> true_cube_shape() { return {batch_size, MAX_CUBE_SIZE}; }
     constexpr std::array<std::size_t, 2> adj_mtx_row_shape() { return {batch_size, num_cards}; }
 
     static constexpr std::array<std::size_t, 2> noisy_cube_strides{sizeof(CubeData), sizeof(std::uint16_t)};
-    static constexpr std::array<std::size_t, 2> single_card_cube_strides{sizeof(CubeData), sizeof(std::uint16_t)};
+    static constexpr std::array<std::size_t, 1> single_card_strides{sizeof(CubeData)};
     static constexpr std::array<std::size_t, 2> true_cube_strides{sizeof(CubeData), sizeof(std::uint16_t)};
     static constexpr std::array<std::size_t, 2> adj_mtx_row_strides{sizeof(CubeData), sizeof(float)};
 };

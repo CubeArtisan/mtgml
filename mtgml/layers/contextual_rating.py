@@ -11,7 +11,7 @@ from mtgml.layers.zero_masked import ZeroMasked
 class ContextualRating(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        measure_dims = hyper_config.get_int('measure_dims', min=8, max=256, step=8, default=128,
+        measure_dims = hyper_config.get_int('measure_dims', min=8, max=256, step=8, default=64,
                                             help='The number of dimensions to calculate distance in')
         final_activation = hyper_config.get_choice('final_activation', choices=ACTIVATION_CHOICES,
                                                    default='linear',
@@ -61,7 +61,8 @@ class ContextualRating(ConfigurableLayer):
             nonlinear_distances = tf.math.subtract(large, distances, name='negative_distances')
         nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
         # Logging for tensorboard
-        tf.summary.histogram('outputs/distances', distances)
-        tf.summary.histogram('outputs/nonlinear_distances', nonlinear_distances)
+        tf.summary.histogram('distances', distances)
+        if self.bounded_distance:
+            tf.summary.histogram('nonlinear_distances', nonlinear_distances)
         return nonlinear_distances
 

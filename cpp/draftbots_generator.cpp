@@ -92,7 +92,7 @@ public:
         std::vector<std::size_t> indices(num_picks / READ_SIZE);
         std::iota(indices.begin(), indices.end(), 0);
         std::ranges::shuffle(indices, main_rng);
-        std::size_t read_ratio = batch_size / READ_SIZE;
+        std::size_t read_ratio = std::max(1ul, batch_size / READ_SIZE);
         chunk_queue.enqueue_bulk(chunk_producer, std::make_move_iterator(indices.begin()), (indices.size() / read_ratio) * read_ratio);
     }
 
@@ -149,6 +149,7 @@ private:
     constexpr std::array<std::size_t, 1> is_trashed_shape() const noexcept { return { batch_size }; }
 
     void worker_func(std::stop_token st, pcg32 rng) {
+        using namespace std::chrono_literals;
         pcg32 sleep_rng{rng};
         std::uniform_int_distribution<std::size_t> sleep_for(1'000, 39'000);
         std::uniform_int_distribution<std::size_t> index_selector(0, SHUFFLE_BUFFER_SIZE - 1);
@@ -172,16 +173,22 @@ private:
                                 mmap.data() + sizeof(Pick) * READ_SIZE * read_idx,
                                 sizeof(Pick) * READ_SIZE);
                 } else {
-                    std::memcpy(current_batch->data() + current_batch_idx,
-                                mmap.data() + sizeof(Pick) * READ_SIZE * read_idx,
-                                sizeof(Pick) * READ_SIZE);
-                    for (std::size_t i=0; i < READ_SIZE; i++) {
-                        std::swap(current_batch->at(current_batch_idx++), shuffle_buffer[index_selector(rng)]);
-                    }
                     if (current_batch_idx >= batch_size) {
+                        if (processed_queue.size_approx() >= SHUFFLE_BUFFER_SIZE / batch_size) {
+                            while (processed_queue.size_approx() >= 9 * SHUFFLE_BUFFER_SIZE / batch_size / 10 && !st.stop_requested()) {
+                                std::this_thread::sleep_for(1'000ms);
+                            }
+                        }
                         processed_queue.enqueue(processed_producer, std::move(current_batch));
                         current_batch = std::make_unique<std::vector<Pick>>(batch_size);
                         current_batch_idx = 0;
+                    }
+                    std::size_t read_amount = std::min(current_batch->size() - current_batch_idx, READ_SIZE);
+                    std::memcpy(current_batch->data() + current_batch_idx,
+                                mmap.data() + sizeof(Pick) * READ_SIZE *  read_idx,
+                                sizeof(Pick) * read_amount);
+                    for (std::size_t i=0; i < read_amount; i++) {
+                        std::swap(current_batch->at(current_batch_idx++), shuffle_buffer[index_selector(rng)]);
                     }
                 }
             }
