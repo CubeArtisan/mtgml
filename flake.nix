@@ -32,6 +32,8 @@
               pkgs.pkg-config
               pkgs.yajl
               pkgs.zlib
+              pkgs.docker
+              pkgs.docker-compose
             ];
 
             shellHook = ''
@@ -46,7 +48,7 @@
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11_4}/nvvm/libdevice:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.zlib.out}/lib:$LD_LIBRARY_PATH
               SOURCE_DATE_EPOCH=$(date +%s)
-              export TF_GPU_ALLOCATOR=cuda_malloc
+              export TF_GPU_ALLOCATOR=cuda_malloc_async
               export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${pkgs.cudaPackages.cudatoolkit_11_4}"
               export TF_XLA_FLAGS="--tf_xla_cpu_global_jit --tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
               # export TF_XLA_FLAGS="$TF_XLA_FLAGS --tf_mlir_enable_mlir_bridge --tf_mlir_enable_merge_control_flow_pass"

@@ -1,7 +1,9 @@
 #include <array>
 #include <atomic>
+#include <iostream>
 #include <memory>
 #include <tuple>
+#include <valarray>
 #include <vector>
 
 #include <blockingconcurrentqueue.h>
@@ -37,6 +39,7 @@ struct Pick {
     SeenPackCoordWeights seen_coord_weights{0};
     Coords coords{0};
     CoordWeights coord_weights{0};
+    std::array<float, MAX_CARDS_IN_PACK> riskiness;
     std::int8_t is_trashed{0};
 };
 
@@ -46,7 +49,7 @@ struct DraftbotGenerator {
         py::array_t<std::int16_t>, py::array_t<std::int16_t>, py::array_t<std::int16_t>,
         py::array_t<std::int16_t>, py::array_t<std::int8_t>, py::array_t<float>,
         py::array_t<std::int8_t>, py::array_t<float>,
-        py::array_t<std::int8_t>
+        py::array_t<std::int8_t>, py::array_t<float>
     >;
 
 
@@ -61,20 +64,72 @@ private:
     moodycamel::BlockingConcurrentQueue<ProcessedValue> processed_queue;
     moodycamel::ConsumerToken processed_consumer;
     std::jthread worker_thread;
+    std::size_t num_cards;
+    std::vector<double> card_weights;
+    std::size_t total_count{0};
+    double total_value{0};
+    double weight;
+    std::vector<double> card_popularity;
 
     static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 20;
 
 public:
-    DraftbotGenerator(std::string filename, std::size_t batch_size, std::size_t seed)
+    DraftbotGenerator(std::string filename, std::size_t num_cards, std::size_t batch_size, std::size_t seed)
             : mmap(filename), batch_size{batch_size}, seed{seed}, num_picks{mmap.size() / sizeof(Pick)},
-              main_rng{seed, 1}, chunk_producer{chunk_queue}, processed_consumer{processed_queue}
-    { }
+              main_rng{seed, 1}, chunk_producer{chunk_queue}, processed_consumer{processed_queue}, 
+              num_cards{num_cards}, card_weights(num_cards, 1.0), card_popularity(num_cards, 1.0)
+    {
+        /* const Pick* pick_file = reinterpret_cast<const Pick*>(mmap.data()); */
+        /* for (std::size_t i=0; i < num_picks; i++) { */
+        /*     const Pick& pick = pick_file[i]; */
+        /*     std::size_t j; */
+        /*     for (j=0; j < pick.cards_in_pack.size(); j++) { */
+        /*         std::size_t idx = pick.cards_in_pack[j]; */
+        /*         if (idx == 0) break; */
+        /*         card_weights[idx] += 1.f; */
+        /*         total_count += 1; */
+        /*     } */
+        /*     for(std::size_t k = 0; k < j; k++) { */
+        /*         card_popularity[pick.cards_in_pack[k]] += j; */
+        /*     } */
+        /* } */
+        /* for (std::size_t i=0; i < num_cards; i++) { */
+        /*     card_popularity[i] /= card_weights[i] * 10; */
+        /*     card_popularity[i] *= card_popularity[i]; */
+        /* } */
+        /* double max_weight = 0; */
+        /* for (const auto x : card_weights) max_weight = std::max(max_weight, x); */
+        /* max_weight += 1.0; */
+        /* for (auto& x : card_weights) { */
+        /*     if (x >= 100) { */
+        /*         x = max_weight - x; */
+        /*         total_value += x; */
+        /*     } else { */
+        /*         x = 0; */
+        /*     } */
+        /* } */
+        /* weight = num_cards / total_value; */
+        /* for (auto& x : card_weights) { */
+        /*     if */ 
+        /*     x *= weight; */
+    }
 
     DraftbotGenerator& enter() & {
         py::gil_scoped_release gil_release;
         worker_thread = std::jthread([this](std::stop_token st) { this->worker_func(st, pcg32(this->seed, 0)); });
         queue_new_epoch();
         return *this;
+    }
+
+    std::size_t get_total_count() { return total_count; }
+    double get_total_value() { return total_value; }
+    double get_weight() { return weight; }
+
+    /* py::array_t<double> get_card_weights() { */
+    /*     return py::array_t<double>{std::array<std::size_t, 1>{num_cards}, std::array<std::size_t, 1>{sizeof(double)}, card_weights.data()}; */
+    /* } */
+    py::array_t<double> get_card_weights() {
+        return py::array_t<double>{std::array<std::size_t, 1>{num_cards}, std::array<std::size_t, 1>{sizeof(double)}, card_popularity.data()};
     }
 
     bool exit(py::object, py::object, py::object) {
@@ -102,23 +157,27 @@ public:
             py::gil_scoped_release gil_release;
             ProcessedValue processed_value;
             if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
+                std::cout << "Waiting on a draftbot sample." << std::endl;
                 queue_new_epoch();
-                while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+                while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {
+                    std::cout << "Waiting on a cube sample." << std::endl;
+                }
             }
             batched = processed_value.release();
         }
         py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<Pick>*>(ptr); }};
         Pick& first_pick = batched->front();
         return {
-                py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, first_pick.cards_in_pack.data(), free_when_done},
-                py::array_t<std::int16_t>{basics_shape(), basics_strides, first_pick.basics.data(), free_when_done},
-                py::array_t<std::int16_t>{pool_shape(), pool_strides, first_pick.pool.data(), free_when_done},
-                py::array_t<std::int16_t>{seen_packs_shape(), seen_packs_strides, first_pick.seen_packs[0].data(), free_when_done},
-                py::array_t<std::int8_t>{seen_coords_shape(), seen_coords_strides, first_pick.seen_coords[0][0].data(), free_when_done},
-                py::array_t<float>{seen_coord_weights_shape(), seen_coord_weights_strides, first_pick.seen_coord_weights[0].data(), free_when_done},
-                py::array_t<std::int8_t>{coords_shape(), coords_strides, first_pick.coords[0].data(), free_when_done},
-                py::array_t<float>{coord_weights_shape(), coord_weights_strides, first_pick.coord_weights.data(), free_when_done},
+            py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, first_pick.cards_in_pack.data(), free_when_done},
+            py::array_t<std::int16_t>{basics_shape(), basics_strides, first_pick.basics.data(), free_when_done},
+            py::array_t<std::int16_t>{pool_shape(), pool_strides, first_pick.pool.data(), free_when_done},
+            py::array_t<std::int16_t>{seen_packs_shape(), seen_packs_strides, first_pick.seen_packs[0].data(), free_when_done},
+            py::array_t<std::int8_t>{seen_coords_shape(), seen_coords_strides, first_pick.seen_coords[0][0].data(), free_when_done},
+            py::array_t<float>{seen_coord_weights_shape(), seen_coord_weights_strides, first_pick.seen_coord_weights[0].data(), free_when_done},
+            py::array_t<std::int8_t>{coords_shape(), coords_strides, first_pick.coords[0].data(), free_when_done},
+            py::array_t<float>{coord_weights_shape(), coord_weights_strides, first_pick.coord_weights.data(), free_when_done},
             py::array_t<std::int8_t>{is_trashed_shape(), is_trashed_strides, &first_pick.is_trashed, free_when_done},
+            py::array_t<float>{riskiness_shape(), riskiness_strides, first_pick.riskiness.data(), free_when_done},
         };
     }
 
@@ -137,6 +196,7 @@ private:
     static constexpr std::array<std::size_t, 3> coords_strides{sizeof(Pick), sizeof(CoordPair), sizeof(std::int8_t)};
     static constexpr std::array<std::size_t, 2> coord_weights_strides{sizeof(Pick), sizeof(float)};
     static constexpr std::array<std::size_t, 1> is_trashed_strides{sizeof(Pick)};
+    static constexpr std::array<std::size_t, 2> riskiness_strides{sizeof(Pick), sizeof(float)};
 
     constexpr std::array<std::size_t, 2> cards_in_pack_shape() const noexcept { return { batch_size, MAX_CARDS_IN_PACK }; }
     constexpr std::array<std::size_t, 2> basics_shape() const noexcept { return { batch_size, MAX_BASICS }; }
@@ -147,6 +207,7 @@ private:
     constexpr std::array<std::size_t, 3> coords_shape() const noexcept { return { batch_size, 4, 2 }; }
     constexpr std::array<std::size_t, 2> coord_weights_shape() const noexcept { return { batch_size, 4 }; }
     constexpr std::array<std::size_t, 1> is_trashed_shape() const noexcept { return { batch_size }; }
+    constexpr std::array<std::size_t, 2> riskiness_shape() const noexcept { return { batch_size, MAX_CARDS_IN_PACK }; }
 
     void worker_func(std::stop_token st, pcg32 rng) {
         using namespace std::chrono_literals;
@@ -176,7 +237,7 @@ private:
                     if (current_batch_idx >= batch_size) {
                         if (processed_queue.size_approx() >= SHUFFLE_BUFFER_SIZE / batch_size) {
                             while (processed_queue.size_approx() >= 9 * SHUFFLE_BUFFER_SIZE / batch_size / 10 && !st.stop_requested()) {
-                                std::this_thread::sleep_for(1'000ms);
+                                std::this_thread::sleep_for(100ms);
                             }
                         }
                         processed_queue.enqueue(processed_producer, std::move(current_batch));
@@ -199,11 +260,16 @@ private:
 PYBIND11_MODULE(draftbot_generator, m) {
     using namespace pybind11::literals;
     py::class_<DraftbotGenerator>(m, "DraftbotGenerator")
-        .def(py::init<std::string, std::size_t, std::size_t>())
+        .def(py::init<std::string, std::size_t, std::size_t, std::size_t>())
         .def("__enter__", &DraftbotGenerator::enter)
         .def("__exit__", &DraftbotGenerator::exit)
         .def("__len__", &DraftbotGenerator::size)
         .def("__getitem__", &DraftbotGenerator::getitem)
+        .def("get_card_weights", &DraftbotGenerator::get_card_weights)
+        /* .def("get_card_popularities", &DraftbotGenerator::get_card_popularities) */
+        .def("get_total_value", &DraftbotGenerator::get_total_value)
+        .def("get_total_count", &DraftbotGenerator::get_total_count)
+        .def("get_weight", &DraftbotGenerator::get_weight)
         .def("next", &DraftbotGenerator::next)
         .def("on_epoch_end", &DraftbotGenerator::queue_new_epoch);
 }

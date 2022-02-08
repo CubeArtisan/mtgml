@@ -133,17 +133,6 @@ public:
         }
         for (std::size_t i=0; i < num_cards; i++) {
             // We need to materialize the valarray here to have it read nicely since you can't sum a slice.
-            const auto slice = adj_mtx[std::slice(i, num_cards, num_cards)];
-            const std::valarray<float> column{slice};
-            const float column_sum = column.sum();
-            if (column_sum == 0) adj_mtx[i * (num_cards + 1)] = 1.0;
-            else slice /= std::valarray(column_sum, num_cards);
-        }
-        for (auto& x : adj_mtx) {
-            if (x < 1e-03) x = 0;
-        }
-        for (std::size_t i=0; i < num_cards; i++) {
-            // We need to materialize the valarray here to have it read nicely since you can't sum a slice.
             const auto slice = adj_mtx[std::slice(i * num_cards, num_cards, 1)];
             const std::valarray<float> row{slice};
             const float row_sum = row.sum();
@@ -187,8 +176,23 @@ public:
         return false;
     }
 
-    size_t size() const {
+    std::size_t size() const {
         return length;
+    }
+
+    py::array_t<float> get_adj_mtx() {
+        float* storage = new float[(num_cards + 1) * (num_cards + 1)]{0.f};
+        for (std::size_t i=0; i < num_cards; i++) {
+            for (std::size_t j=0; j < num_cards; j++) {
+                storage[(i + 1) * (num_cards + 1) + j + 1] = adj_mtx[i * num_cards + j];
+            }
+        }
+        py::capsule free_when_done{storage,  [](void* ptr) { delete[] reinterpret_cast<float*>(ptr); }};
+        return py::array_t<float>{
+            std::array<std::size_t, 2>{num_cards + 1, num_cards + 1},
+            std::array<std::size_t, 2>{sizeof(float) * (num_cards + 1), sizeof(float)},
+            storage, free_when_done
+        };
     }
 
     void queue_new_epoch() {
@@ -210,8 +214,11 @@ public:
             py::gil_scoped_release gil_release;
             ProcessedValue processed_value;
             if (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 10'000)) {
+                std::cout << "Waiting on a cube sample." << std::endl;
                 queue_new_epoch();
-                while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {}
+                while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {
+                    std::cout << "Waiting on a cube sample." << std::endl;
+                }
             }
             if (processed_queue.size_approx() < 256) queue_new_epoch();
             batched = processed_value.release();
@@ -263,6 +270,7 @@ public:
                 noisy_cube[cur_index++] = i + 1;
             }
         }
+        cur_index = 0;
         for (std::uint16_t i=0; i < num_cards; i++) {
             if (cur_index >= MAX_CUBE_SIZE) break;
             if (y1[i]) true_cube[cur_index++] = i + 1;
@@ -273,7 +281,7 @@ public:
             adj_mtx_row[i] = adj_mtx[actual_index * num_cards + i];
         }
 
-        return {noisy_cube, static_cast<std::uint16_t>(actual_index), true_cube, adj_mtx_row};
+        return {noisy_cube, static_cast<std::uint16_t>(actual_index + 1), true_cube, adj_mtx_row};
     }
 
     void worker_func(std::stop_token st, pcg32 rng) {
@@ -313,6 +321,7 @@ PYBIND11_MODULE(recommender_generator, m) {
         .def("__exit__", &CubeGenerator::exit)
         .def("__len__", &CubeGenerator::size)
         .def("__getitem__", &CubeGenerator::getitem)
+        .def("get_adj_mtx", &CubeGenerator::get_adj_mtx)
         .def("next", &CubeGenerator::next)
         .def("on_epoch_end", &CubeGenerator::queue_new_epoch);
 };

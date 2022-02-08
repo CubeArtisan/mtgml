@@ -21,7 +21,7 @@ class ContextualRating(ConfigurableLayer):
                                                                 'activation': final_activation}},
                                                help='Transforms the card embeddings to the embedding used to calculate distances.')
         set_embed_type = hyper_config.get_choice('set_embed_type', choices=SET_EMBEDDING_CHOICES,
-                                                 default='attentive', help='The kind of set embedding to use to get the contexts embedding for distance calculation.')
+                                                 default='attentive', help='The kind of set embedding to use to get the context embedding for distance calculation.')
         if set_embed_type == 'additive':
             embed_context = hyper_config.get_sublayer('EmbedContext', sub_layer_type=AdditiveSetEmbedding,
                                                       fixed={'Decoder':
@@ -45,10 +45,10 @@ class ContextualRating(ConfigurableLayer):
         }
 
     def call(self, inputs, training=False, mask=None):
-        items, contexts = inputs
+        items, context = inputs
         item_embeds = self.embed_item(items, training=training)
-        context_embeds = self.embed_context(contexts, training=training)
-        embed_diffs = tf.math.subtract(item_embeds, tf.expand_dims(context_embeds, 1, name='expanded_context_embeds'),
+        context_embed = self.embed_context(context, training=training)
+        embed_diffs = tf.math.subtract(item_embeds, tf.expand_dims(context_embed, 1, name='expanded_context_embeds'),
                                        name='embed_diffs')
         distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), -1, name='distances')
         large = tf.constant(LARGE_INT, dtype=self.compute_dtype)
@@ -58,8 +58,8 @@ class ContextualRating(ConfigurableLayer):
                                                                   name='distances_incremented'),
                                                  name='nonlinear_distances')
         else:
-            nonlinear_distances = tf.math.subtract(large, distances, name='negative_distances')
-        nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
+            nonlinear_distances = tf.math.negative(distances, name='negative_distances')
+        # nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
         # Logging for tensorboard
         tf.summary.histogram('distances', distances)
         if self.bounded_distance:

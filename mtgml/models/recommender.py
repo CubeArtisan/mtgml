@@ -19,9 +19,9 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                                                   help='The percent of the weight that the recommender will have for reconstructing cubes.')
         return {
             "num_cards": num_cards,
-            'embed_cards': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
-                                                     fixed={'num_items': num_cards},
-                                                     help='The card embeddings.'),
+            # 'embed_cards': hyper_config.get_sublayer('EmbedCards', sub_layer_type=ItemEmbedding,
+            #                                          fixed={'num_items': num_cards},
+            #                                          help='The card embeddings.'),
             'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=AttentiveSetEmbedding,
                                                     help='Combine the card embeddings to get an embedding for the cube.'),
             'recover_adj_mtx': hyper_config.get_sublayer('RecoverAdjMtx', sub_layer_type=MLP,
@@ -63,38 +63,46 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         embedded in the recommendations. As the individual items must pull towards items
         represented strongly within the graph.
         """
-        if len(inputs) == 2:
-            noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
+        noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
+        loss = tf.constant(0, dtype=self.compute_dtype)
+        if len(inputs) == 3:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name='true_cube_arr')
-            true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards - 1, axis=-1), axis=-2)
-        else:
-            noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
+            card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name='card_embeddings')
+        elif len(inputs) == 5:
             single_card = tf.cast(inputs[1], dtype=tf.int32, name='single_card')
             true_cube = tf.cast(inputs[2], dtype=tf.int32, name='true_cube')
-            true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2)
             adj_row = tf.cast(inputs[3], dtype=self.compute_dtype, name='adj_row')
-            embed_single_card = self.embed_cards(single_card, training=training)
+            card_embeddings = tf.cast(inputs[4], dtype=self.compute_dtype, name='card_embeddings')
+            embed_single_card = tf.gather(card_embeddings, single_card)
+            # embed_single_card = self.embed_cards(single_card, training=training)
             decoded_single_card = self.recover_adj_mtx(embed_single_card, training=training)
             adj_mtx_losses = tf.keras.losses.kl_divergence(adj_row, decoded_single_card)
-            self.add_loss(tf.math.reduce_mean(adj_mtx_losses, axis=-1) * tf.constant(self.adj_mtx_loss_weight, dtype=self.compute_dtype))
+            loss = loss + tf.math.reduce_mean(adj_mtx_losses, axis=-1) * tf.constant(self.adj_mtx_loss_weight, dtype=self.compute_dtype)
             self.add_metric(adj_mtx_losses, 'adj_mtx_loss')
             tf.summary.scalar('adj_mtx_loss', tf.reduce_mean(adj_mtx_losses))
             for name, metric in self.adj_mtx_metrics.items():
                 metric.update_state(adj_row, decoded_single_card)
                 tf.summary.scalar(name, metric.result())
-        embed_noisy_cube = self.embed_cards(noisy_cube, training=training)
+        else:
+            card_embeddings = tf.cast(inputs[1], dtype=self.compute_dtype, name='card_embeddings')
+        embed_noisy_cube = tf.gather(card_embeddings, noisy_cube)
+        # embed_noisy_cube = self.embed_cards(noisy_cube, training=training)
         encoded_noisy_cube = self.embed_cube(embed_noisy_cube, training=training)
         decoded_noisy_cube = self.recover_cube(encoded_noisy_cube, training=training)
-        cube_losses = tf.keras.losses.binary_crossentropy(tf.expand_dims(true_cube, -1), tf.expand_dims(decoded_noisy_cube, -1))
-        noisy_cube_spread = tf.reduce_max(tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1), axis=-2)
-        scaled_cubes = (noisy_cube_spread + true_cube) * tf.constant(self.num_cards, dtype=self.compute_dtype) / tf.reduce_sum(true_cube + noisy_cube_spread, axis=-1, keepdims=True)
-        true_cube_card_ratio = (tf.constant(1, dtype=self.compute_dtype) - true_cube - noisy_cube_spread) + scaled_cubes
-        cube_losses = tf.reduce_mean(cube_losses * true_cube_card_ratio, axis=-1)
-        self.add_loss(tf.math.reduce_mean(cube_losses, axis=-1) * tf.constant(self.cube_loss_weight, dtype=self.compute_dtype))
-        self.add_metric(cube_losses, 'cube_loss')
-        tf.summary.scalar('cube_loss', tf.reduce_mean(cube_losses))
-        for name, metric in self.cube_metrics.items():
-            metric.update_state(true_cube, decoded_noisy_cube)
-            tf.summary.scalar(name, metric.result())
-        return true_cube
+        if len(inputs) > 2:
+            true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype), axis=-2)[:,1:]
+            cube_losses = tf.keras.losses.binary_crossentropy(tf.expand_dims(true_cube, -1), tf.expand_dims(decoded_noisy_cube, -1))
+            noisy_cube_spread = tf.reduce_max(tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1), axis=-2)
+            # scaled_cubes = (noisy_cube_spread + true_cube) * tf.constant(self.num_cards, dtype=self.compute_dtype) / tf.reduce_sum(true_cube + noisy_cube_spread, axis=-1, keepdims=True)
+            scaled_cubes = (noisy_cube_spread + true_cube) * tf.constant(4, dtype=self.compute_dtype)
+            true_cube_card_ratio = (tf.constant(1, dtype=self.compute_dtype) - true_cube - noisy_cube_spread) + scaled_cubes
+            cube_losses = tf.reduce_mean(cube_losses * true_cube_card_ratio, axis=-1)
+            loss = loss + tf.math.reduce_mean(cube_losses, axis=-1) * tf.constant(self.cube_loss_weight, dtype=self.compute_dtype)
+            self.add_metric(cube_losses, 'cube_loss')
+            tf.summary.scalar('cube_loss', tf.reduce_mean(cube_losses))
+            for name, metric in self.cube_metrics.items():
+                metric.update_state(true_cube, decoded_noisy_cube)
+                tf.summary.scalar(name, metric.result())
+            return loss
+        return decoded_noisy_cube
 

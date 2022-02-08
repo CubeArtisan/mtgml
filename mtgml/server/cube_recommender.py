@@ -1,21 +1,26 @@
 import numpy as np
 
+from mtgml.constants import MAX_CUBE_SIZE
 
-def get_cube_recomendations(cube: list[str], model, card_to_int: dict[str, int], int_to_card: dict[int, str], num_recs=10):
-    cube_ids = np.array([[card_to_int[card] for card in cube if card in card_to_int]], dtype=np.int32)
-    results = model.cube_recommender(cube_ids, training=False).numpy()[0]
+
+def get_cube_recomendations(cube: list[str], model, card_to_int: dict[str, int], int_to_card: dict[int, dict[str, str]], num_recs=10):
+    cube_idxs = [card_to_int[card] + 1 for card in cube if card in card_to_int]
+    cube_ids = np.array([cube_idxs[:MAX_CUBE_SIZE] + [0 for _ in range(MAX_CUBE_SIZE - len(cube_idxs))]], dtype=np.int32)
+    results = model.cube_recommender((cube_ids, model.embed_cards.embeddings), training=False).numpy()[0]
     sorted_indices = results.argsort()
     adds = []
     idx = 1
     while len(adds) < num_recs and idx <= len(sorted_indices):
-        if sorted_indices[-idx] not in cube:
-            adds.append(int_to_card[sorted_indices[-idx]])
+        oracle_id = int_to_card[sorted_indices[-idx]]['oracle_id']
+        if oracle_id not in cube:
+            adds.append((oracle_id, float(results[sorted_indices[-idx]])))
         idx += 1
     cuts = []
     idx = 0
     while len(cuts) < num_recs and idx < len(sorted_indices):
-        if sorted_indices[idx] in cube:
-            cuts.append(int_to_card[sorted_indices[idx]])
+        oracle_id = int_to_card[sorted_indices[idx]]['oracle_id']
+        if oracle_id in cube:
+            cuts.append((oracle_id, float(results[sorted_indices[idx]])))
         idx += 1
     return {
         "adds": adds,

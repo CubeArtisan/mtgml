@@ -18,6 +18,8 @@ locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
 with open('data/maps/card_to_int.json') as fp:
     card_to_int = json.load(fp)
+with open('data/maps/int_to_card.json') as fp:
+    int_to_card = json.load(fp)
 with open('data/maps/old_int_to_card.json') as fp:
     old_int_to_card = json.load(fp)
 old_int_to_new_int = [card_to_int[c["oracle_id"]] for c in old_int_to_card]
@@ -64,7 +66,7 @@ def picks_from_draft(draft):
                     cards_in_pack.remove(chosen)
                     cards_in_pack = [chosen, *cards_in_pack]
                     picked = [x + 1 for x in pick['picked']]
-                    if len(picked) <= MAX_PICKED and len(seen) <= MAX_SEEN_PACKS:
+                    if len(picked) <= MAX_PICKED and len(seen) <= MAX_SEEN_PACKS and len(cards_in_pack) > 1:
                         trashed = 0 if 'pickedIdx' in pick else 1
                         yield (cards_in_pack[:MAX_CARDS_IN_PACK], basics, picked, tuple(seen),
                                tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights,
@@ -93,7 +95,7 @@ def picks_from_draft2(draft):
             cards_in_pack.remove(chosen_card)
             cards_in_pack = [chosen_card, *cards_in_pack]
             picked = [old_int_to_new_int[x] + 1 for x in pick['picked']]
-            if len(picked) <= MAX_PICKED and len(seen) <= MAX_SEEN_PACKS:
+            if len(picked) <= MAX_PICKED and len(seen) <= MAX_SEEN_PACKS and len(cards_in_pack) > 1:
                 yield (cards_in_pack[:MAX_CARDS_IN_PACK], default_basics, picked, tuple(seen),
                        tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights, 0)
 
@@ -117,7 +119,42 @@ def load_all_drafts(*args):
                             yield (dest, pick)
     print(f'Total drafts {num_drafts:n}')
 
-PREFIX = struct.Struct(f'{MAX_CARDS_IN_PACK}H{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f8B4fB3x')
+COLORS = { 'W': 0, 'w': 0, 'U': 1, 'u': 1, 'B': 2, 'b': 2, 'R': 3, 'r': 3, 'G': 4, 'g': 4 }
+
+
+def colors_to_mask(colors):
+    colors = set(COLORS[c] for c in colors if c in COLORS)
+    result = np.zeros((5,), dtype=np.float32)
+    result[list(colors)] = 1.0
+    return result
+
+
+def calculate_devotion(cost, cmc):
+    final_cost = np.zeros((5,), dtype=np.float32)
+    for symbol in cost:
+        if '2' in symbol or 'p' in symbol: continue
+        add = np.zeros((5,), dtype=np.float32)
+        for c in symbol:
+            if c in COLORS:
+                add[COLORS[c]] += 1
+        final_cost += add / max(add.sum(), 1)
+    return final_cost * final_cost.sum() / max(cmc, 1)
+
+DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc']) for c in int_to_card])
+COLOR_IDENTITY = [np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in int_to_card]
+
+
+def calculate_riskiness(pick):
+    # if pick[6][0][0] == 0 and pick[6][0][1] < 5: return np.ones((MAX_CARDS_IN_PACK,))
+    total_devotions = DEVOTION[pick[2]].sum(axis=0)
+    dev_indices = set(i for i in np.argsort(total_devotions)[:2] if total_devotions[i] > 0)
+    usable_colors_mask = np.zeros((5,), dtype=np.float32)
+    usable_colors_mask[list(dev_indices)] = 1
+    usable_colors_mask += COLOR_IDENTITY[pick[0][0]]
+    if usable_colors_mask.sum() == 0: return np.ones((MAX_CARDS_IN_PACK,), dtype=np.float32)
+    return np.array([10.0 if (usable_colors_mask * COLOR_IDENTITY[i]).sum() == 0 and COLOR_IDENTITY[i].sum() > 0 else 1.0 for i in pad(pick[0], MAX_CARDS_IN_PACK)], dtype=np.float32)
+
+PREFIX = struct.Struct(f'{MAX_CARDS_IN_PACK}H{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f8B4f16fB3x')
 
 
 def write_pick(pick, output_file):
@@ -128,7 +165,7 @@ def write_pick(pick, output_file):
     coords = [x for coord in coords for x in coord]
     prefix = PREFIX.pack(*pad(cards_in_pack, MAX_CARDS_IN_PACK), *pad(basics, MAX_BASICS),
                          *pad(picked, MAX_PICKED), *seen, *seen_coords, *seen_coord_weights, *coords,
-                         *coord_weights, trashed)
+                         *coord_weights, *calculate_riskiness(pick), trashed)
     output_file.write(prefix)
 
 

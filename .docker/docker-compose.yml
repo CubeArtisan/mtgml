@@ -1,0 +1,14 @@
+version: '3'
+services:
+  mtgml:
+    build:
+      dockerfile: .docker/Dockerfile.eval
+      context: ../
+    image: ${REPOSITORY}/mtgml:${TAG}
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: 4
+          memory: 8g

@@ -5,7 +5,7 @@ from mtgml.config.hyper_config import HyperConfig
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
-from mtgml.layers.wrapped import WDropout
+from mtgml.layers.wrapped import WDropout, WMultiHeadAttention
 from mtgml.layers.attention import MultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
 from mtgml.tensorboard.plot_attention_scores import plot_attention_scores
@@ -63,12 +63,10 @@ class AttentiveSetEmbedding(ConfigurableLayer):
     def get_properties(cls, hyper_config, input_shapes=None):
         decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.1,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
-        positional_reduction = hyper_config.get_bool('positional_reduction', default=True,
-                                                     help='Whether to use a positional reduction instead of sum.')
         attention_output_dims = hyper_config.get_int('atten_output_dims', min=8, max=512, step=8, default=64,
                                                      help='The number of dimensions in the output of the attention layer.')
         return {
-            'attention': hyper_config.get_sublayer('Attention', sub_layer_type=MultiHeadAttention, seed_mod=37,
+            'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=37,
                                                    fixed={'output_dims': attention_output_dims},
                                                    help='The mapping from the item embeddings to the embeddings to add.'),
             'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
@@ -88,15 +86,11 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                                                    help='Average the sum of embeddings by the number of non-masked items.'),
             'log_scores': hyper_config.get_bool('log_scores', default=True,
                                                 help='Whether to log an image of the attention scores.'),
-            'positional_reduction': positional_reduction,
             'atten_output_dims': attention_output_dims,
         }
 
     def build(self, input_shapes):
         super(AttentiveSetEmbedding, self).build(input_shapes)
-        # if self.positional_reduction:
-        #     self.position_weights = self.add_weight('positional_weights', initializer=tf.ones_initializer(),
-        #                                             shape=(input_shapes[-2],input_shapes[-2]), trainable=True)
         self.final_atten_shape = (-1, *input_shapes[1:-1], self.atten_output_dims)
         self.flattened_shape = (-1, *input_shapes[-2:])
         self.mask_shape = self.flattened_shape[0:-1]
@@ -110,7 +104,8 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         dropout_mask = tf.cast(dropout_mask, tf.bool)
         dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
         encoded_items = self.zero_masked(dropped, mask=dropout_mask)
-        encoded_items = self.attention((encoded_items, encoded_items, encoded_items), training=training)
+        encoded_items = self.attention(encoded_items, encoded_items, training=training)
+        # encoded_items = self.attention((encoded_items, encoded_items, encoded_items), training=training)
         encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
         summed_embeds = tf.math.reduce_sum(encoded_items, -2, name='summed_embeds')
         if self.normalize_sum:
