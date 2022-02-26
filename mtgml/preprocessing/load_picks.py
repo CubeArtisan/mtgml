@@ -22,7 +22,7 @@ with open('data/maps/int_to_card.json') as fp:
     int_to_card = json.load(fp)
 with open('data/maps/old_int_to_card.json') as fp:
     old_int_to_card = json.load(fp)
-old_int_to_new_int = [card_to_int[c["oracle_id"]] for c in old_int_to_card]
+old_int_to_new_int = [card_to_int[c["oracle_id"]] if c['oracle_id'] in card_to_int else -1 for c in old_int_to_card]
 default_basic_ids = [
     "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
     "b2c6aa39-2d2a-459c-a555-fb48ba993373",

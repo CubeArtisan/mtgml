@@ -1,9 +1,9 @@
 [submodule "extern/pcg-cpp"]
-	path = extern/pcg-cpp
+	path = cpp/extern/pcg-cpp
 	url = https://github.com/imneme/pcg-cpp.git
 [submodule "extern/mio"]
-	path = extern/mio
+	path = cpp/extern/mio
 	url = https://github.com/mandreyel/mio
 [submodule "extern/concurrentqueue"]
-	path = extern/concurrentqueue
+	path = cpp/extern/concurrentqueue
 	url = https://github.com/cameron314/concurrentqueue.git

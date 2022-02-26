@@ -4,11 +4,13 @@ services:
     build:
       dockerfile: .docker/Dockerfile.eval
       context: ../
+      # cache_from:
+      #   - ${REPOSITORY}/mtgml:latest
     image: ${REPOSITORY}/mtgml:${TAG}
     ports:
       - "8000:8000"
     deploy:
       resources:
         limits:
-          cpus: 4
+          cpus: 2
           memory: 8g

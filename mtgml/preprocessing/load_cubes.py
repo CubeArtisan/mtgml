@@ -13,8 +13,6 @@ from mtgml.constants import MAX_CUBE_SIZE
 
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
-with open('data/maps/card_to_int.json') as fp:
-    card_to_int = json.load(fp)
 with open('data/maps/int_to_card.json') as fp:
     int_to_card = json.load(fp)
 name_to_int = {card['name_lower']: i for i, card in enumerate(int_to_card)}
@@ -69,6 +67,9 @@ PREFIX = struct.Struct(f'{MAX_CUBE_SIZE}H')
 
 
 def write_cube(cards, output_file):
+    if any(x > len(int_to_card) for x in cards):
+        print('Cube had invalid idxs')
+        return
     prefix = PREFIX.pack(*pad(cards, MAX_CUBE_SIZE))
     output_file.write(prefix)
 

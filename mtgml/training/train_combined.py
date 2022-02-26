@@ -5,6 +5,7 @@ import locale
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 
+from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from mtgml.generators.combined_generator import CombinedGenerator
@@ -43,8 +45,6 @@ if __name__ == "__main__":
     logging.info('Loading card data for seeding weights.')
     with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
-        card_ratings = [(c.get('elo', 1200) / 1200) - 1  for c in cards_json]
-        card_names = [c['name'] for c in cards_json]
 
     config_path = Path('ml_files')/args.name/'hyper_config.yaml'
     data = {}
@@ -52,33 +52,34 @@ if __name__ == "__main__":
         with open(config_path, 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
     print('Initializing Generators')
-    pick_batch_size = 256
-    cube_batch_size = 8
-    noise_mean = 0.75
-    noise_std = 0.1
-    draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', len(cards_json) + 1, pick_batch_size, args.seed)
-    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', len(cards_json) + 1, pick_batch_size, args.seed)
-    recommender_train_generator = RecommenderGenerator('data/train_cubes.json', 'data/train_decks.json', len(cards_json),
-                                                       cube_batch_size, args.seed, noise_mean, noise_std)
-    recommender_validation_generator = RecommenderGenerator('data/validation_cubes.json', 'data/validation_decks.json', len(cards_json),
-                                                            cube_batch_size, args.seed, 0, 0)
-    adj_mtx = recommender_train_generator.get_adj_mtx()
-    print(f'There are {len(draftbot_train_generator)} training pick batches')
-    print(f'There are {len(draftbot_validation_generator)} validation pick batches')
-    print(f'There are {len(recommender_train_generator)} training recommender batches')
-    print(f'There are {len(recommender_validation_generator)} validation recommender batches')
     hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
         'num_cards': len(cards_json) + 1,
-        'DraftBots': { 'card_weights': draftbot_train_generator.get_card_weights(), 'adj_mtx': adj_mtx },
     })
     cube_batch_size = hyper_config.get_int('cube_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
                                            help='The number of cube samples to evaluate at a time')
-    # pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
-    #                                        help='The number of picks to evaluate at a time')
+    pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
+                                           help='The number of picks to evaluate at a time')
+    adj_mtx_batch_size = hyper_config.get_int('adj_mtx_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
+                                              help='The number of rows of the adjacency matrices to evaluate at a time.')
     noise_mean = hyper_config.get_float('cube_noise_mean', min=0, max=1, default=0.7,
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
+    draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
+    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 4 * pick_batch_size, args.seed)
+    recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
+                                                       cube_batch_size, args.seed, noise_mean, noise_std)
+    recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
+                                                            4 * cube_batch_size, args.seed, 0, 0)
+    deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
+    deck_adj_mtx_generator.on_epoch_end()
+    cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
+    cube_adj_mtx_generator.on_epoch_end()
+    print(f'There are {len(draftbot_train_generator)} training pick batches')
+    print(f'There are {len(draftbot_validation_generator)} validation pick batches')
+    print(f'There are {len(recommender_train_generator)} training recommender batches')
+    print(f'There are {len(recommender_validation_generator)} validation recommender batches')
+    print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
@@ -155,7 +156,6 @@ if __name__ == "__main__":
     logging.info('Loading Combined model.')
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    np.save(f'{output_dir}/adj_mtx.npy', adj_mtx)
     model = hyper_config.build(name='CombinedModel', dynamic=False)
     if model is None:
         sys.exit(1)
@@ -203,8 +203,8 @@ if __name__ == "__main__":
 
     logging.info('Starting training')
     with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
-        train_generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator)
-        validation_generator = CombinedGenerator(draftbot_validation_generator, recommender_validation_generator)
+        train_generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator, cube_adj_mtx_generator, deck_adj_mtx_generator)
+        validation_generator = CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator)
         callbacks = []
         if not args.debug:
             mcp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -238,12 +238,12 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
-        pick_train_example, cube_train_example = validation_generator[0][0]
+        pick_train_example, cube_train_example, *rest = validation_generator[0][0]
         print(pick_train_example[-1])
         pick_train_example = pick_train_example[:8]
         cube_train_example = cube_train_example[:1]
         # Make sure it compiles the correct setup for evaluation
-        model((pick_train_example, cube_train_example), training=False)
+        model((pick_train_example, cube_train_example, *rest), training=False)
         # model.save(f'ml_files/current', save_format='tf')
         model.fit(
             train_generator,
@@ -254,7 +254,3 @@ if __name__ == "__main__":
             verbose=0,
             max_queue_size=2**10,
         )
-    if not args.debug:
-        logging.info('Saving final model.')
-        Path(f'{output_dir}/final').mkdir(parents=True, exist_ok=True)
-        model.save(f'{output_dir}/final', save_format='tf')

@@ -64,72 +64,20 @@ private:
     moodycamel::BlockingConcurrentQueue<ProcessedValue> processed_queue;
     moodycamel::ConsumerToken processed_consumer;
     std::jthread worker_thread;
-    std::size_t num_cards;
-    std::vector<double> card_weights;
-    std::size_t total_count{0};
-    double total_value{0};
-    double weight;
-    std::vector<double> card_popularity;
 
     static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 20;
 
 public:
-    DraftbotGenerator(std::string filename, std::size_t num_cards, std::size_t batch_size, std::size_t seed)
+    DraftbotGenerator(std::string filename, std::size_t batch_size, std::size_t seed)
             : mmap(filename), batch_size{batch_size}, seed{seed}, num_picks{mmap.size() / sizeof(Pick)},
-              main_rng{seed, 1}, chunk_producer{chunk_queue}, processed_consumer{processed_queue}, 
-              num_cards{num_cards}, card_weights(num_cards, 1.0), card_popularity(num_cards, 1.0)
-    {
-        /* const Pick* pick_file = reinterpret_cast<const Pick*>(mmap.data()); */
-        /* for (std::size_t i=0; i < num_picks; i++) { */
-        /*     const Pick& pick = pick_file[i]; */
-        /*     std::size_t j; */
-        /*     for (j=0; j < pick.cards_in_pack.size(); j++) { */
-        /*         std::size_t idx = pick.cards_in_pack[j]; */
-        /*         if (idx == 0) break; */
-        /*         card_weights[idx] += 1.f; */
-        /*         total_count += 1; */
-        /*     } */
-        /*     for(std::size_t k = 0; k < j; k++) { */
-        /*         card_popularity[pick.cards_in_pack[k]] += j; */
-        /*     } */
-        /* } */
-        /* for (std::size_t i=0; i < num_cards; i++) { */
-        /*     card_popularity[i] /= card_weights[i] * 10; */
-        /*     card_popularity[i] *= card_popularity[i]; */
-        /* } */
-        /* double max_weight = 0; */
-        /* for (const auto x : card_weights) max_weight = std::max(max_weight, x); */
-        /* max_weight += 1.0; */
-        /* for (auto& x : card_weights) { */
-        /*     if (x >= 100) { */
-        /*         x = max_weight - x; */
-        /*         total_value += x; */
-        /*     } else { */
-        /*         x = 0; */
-        /*     } */
-        /* } */
-        /* weight = num_cards / total_value; */
-        /* for (auto& x : card_weights) { */
-        /*     if */ 
-        /*     x *= weight; */
-    }
+              main_rng{seed, 1}, chunk_producer{chunk_queue}, processed_consumer{processed_queue}
+    { }
 
     DraftbotGenerator& enter() & {
         py::gil_scoped_release gil_release;
         worker_thread = std::jthread([this](std::stop_token st) { this->worker_func(st, pcg32(this->seed, 0)); });
         queue_new_epoch();
         return *this;
-    }
-
-    std::size_t get_total_count() { return total_count; }
-    double get_total_value() { return total_value; }
-    double get_weight() { return weight; }
-
-    /* py::array_t<double> get_card_weights() { */
-    /*     return py::array_t<double>{std::array<std::size_t, 1>{num_cards}, std::array<std::size_t, 1>{sizeof(double)}, card_weights.data()}; */
-    /* } */
-    py::array_t<double> get_card_weights() {
-        return py::array_t<double>{std::array<std::size_t, 1>{num_cards}, std::array<std::size_t, 1>{sizeof(double)}, card_popularity.data()};
     }
 
     bool exit(py::object, py::object, py::object) {
@@ -160,7 +108,7 @@ public:
                 std::cout << "Waiting on a draftbot sample." << std::endl;
                 queue_new_epoch();
                 while (!processed_queue.wait_dequeue_timed(processed_consumer, processed_value, 100'000)) {
-                    std::cout << "Waiting on a cube sample." << std::endl;
+                    std::cout << "Waiting on a draftbots sample." << std::endl;
                 }
             }
             batched = processed_value.release();
@@ -211,8 +159,6 @@ private:
 
     void worker_func(std::stop_token st, pcg32 rng) {
         using namespace std::chrono_literals;
-        pcg32 sleep_rng{rng};
-        std::uniform_int_distribution<std::size_t> sleep_for(1'000, 39'000);
         std::uniform_int_distribution<std::size_t> index_selector(0, SHUFFLE_BUFFER_SIZE - 1);
         auto current_batch = std::make_unique<std::vector<Pick>>(batch_size);
         std::size_t current_batch_idx = 0;
@@ -229,10 +175,11 @@ private:
             }
             for (std::size_t read_idx : read_indices) {
                 if (shuffle_buffer.size() < SHUFFLE_BUFFER_SIZE) {
-                    shuffle_buffer.resize(shuffle_buffer.size() + READ_SIZE);
-                    std::memcpy(shuffle_buffer.data() + (shuffle_buffer.size() - READ_SIZE),
-                                mmap.data() + sizeof(Pick) * READ_SIZE * read_idx,
-                                sizeof(Pick) * READ_SIZE);
+                    for (std::size_t i=0; i < READ_SIZE; i++) {
+                        const Pick* read_start = reinterpret_cast<const Pick*>(mmap.data() + sizeof(Pick) * READ_SIZE * read_idx);
+                        if (read_start[i].cards_in_pack[0] == 0) continue;
+                        shuffle_buffer.push_back(read_start[i]);
+                    }
                 } else {
                     if (current_batch_idx >= batch_size) {
                         if (processed_queue.size_approx() >= SHUFFLE_BUFFER_SIZE / batch_size) {
@@ -246,9 +193,10 @@ private:
                     }
                     std::size_t read_amount = std::min(current_batch->size() - current_batch_idx, READ_SIZE);
                     std::memcpy(current_batch->data() + current_batch_idx,
-                                mmap.data() + sizeof(Pick) * READ_SIZE *  read_idx,
+                                reinterpret_cast<const Pick*>(mmap.data() + sizeof(Pick) * READ_SIZE *  read_idx),
                                 sizeof(Pick) * read_amount);
                     for (std::size_t i=0; i < read_amount; i++) {
+                        if (current_batch->at(current_batch_idx).cards_in_pack[0] == 0) continue;
                         std::swap(current_batch->at(current_batch_idx++), shuffle_buffer[index_selector(rng)]);
                     }
                 }
@@ -260,16 +208,11 @@ private:
 PYBIND11_MODULE(draftbot_generator, m) {
     using namespace pybind11::literals;
     py::class_<DraftbotGenerator>(m, "DraftbotGenerator")
-        .def(py::init<std::string, std::size_t, std::size_t, std::size_t>())
+        .def(py::init<std::string, std::size_t, std::size_t>())
         .def("__enter__", &DraftbotGenerator::enter)
         .def("__exit__", &DraftbotGenerator::exit)
         .def("__len__", &DraftbotGenerator::size)
         .def("__getitem__", &DraftbotGenerator::getitem)
-        .def("get_card_weights", &DraftbotGenerator::get_card_weights)
-        /* .def("get_card_popularities", &DraftbotGenerator::get_card_popularities) */
-        .def("get_total_value", &DraftbotGenerator::get_total_value)
-        .def("get_total_count", &DraftbotGenerator::get_total_count)
-        .def("get_weight", &DraftbotGenerator::get_weight)
         .def("next", &DraftbotGenerator::next)
         .def("on_epoch_end", &DraftbotGenerator::queue_new_epoch);
 }

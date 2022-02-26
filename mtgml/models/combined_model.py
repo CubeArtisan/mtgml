@@ -2,6 +2,7 @@ import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.item_embedding import ItemEmbedding
+from mtgml.models.adj_mtx import AdjMtxReconstructor
 from mtgml.models.draftbots import DraftBot
 from mtgml.models.recommender import CubeRecommender
 
@@ -17,11 +18,17 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
         return {
             'embed_cards': embed_cards,
             'draftbots': hyper_config.get_sublayer('DraftBots', sub_layer_type=DraftBot,
-                                                   fixed={'num_cards': num_cards, 'EmbedCards': {'dims': 1}},
+                                                   fixed={'num_cards': num_cards}, seed_mod=13,
                                                    help='The model for the draftbots'),
             'cube_recommender': hyper_config.get_sublayer('CubeRecommender', sub_layer_type=CubeRecommender,
-                                                          fixed={'num_cards': num_cards, 'EmbedCards': {'dims': 1}},
+                                                          fixed={'num_cards': num_cards}, seed_mod=17,
                                                           help='The model for the draftbots'),
+            'cube_adj_mtx_reconstructor': hyper_config.get_sublayer('CubeAdjMtxReconstructor', sub_layer_type=AdjMtxReconstructor,
+                                                                    fixed={'num_cards': num_cards}, seed_mod=19,
+                                                                    help='The model to reconstruct the cube adjacency matrix'),
+            'deck_adj_mtx_reconstructor': hyper_config.get_sublayer('DeckAdjMtxReconstructor', sub_layer_type=AdjMtxReconstructor,
+                                                                    fixed={'num_cards': num_cards}, seed_mod=23,
+                                                                    help='The model to reconstruct the deck adjacency matrix')
         }
 
     def build(self, input_shapes):
@@ -35,6 +42,8 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
             else:
                 draftbot_loss = self.draftbots((*inputs[0], self.embed_cards.embeddings), training=training)
             recommender_loss = self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
-        if len(inputs[0]) > 8:
-            self.add_loss(draftbot_loss + recommender_loss)
+            cube_adj_mtx_loss = self.cube_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
+            deck_adj_mtx_loss = self.deck_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
+        if len(inputs[0]) > 9:
+            self.add_loss(draftbot_loss + recommender_loss + cube_adj_mtx_loss + deck_adj_mtx_loss)
         return ()
