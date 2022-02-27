@@ -1,0 +1,71 @@
+\documentclass[twocolumn]{article}
+
+\usepackage{amsthm}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{auto-pst-pdf}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{graphviz}
+\usepackage{latexsym}
+
+\theoremstyle{definition}
+\newtheorem*{defn}{Definition}
+\newtheorem*{goal}{Goal}
+\newtheorem*{notat}{Notation}
+
+\theoremstyle{plain}
+\newtheorem{thm}{Theorem}[section]
+\newtheorem{lemma}{Lemma}[thm]
+\newtheorem{cor}{Corollary}[thm]
+\newtheorem{prop}{Proposition}
+\newtheorem{conj}{Conjecture}[section]
+
+\theoremstyle{remark}
+\newtheorem*{rem}{Remark}
+
+\title{Improvements on Magic the Gathering Draftbots}
+\author{DR}
+
+\begin{document}
+
+  \maketitle
+
+  \begin{abstract}
+  \end{abstract}
+
+  \section{Introduction}
+
+  \section{Magic: the Gathering}
+
+  \section{Prior Work}
+
+    This work builds directly on top of the architecture of \cite{DBLP:journals/corr/abs-2105-11864}.
+
+  \section{Architecture to Utilize Additional Context}
+
+    \begin{figure}[t!]
+      \centering
+      \digraph{architecture}{
+        rankdir=LR;
+        a->b->c->d;
+      }
+      \caption[Architecture to embed a set of cards.]{}
+    \end{figure}
+
+  \section{Experimental Setup}
+
+  \section{Results}
+
+  \section{Discussion}
+
+  \section{Conclusion}
+
+  \section{Future Work}
+
+  \section*{References}
+
+    \bibliography{draftbots}{}
+    \bibliographystyle{plain}
+
+\end{document}

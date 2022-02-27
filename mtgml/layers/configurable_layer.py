@@ -1,7 +1,11 @@
+import abc
+
 import tensorflow as tf
 
+from mtgml.config.hyper_config import HyperConfig
 
-class ConfigurableLayer(tf.keras.layers.Layer):
+
+class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
     def __init__(self, hyper_config, **kwargs):
         super(ConfigurableLayer, self).__init__(**kwargs)
         self.hyper_config = hyper_config
@@ -25,3 +29,7 @@ class ConfigurableLayer(tf.keras.layers.Layer):
         for key, prop in properties.items():
             setattr(self, key, prop)
         self.built = True
+
+    @abc.abstractmethod
+    def generate_image(self):
+        ...
