@@ -4,11 +4,12 @@ from typing import Generic, TypeVar, Union
 import yaml
 from tensorflow.keras.utils import register_keras_serializable
 
-from mtgml.layers.configurable_layer import ConfigurableLayer
+# import mtgml.layers.configurable_layer
+# from mtgml.layers.configurable_layer import ConfigurableLayer
 
 ValueType = TypeVar('ValueType', float, int, str, bool, list, 'HyperConfig')
-LayerType = TypeVar('LayerType', bound=ConfigurableLayer)
-LayerType2 = TypeVar('LayerType2', bound=ConfigurableLayer)
+LayerType = TypeVar('LayerType', bound='mtgml.layers.configurable_layer.ConfigurableLayer')
+LayerType2 = TypeVar('LayerType2', bound='mtgml.layers.configurable_layer.ConfigurableLayer')
 
 
 @register_keras_serializable(package='mtgml.config', name='HyperConfigValue')

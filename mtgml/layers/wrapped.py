@@ -19,12 +19,12 @@ class WMultiHeadAttention(WrappedLayer):
                                               help='The number of separate heads of attention to use.'),
             'key_dims': hyper_config.get_int('key_dims', min=1, max=64, default=8,
                                              help='Size of the attention head for query and key.'),
-            'value_dims': hyper_config.get_int('value_dims', min=1, max=64, default=16,
+            'value_dims': hyper_config.get_int('value_dims', min=1, max=64, default=4,
                                                help='Size of the attention head for value.'),
             'dropout': hyper_config.get_float('dropout', min=0, max=0.99, step=0.01, default=0.25,
                                               help='The percent of values to get dropped out'),
             'use_bias': hyper_config.get_bool('use_bias', default=True, help='Use bias in the dense layers'),
-            'output_dims': hyper_config.get_int('output_dims', min=8, max=512, default=64,
+            'output_dims': hyper_config.get_int('output_dims', min=8, max=512, default=32,
                                                 help='The number of output dimensions from this layer.'),
         }
 
@@ -41,7 +41,7 @@ class WDense(WrappedLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         return {
-            'dims': hyper_config.get_int('dims', min=8, max=512, default=64,
+            'dims': hyper_config.get_int('dims', min=8, max=512, default=32,
                                           help='The number of dimensions in the output of this layer.'),
             'activation': hyper_config.get_choice('activation', choices=ACTIVATION_CHOICES, default='selu',
                                                   help='The activation function on the output of the layer.'),

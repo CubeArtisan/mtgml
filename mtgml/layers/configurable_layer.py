@@ -30,6 +30,6 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
             setattr(self, key, prop)
         self.built = True
 
-    @abc.abstractmethod
-    def generate_image(self):
-        ...
+#     @abc.abstractmethod
+#     def generate_image(self):
+#         ...

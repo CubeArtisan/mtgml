@@ -244,6 +244,7 @@ if __name__ == "__main__":
         cube_train_example = cube_train_example[:1]
         # Make sure it compiles the correct setup for evaluation
         model((pick_train_example, cube_train_example, *rest), training=False)
+        print(model.summary())
         # model.save(f'ml_files/current', save_format='tf')
         model.fit(
             train_generator,

@@ -24,7 +24,7 @@
               pkgs.llvmPackages_12.libclang
               pkgs.cudaPackages.cudatoolkit_11_4
               pkgs.cutensor_cudatoolkit_11_4
-              pkgs.cudnn_cudatoolkit_11_4
+              pkgs.cudnn_8_3_cudatoolkit_11_4
               pkgs.linuxPackages.nvidia_x11
               pkgs.python39Packages.python
               pkgs.cmake
@@ -40,10 +40,10 @@
               export LIBCLANG_PATH="${pkgs.llvmPackages_12.libclang}/lib";
               export CUDATOOLKIT=${pkgs.cudaPackages.cudatoolkit_11_4}
               export CUDATOOLKIT_LIB=${pkgs.cudaPackages.cudatoolkit_11_4.lib}
-              export CUDNN=${pkgs.cudnn_cudatoolkit_11_4}
+              export CUDNN=${pkgs.cudnn_8_3_cudatoolkit_11_4}
               export CUTENSOR=${pkgs.cutensor_cudatoolkit_11_4}
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11_4}/lib:${pkgs.cudaPackages.cudatoolkit_11.lib}/lib:$LD_LIBRARY_PATH
-              export LD_LIBRARY_PATH=${pkgs.cudnn_cudatoolkit_11_4}/lib:${pkgs.cutensor_cudatoolkit_11_4}/lib:$LD_LIBRARY_PATH
+              export LD_LIBRARY_PATH=${pkgs.cudnn_8_3_cudatoolkit_11_4}/lib:${pkgs.cutensor_cudatoolkit_11_4}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.linuxPackages.nvidia_x11}/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit_11_4}/nvvm/libdevice:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.zlib.out}/lib:$LD_LIBRARY_PATH

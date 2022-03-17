@@ -1,14 +1,12 @@
 import tensorflow as tf
 
-from mtgml.constants import LARGE_INT
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
 from mtgml.layers.wrapped import WDropout, WMultiHeadAttention
-from mtgml.layers.attention import MultiHeadAttention
+from mtgml.layers.attention import InducedSetAttentionBlockStack, PoolingByMultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
-from mtgml.tensorboard.plot_attention_scores import plot_attention_scores
 
 SET_EMBEDDING_CHOICES = ('additive', 'attentive')
 
@@ -63,12 +61,14 @@ class AttentiveSetEmbedding(ConfigurableLayer):
     def get_properties(cls, hyper_config, input_shapes=None):
         decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.1,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
-        attention_output_dims = hyper_config.get_int('atten_output_dims', min=8, max=512, step=8, default=64,
-                                                     help='The number of dimensions in the output of the attention layer.')
         return {
-            'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=37,
-                                                   fixed={'output_dims': attention_output_dims},
-                                                   help='The mapping from the item embeddings to the embeddings to add.'),
+            'isabs': hyper_config.get_sublayer('AttentionStack', sub_layer_type=InducedSetAttentionBlockStack, seed_mod=29,
+                                              help='The layers to get interactions between cards.'),
+            # 'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=39,
+            #                                        help='The layers to model interactions between items.'),
+            'pooling': hyper_config.get_sublayer('Pooling', sub_layer_type=PoolingByMultiHeadAttention, seed_mod=53,
+                                                 fixed={'out_set_size': 1},
+                                                 help='The layer to collapse down to one embedding.'),
             'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
                                                  fixed={"Dropout": {'rate': decoding_dropout}},
                                                  help='The mapping from the added item embeddings to the embeddings to return.'),
@@ -77,47 +77,20 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                                                       seed_mod=53, fixed={'all_last_dim': True, 'return_mask': True,
                                                                           'blank_last_dim': False, 'noise_shape': None},
                                                       help='Drops out entire items from the set.'),
-            'decoder_dropout': hyper_config.get_sublayer('DecodingDropout', sub_layer_type=WDropout,
-                                                         seed_mod=43, fixed={'rate': decoding_dropout,
-                                                                             'blank_last_dim': True,
-                                                                             'noise_shape': None},
-                                                      help='Drops out values from the decoding layers to improve generalizability.'),
-            'normalize_sum': hyper_config.get_bool('normalize_sum', default=False,
-                                                   help='Average the sum of embeddings by the number of non-masked items.'),
-            'log_scores': hyper_config.get_bool('log_scores', default=True,
-                                                help='Whether to log an image of the attention scores.'),
-            'atten_output_dims': attention_output_dims,
         }
 
     def build(self, input_shapes):
         super(AttentiveSetEmbedding, self).build(input_shapes)
-        self.final_atten_shape = (-1, *input_shapes[1:-1], self.atten_output_dims)
-        self.flattened_shape = (-1, *input_shapes[-2:])
-        self.mask_shape = self.flattened_shape[0:-1]
-        self.original_mask = (-1, *input_shapes[1:-1])
 
     def call(self, inputs, training=False, mask=None):
-        inputs = tf.reshape(inputs, self.flattened_shape)
-        if mask is not None:
-            mask = tf.reshape(mask, self.mask_shape)
         dropped, dropout_mask = self.item_dropout(inputs, training=training, mask=mask)
         dropout_mask = tf.cast(dropout_mask, tf.bool)
         dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
         encoded_items = self.zero_masked(dropped, mask=dropout_mask)
-        encoded_items = self.attention(encoded_items, encoded_items, training=training)
-        # encoded_items = self.attention((encoded_items, encoded_items, encoded_items), training=training)
-        encoded_items = tf.reshape(encoded_items, self.final_atten_shape)
-        summed_embeds = tf.math.reduce_sum(encoded_items, -2, name='summed_embeds')
-        if self.normalize_sum:
-            num_valid = tf.math.reduce_sum(tf.cast(dropout_mask, dtype=self.compute_dtype, name='mask'),
-                                           axis=-1, keepdims=True, name='num_valid')
-            summed_embeds = tf.math.divide(summed_embeds, num_valid + 1e-09, name='normalized_embeds')
-        summed_embeds = self.decoder_dropout(summed_embeds, training=training)
-        # Tensorboard logging
-        # if tf.summary.should_record_summaries() and self.log_scores:
-        #     images = tf.py_function(plot_attention_scores, inp=(attention_scores, dropout_mask, True, self.name), Tout=[tf.uint8 for _ in range(self.attention.num_heads)])
-        #     tf.summary.image(f'{self.name} AttentionScoresHead', images)
-        return self.decoder(summed_embeds, training=training)
+        # encoded_items = self.attention(encoded_items, encoded_items, encoded_items, training=training)
+        encoded_items = self.isabs(encoded_items, training=training)
+        encoded_items = self.pooling(encoded_items, training=training)
+        return self.decoder(encoded_items, training=training)
 
     def compute_mask(self, inputs, mask=None):
         if mask is None:

@@ -3,6 +3,7 @@ import math
 import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
+from mtgml.layers.wrapped import WDense, WDropout, WMultiHeadAttention
 
 
 @tf.recompute_grad
@@ -109,3 +110,116 @@ class MultiHeadAttention(ConfigurableLayer):
         value = tf.reshape(value @ self.value_matrix, (-1, self.key_sequence_length, self.num_heads, self.value_dims))
         attended = calculate_attention(query, key, value, self.query_chunk_size, self.kv_chunk_size, name='DistributedAttention')
         return tf.reshape(attended, (-1, self.key_sequence_length, self.value_dims * self.num_heads)) @ self.output_matrix
+
+
+class MultiHeadAttentionBlock(ConfigurableLayer):
+    @classmethod
+    def get_properties(cls, hyper_config, input_shapes=None):
+        if input_shapes is None:
+            input_shapes = [[1, 1, 1, 1], [1, 1, 1, 1]]
+        return {
+            'attention': hyper_config.get_sublayer('MultiHeadAttention', sub_layer_type=WMultiHeadAttention,
+                                                   fixed={'output_dims': input_shapes[0][-1]},
+                                                   help='The MultiHeadAttention layer that is the foundation of the layer.'),
+            'h_layer_norm': tf.keras.layers.LayerNormalization(name='HLayerNorm'),
+            'feed_forward': hyper_config.get_sublayer('FeedForward', sub_layer_type=WDense,
+                                                      fixed={'dims': input_shapes[0][-1]},
+                                                      help='A layer to allow additional nonlinearities.'),
+            'final_layer_norm': tf.keras.layers.LayerNormalization(name='FinalLayerNorm'),
+        }
+
+    def call(self, inputs, training=False):
+        x, y = inputs
+        attended = self.attention(x, y, y, training=training)
+        increased = x + attended
+        h = self.h_layer_norm(increased, training=training)
+        fed_forward = self.feed_forward(h, training=training)
+        increased_h = h + fed_forward
+        return self.final_layer_norm(increased_h, training=training)
+
+
+class InducedSetAttentionBlock(ConfigurableLayer):
+    @classmethod
+    def get_properties(cls, hyper_config, input_shapes=None):
+        return {
+            # 'mab_h': hyper_config.get_sublayer('MultiHeadAttentionBlockH', sub_layer_type=MultiHeadAttentionBlock,
+            #                                     help='The attention block that uses the inducing vectors'),
+            # 'mab_final': hyper_config.get_sublayer('MultiHeadAttentionBlockFinal', sub_layer_type=MultiHeadAttentionBlock,
+            #                                         help='The attention block that recombines the input.'),
+            'attention_h': hyper_config.get_sublayer('AttentionForH', sub_layer_type=WMultiHeadAttention,
+                                                help='The attention block that uses the inducing vectors'),
+            'attention_final': hyper_config.get_sublayer('FinalAttention', sub_layer_type=WMultiHeadAttention,
+                                                    help='The attention block that recombines the input.'),
+            'num_inducing_vectors': hyper_config.get_int('num_inducing_vectors', min=8, max=128, default=8, step=8,
+                                                         help='The number of points to use to simulate attention.'),
+        }
+
+    def build(self, input_shapes):
+        super(InducedSetAttentionBlock, self).build(input_shapes)
+        # self.inducing_shape = [1 for _ in input_shapes]
+        # self.inducing_shape[-2] = self.num_inducing_vectors
+        # self.inducing_shape[-1] = input_shapes[-1]
+        self.inducing_vectors = self.add_weight('inducing_vectors', shape=(self.num_inducing_vectors, input_shapes[-1]), #shape=self.inducing_shape,
+                                                trainable=True)
+
+    def call(self, inputs, training=False):
+        shape = tf.concat([tf.shape(inputs)[:-2], tf.shape(self.inducing_vectors)[-2:]], axis=0)
+        h = self.attention_h(self.inducing_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs, training=training)
+        result = self.attention_final(inputs, h, training=training)
+        print(result.shape)
+        return result
+        # h = self.mab_h((self.inducing_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs), training=training)
+        # return self.mab_final((inputs, h), training=training)
+
+
+class InducedSetAttentionBlockStack(ConfigurableLayer):
+    @classmethod
+    def get_properties(cls, hyper_config, input_shapes=None):
+        num_hidden = hyper_config.get_int('num_hidden', min=0, max=8, default=0,
+                                          help='The number of hidden layers in the MLP.')
+        props = {
+            'hiddens': tuple(hyper_config.get_sublayer(f'Hidden_{i}', sub_layer_type=InducedSetAttentionBlock, seed_mod=i + 1,
+                                                       help=f'The {i+1}{"th" if i > 1 else "nd" if i == 1 else "st"} hidden layer.')
+                        for i in range(num_hidden)),
+            'final': hyper_config.get_sublayer('Final', sub_layer_type=InducedSetAttentionBlock, seed_mod=19,
+                                               help='The last dense layer in the MLP.'),
+        }
+        if num_hidden > 0:
+            props['dropout'] = hyper_config.get_sublayer(f'Dropout', sub_layer_type=WDropout, seed_mod=11,
+                                                         fixed={'noise_shape': None},
+                                                         help='The dropout applied after each hidden layer.')
+        return props
+
+    def call(self, inputs, training=False):
+        for hidden in self.hiddens:
+            inputs = hidden(inputs, training=training)
+            inputs = self.dropout(inputs, training=training)
+        return self.final(inputs, training=training)
+
+
+class PoolingByMultiHeadAttention(ConfigurableLayer):
+    @classmethod
+    def get_properties(cls, hyper_config, input_shapes=None):
+        return {
+            'out_set_size': hyper_config.get_int('out_set_size', min=1, max=128, default=None,
+                                                 help='The number of vectors in the output set.'),
+            'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=17,
+                                                   help='The attention layer that pools the results.')
+        }
+
+    def build(self, input_shapes):
+        super(PoolingByMultiHeadAttention, self).build(input_shapes)
+        # self.inducing_shape = [1 for _ in input_shapes]
+        # self.inducing_shape[-2] = self.out_set_size
+        # self.inducing_shape[-1] = input_shapes[-1]
+        self.seed_vectors = self.add_weight('seed_vectors', shape=(self.out_set_size, input_shapes[-1]),
+                                            trainable=True)
+
+    def call(self, inputs, training=False):
+        shape = tf.concat([tf.shape(inputs)[:-2], tf.shape(self.seed_vectors)[-2:]], axis=0)
+        pooled = self.attention(self.seed_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs, training=training)
+        if self.out_set_size == 1:
+            return tf.squeeze(pooled, axis=-2)
+        else:
+            return pooled
+

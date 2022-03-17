@@ -27,3 +27,6 @@ class MLP(ConfigurableLayer):
             inputs = hidden(inputs, training=training)
             inputs = self.dropout(inputs, training=training)
         return self.final(inputs, training=training)
+
+
+

@@ -29,9 +29,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
     def get_properties(cls, hyper_config, input_shapes=None):
         pool_context_ratings = hyper_config.get_bool('pool_context_ratings', default=True,
                                                      help='Whether to rate cards based on how the go with the other cards in the pool so far.')
-        seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=False,
+        seen_context_ratings = hyper_config.get_bool('seen_context_ratings', default=True,
                                                      help='Whether to rate cards based on the packs seen so far.')
-        item_ratings = hyper_config.get_bool('item_ratings', default=False, help='Whether to give each card a rating independent of context.')
+        item_ratings = hyper_config.get_bool('item_ratings', default=True, help='Whether to give each card a rating independent of context.')
         sublayer_metadatas = []
         if pool_context_ratings:
             sublayer_metadatas.append(POOL_ORACLE_METADATA)
@@ -71,7 +71,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             'log_loss_weight': hyper_config.get_float('log_loss_weight', min=0, max=1, step=0.01,
                                                       default=0.5, help='The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight - rating_stddev_weight'),
             'rating_stddev_weight': hyper_config.get_float('rating_stddev_weight', min=0, max=1,
-                                                      default=1e-04, help='The weight given to the stddev of the card ratings. Triplet loss weight is 1 - log_loss_weight - rating_stddev_weight'),
+                                                      default=1e-02, help='The weight given to the stddev of the card ratings. Triplet loss weight is 1 - log_loss_weight - rating_stddev_weight')
+                                    if item_ratings else 0,
             'margin': hyper_config.get_float('margin', min=0, max=10, step=0.01, default=2.5,
                                              help='The margin by which we want the correct choice to beat the incorrect choices.'),
             'sublayer_weights': hyper_config.get_sublayer('SubLayerWeights', sub_layer_type=TimeVaryingEmbedding,
@@ -93,12 +94,10 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         loss_dtype = tf.float32
         sublayer_scores = []
         card_choice_embeds = tf.gather(card_embeddings, card_choices)
-        shifts = []
         mask = tf.cast(card_choices > 0, dtype=self.compute_dtype, name='pack_mask')
         if self.rate_off_pool:
             pool_embeds = tf.gather(card_embeddings, pool)
             sublayer_scores.append(self.rate_off_pool((card_choice_embeds, pool_embeds), training=training))
-            shifts.append(LARGE_INT)
         if self.rate_off_seen:
             seen_pack_embeds = tf.gather(card_embeddings, seen_packs)
             pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
@@ -106,11 +105,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             pack_embeds =  pack_embeds + position_embeds
             pack_embeds._keras_mask = tf.math.reduce_any(seen_packs > 0, axis=-1)
             sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))
-            shifts.append(LARGE_INT)
         if self.rate_card:
             card_ratings = tf.squeeze(self.rate_card(card_choice_embeds, training=training), axis=-1) * mask
             sublayer_scores.append(card_ratings)
-            shifts.append(0.0)
             tf.summary.histogram('card_ratings', card_ratings)
         sublayer_scores = tf.stack(sublayer_scores, axis=-1, name='stacked_sublayer_scores')
         sublayer_weights = tf.math.softplus(self.sublayer_weights((coords, coord_weights), training=training))
@@ -119,18 +116,17 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         scores = tf.einsum('...ps,...s->...p', sublayer_scores, sublayer_weights, name='scores')
         # scores = tf.reduce_sum(sublayer_scores, axis=-1)
         if len(inputs) > 10:
-            shifts = tf.cast(tf.stack(shifts, axis=-1, name='shifts'), dtype=self.compute_dtype)
-            shifts = tf.einsum('...s,s->...', sublayer_weights, shifts, name='shifts_weighted')
+            mask = tf.cast(mask, dtype=loss_dtype)
             y_idx = tf.ensure_shape(tf.cast(inputs[9], dtype=tf.int32, name='y_idx'), (None,))
             riskiness = tf.ensure_shape(tf.cast(inputs[10], dtype=tf.float32, name='riskiness'), (None, MAX_CARDS_IN_PACK))
-            pos_scores = (tf.cast(scores, dtype=loss_dtype, name='cast_scores') + tf.expand_dims(shifts, -1) + tf.constant(LARGE_INT, dtype=loss_dtype)) * mask
-            neg_scores = (tf.constant( LARGE_INT, dtype=loss_dtype) + tf.expand_dims(shifts, -1) - tf.cast(scores, dtype=loss_dtype, name='cast_scores')) * mask
+            pos_scores = (tf.cast(scores, dtype=loss_dtype, name='cast_scores') + tf.constant(LARGE_INT, dtype=loss_dtype)) * mask
+            neg_scores = (tf.constant( LARGE_INT, dtype=loss_dtype) - tf.cast(scores, dtype=loss_dtype, name='cast_scores')) * mask
             scores = tf.where(tf.expand_dims(y_idx == 0, -1), pos_scores, neg_scores, name='scores_after_y_idx')
             probs = tf.nn.softmax(scores, axis=-1, name='probs')
             probs_correct = tf.concat([probs[:, :1], tf.constant(1, dtype=loss_dtype) - probs[:, 1:]], axis=1)
             prob_chosen = tf.gather(probs, 0, axis=1, name='prob_chosen')
             num_in_packs = tf.reduce_sum(mask, name='num_in_packs')
-            log_losses = tf.negative(tf.math.log(probs_correct + 1e-10, name='log_probs'), name='log_loss')
+            log_losses = tf.negative(tf.math.log((1 - 2e-10) * probs_correct + 1e-10, name='log_probs'), name='log_loss')
             sample_weights = tf.where(scores > tf.expand_dims(scores[:, 0], -1), riskiness, tf.ones_like(riskiness))
             log_losses = sample_weights * log_losses
             log_loss = tf.reduce_sum(log_losses) / num_in_packs
@@ -152,7 +148,13 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             card_rating_loss = tf.constant(0, dtype=loss_dtype)
             if self.rate_card:
                 card_ratings = self.rate_card(card_embeddings[1:], training=training)
-                card_rating_loss = (tf.math.abs(10.0 - tf.math.reduce_std(card_ratings)) + tf.math.abs(tf.math.reduce_mean(card_ratings) - 100.0) / 10) * tf.constant(self.rating_stddev_weight, dtype=loss_dtype, name='rating_stddev_weight')
+                hundred = tf.constant(100, dtype=loss_dtype)
+                ten = tf.constant(10, dtype=loss_dtype)
+                card_rating_loss = \
+                    (tf.math.abs(hundred - tf.cast(tf.math.reduce_variance(card_ratings), dtype=loss_dtype)) / ten
+                     + tf.math.abs(tf.cast(tf.math.reduce_mean(card_ratings), dtype=loss_dtype) - hundred))\
+                    * tf.constant(self.rating_stddev_weight, dtype=loss_dtype, name='rating_stddev_weight')
+                tf.summary.scalar('card_rating_loss', card_rating_loss)
             chosen_idx = tf.zeros_like(y_idx)
             scores = tf.cast(scores, dtype=tf.float32)
             top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
@@ -166,11 +168,12 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             tf.summary.scalar('accuracy_top_2', tf.reduce_mean(top_2_accuracy))
             tf.summary.scalar('accuracy_top_3', tf.reduce_mean(top_3_accuracy))
             tf.summary.scalar('prob_correct', tf.reduce_mean(prob_chosen))
-            tf.summary.histogram('scores', (scores - tf.expand_dims(shifts, -1) - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)
-            tf.summary.histogram('scores_0', ((scores - tf.expand_dims(shifts, -1) - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)[:, :1])
+            tf.summary.histogram('scores', (scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)
+            tf.summary.histogram('scores_0', ((scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)[:, :1])
             tf.summary.histogram('score_diffs', score_diffs)
             tf.summary.histogram('probs', probs)
+            tf.summary.histogram('prob_chosen', prob_chosen)
             tf.summary.histogram('log_losses', log_losses)
             tf.summary.histogram('triplet_losses', clipped_diffs)
-            return triplet_loss_weighted + log_loss_weighted + card_rating_loss
+            return tf.cast(triplet_loss_weighted + log_loss_weighted + card_rating_loss, dtype=self.compute_dtype)
         return sublayer_scores, sublayer_weights

@@ -59,15 +59,14 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
             card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name='card_embeddings')
         else:
             card_embeddings = tf.cast(inputs[1], dtype=self.compute_dtype, name='card_embeddings')
-        embed_noisy_cube = tf.gather(card_embeddings, noisy_cube)
-        # embed_noisy_cube = self.embed_cards(noisy_cube, training=training)
+        embed_noisy_cube = tf.gather(card_embeddings, noisy_cube, name='embed_noisy_cube')
         encoded_noisy_cube = self.embed_cube(embed_noisy_cube, training=training)
         decoded_noisy_cube = self.recover_cube(encoded_noisy_cube, training=training)
         if len(inputs) == 3:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name='true_cube_arr')
             true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype), axis=-2)[:,1:]
-            cube_losses = tf.keras.losses.binary_crossentropy(tf.expand_dims(true_cube, -1), tf.expand_dims(decoded_noisy_cube, -1))
-            noisy_cube_spread = tf.reduce_max(tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1), axis=-2)
+            cube_losses = tf.keras.losses.binary_crossentropy(tf.expand_dims(true_cube, -1), tf.constant(1 - 2e-10, dtype=self.compute_dtype) * tf.expand_dims(decoded_noisy_cube, -1) + tf.constant(1e-10, dtype=self.compute_dtype))
+            noisy_cube_spread = tf.reduce_max(tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2)
             scaled_cubes = (noisy_cube_spread + true_cube) * tf.constant(self.scale_relevant_cards, dtype=self.compute_dtype)
             true_cube_card_ratio = (tf.constant(1, dtype=self.compute_dtype) - true_cube - noisy_cube_spread) + scaled_cubes
             cube_losses = tf.reduce_mean(cube_losses * true_cube_card_ratio, axis=-1)
