@@ -23,7 +23,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                                                     help="Whether to just train the draftbots."),
         }
         if not result['just_draftbots']:
-            result |= {
+            result.update({
                 'cube_recommender': hyper_config.get_sublayer('CubeRecommender', sub_layer_type=CubeRecommender,
                                                               fixed={'num_cards': num_cards}, seed_mod=17,
                                                               help='The model for the draftbots'),
@@ -32,8 +32,8 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                                                                         help='The model to reconstruct the cube adjacency matrix'),
                 'deck_adj_mtx_reconstructor': hyper_config.get_sublayer('DeckAdjMtxReconstructor', sub_layer_type=AdjMtxReconstructor,
                                                                         fixed={'num_cards': num_cards}, seed_mod=23,
-                                                                        help='The model to reconstruct the deck adjacency matrix')
-            }
+                                                                        help='The model to reconstruct the deck adjacency matrix'),
+                })
         return result
 
     def build(self, input_shapes):
@@ -52,7 +52,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                 deck_adj_mtx_loss = self.deck_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
         if len(inputs[0]) > 9:
             loss = draftbot_loss
-            if not self.just_drafbots:
+            if not self.just_draftbots:
                 loss += recommender_loss + cube_adj_mtx_loss + deck_adj_mtx_loss
             self.add_loss(loss)
             tf.summary.scalar('loss', loss)

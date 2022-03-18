@@ -17,6 +17,7 @@ from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckA
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from mtgml.generators.combined_generator import CombinedGenerator
+from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.models.combined_model import CombinedModel
 from mtgml.tensorboard.callback import TensorBoardFix
@@ -33,6 +34,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--epochs', '-e', type=int, required=True, help="The maximum number of epochs to train for")
+    parser.add_argument('--time-limit', '-t', type=int, default=0, help="The maximum time to train for")
     parser.add_argument('--name', '-o', '-n', type=str, required=True, help="The name to save this model under.")
     parser.add_argument('--seed', type=int, default=37, help='The random seed to initialize things with to improve reproducibility.')
     parser.add_argument('--debug', action='store_true', help='Enable debug dumping of tensor stats.')
@@ -66,11 +68,11 @@ if __name__ == "__main__":
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
-    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 4 * pick_batch_size, args.seed)
+    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 2 * pick_batch_size, args.seed)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
                                                        cube_batch_size, args.seed, noise_mean, noise_std)
     recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
-                                                            4 * cube_batch_size, args.seed, 0, 0)
+                                                            cube_batch_size, args.seed, 0, 0)
     deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     deck_adj_mtx_generator.on_epoch_end()
     cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
@@ -196,15 +198,19 @@ if __name__ == "__main__":
     if latest is not None:
         logging.info('Loading Checkpoint.')
         model.load_weights(latest)
-    with open(config_path, 'w') as config_file:
-        yaml.dump(hyper_config.get_config(), config_file)
-    with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
-        yaml.dump(hyper_config.get_config(), config_file)
 
     logging.info('Starting training')
     with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
-        train_generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator, cube_adj_mtx_generator, deck_adj_mtx_generator)
-        validation_generator = CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator)
+        train_generator = \
+            SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator,
+                                             cube_adj_mtx_generator, deck_adj_mtx_generator),
+                           hyper_config.get_int('epochs_for_completion', min=1, default=32,
+                               help='The number of epochs it should take to go through the entire dataset.'))
+        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 16)
+        with open(config_path, 'w') as config_file:
+            yaml.dump(hyper_config.get_config(), config_file)
+        with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
+            yaml.dump(hyper_config.get_config(), config_file)
         callbacks = []
         if not args.debug:
             mcp_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -225,12 +231,15 @@ if __name__ == "__main__":
                 save_freq='epoch')
             callbacks.append(mcp_callback)
             callbacks.append(cp_callback)
+        if args.time_limit > 0:
+            to_callback = tfa.callbacks.TimeStopping(seconds=60 * args.time_limit, verbose=1)
+            callbacks.append(to_callback)
         nan_callback = tf.keras.callbacks.TerminateOnNaN()
         num_batches = len(train_generator)
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
         tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                                     update_freq=1024, embeddings_freq=None,
+                                     update_freq=128, embeddings_freq=None,
                                      profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
         tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)

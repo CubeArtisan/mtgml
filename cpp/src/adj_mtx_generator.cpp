@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -44,18 +45,12 @@ private:
     pcg32 main_rng;
 
     std::vector<std::uint16_t> card_indices;
+    bool joined{false};
+    std::thread initialization_thread;
+    static constexpr std::size_t load_thread_count = 16;
 
-public:
-    AdjMtxGenerator(std::string filename, std::size_t num_cards, std::size_t batch_size, std::size_t seed)
-        : num_cards{num_cards}, batch_size{batch_size}, length{num_cards / batch_size},
-          initial_seed{seed}, adj_mtx(0.0, num_cards * num_cards), main_rng(initial_seed, 0),
-          card_indices(num_cards)
-    {
-        py::gil_scoped_release release;
-        mio::basic_mmap_source<std::byte> mmap(filename);
-        std::size_t num_objects = mmap.size() / sizeof(T);
-        auto file_start = reinterpret_cast<const T*>(mmap.data());
-        for (std::size_t i=0; i < num_objects; i++) {
+    void load_rows(std::size_t num_objects, std::size_t offset, const T* file_start) {
+        for (std::size_t i=offset; i < num_objects; i += load_thread_count) {
             const auto& row = get_cards(file_start[i]);
             for (std::size_t j=0; j < row.size(); j++) {
                 std::uint16_t j_val = row[j];
@@ -68,25 +63,55 @@ public:
                 }
             }
         }
-        for (std::size_t i=0; i < num_cards; i++) {
+    }
+
+    void normalize_rows(std::size_t offset) {
+        for (std::size_t i=offset; i < num_cards; i += load_thread_count) {
             const auto slice = adj_mtx[std::slice(i * num_cards, num_cards, 1)];
             // We need to materialize the valarray here to have it read nicely since you can't sum a slice.
             const std::valarray<float> row{slice};
             const float row_sum = row.sum();
             if (row_sum == 0) adj_mtx[i * (num_cards + 1)] = 1.0;
-            else slice /= std::valarray(row_sum, num_cards);
+            else slice /= std::valarray<float>(row_sum, num_cards);
         }
-        std::iota(card_indices.begin(), card_indices.end(), 0);
     }
+
+    void initialize(std::string filename) {
+        mio::basic_mmap_source<std::byte> mmap(filename);
+        std::size_t num_objects = mmap.size() / sizeof(T);
+        auto file_start = reinterpret_cast<const T*>(mmap.data());
+        std::array<std::thread, load_thread_count> loading_array;
+        std::cout << "Created loading array." << std::endl;
+        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i] = std::thread([i, num_objects, file_start, this](){ load_rows(num_objects, i, file_start); });
+        std::cout << "Started first set of threads." << std::endl;
+        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i].join();
+        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i] = std::thread([i, this](){ normalize_rows(i); });
+        std::cout << "Started second set of threads." << std::endl;
+        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i].join();
+        std::iota(card_indices.begin(), card_indices.end(), 0);
+        joined = true;
+    }
+
+public:
+    AdjMtxGenerator(std::string filename, std::size_t num_cards, std::size_t batch_size, std::size_t seed)
+        : num_cards{num_cards}, batch_size{batch_size}, length{num_cards / batch_size},
+          initial_seed{seed}, adj_mtx(0.0, num_cards * num_cards), main_rng(initial_seed, 0),
+          card_indices(num_cards), initialization_thread([this, filename]() { this->initialize(filename); })
+    { }
 
     void queue_new_epoch() & {
         std::ranges::shuffle(card_indices, main_rng);
     }
 
     Result next() & {
+        using namespace std::chrono_literals;
         std::vector<AdjMtxData>* batched;
         {
             py::gil_scoped_release release;
+            while (!joined) {
+                std::cout << "Waiting on the adjacency matrix." << std::endl;
+                std::this_thread::sleep_for(1'000ms);
+            }
             batched = new std::vector<AdjMtxData>(batch_size);
             for (std::size_t i=0; i < batched->size(); i++) {
                 std::uint16_t row = card_indices[pos++ % num_cards];

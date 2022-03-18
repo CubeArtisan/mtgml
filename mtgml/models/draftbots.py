@@ -145,6 +145,20 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                            tf.constant(1 - self.log_loss_weight - self.rating_stddev_weight, dtype=loss_dtype, name='triplet_loss_weight'),
                                            name='triplet_loss_weighted')
             self.add_metric(triplet_losses, 'triplet_loss')
+            max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
+            max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
+            # max_scores = tf.reduce_max(scores - tf.constant(LARGE_INT), axis=-1)
+            min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
+            min_scores = min_scores + tf.stop_gradient(tf.reduce_min(scores + (1 - 2 * mask) * LARGE_INT, axis=-1) - min_scores)
+            tf.summary.histogram('max_diff_scores', max_scores - min_scores)
+            tf.summary.histogram('min_scores', min_scores)
+            tf.summary.histogram('max_scores', max_scores)
+            low_score_loss = tf.reduce_mean(tf.maximum(min_scores - max_scores, -0.1)) + 0.1
+            high_score_loss = tf.reduce_mean(tf.maximum(max_scores - min_scores, 10)) - 10
+            self.add_metric(low_score_loss, 'low_score_loss')
+            self.add_metric(high_score_loss, 'high_score_loss')
+            # score_loss = low_score_loss + high_score_loss
+            score_loss = 0
             card_rating_loss = tf.constant(0, dtype=loss_dtype)
             if self.rate_card:
                 card_ratings = self.rate_card(card_embeddings[1:], training=training)
@@ -175,5 +189,5 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             tf.summary.histogram('prob_chosen', prob_chosen)
             tf.summary.histogram('log_losses', log_losses)
             tf.summary.histogram('triplet_losses', clipped_diffs)
-            return tf.cast(triplet_loss_weighted + log_loss_weighted + card_rating_loss, dtype=self.compute_dtype)
+            return tf.cast(triplet_loss_weighted + log_loss_weighted + card_rating_loss + score_loss, dtype=self.compute_dtype)
         return sublayer_scores, sublayer_weights

@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
-from mtgml.layers.set_embedding import AttentiveSetEmbedding
+from mtgml.layers.set_embedding import AdditiveSetEmbedding
 
 """
     - adj_mtx is the adjacency matrix created by create_mtx.py
@@ -16,7 +16,7 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                                          help='The number of cards that must be embedded. Should be 1 + maximum index in the input.')
         return {
             "num_cards": num_cards,
-            'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=AttentiveSetEmbedding,
+            'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=AdditiveSetEmbedding,
                                                     help='Combine the card embeddings to get an embedding for the cube.'),
             'recover_adj_mtx': hyper_config.get_sublayer('RecoverAdjMtx', sub_layer_type=MLP,
                                                          fixed={'Final': {'activation': 'softmax', 'dims': num_cards - 1}},
