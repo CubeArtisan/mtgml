@@ -166,7 +166,6 @@ class InducedSetAttentionBlock(ConfigurableLayer):
         shape = tf.concat([tf.shape(inputs)[:-2], tf.shape(self.inducing_vectors)[-2:]], axis=0)
         h = self.attention_h(self.inducing_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs, training=training)
         result = self.attention_final(inputs, h, training=training)
-        print(result.shape)
         return result
         # h = self.mab_h((self.inducing_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs), training=training)
         # return self.mab_final((inputs, h), training=training)

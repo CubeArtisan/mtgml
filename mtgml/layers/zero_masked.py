@@ -16,5 +16,4 @@ class ZeroMasked(ConfigurableLayer):
             float_mask = tf.cast(mask, self.compute_dtype, name='float_mask')
             return float_mask * inputs
         else:
-            print('No mask')
             return inputs

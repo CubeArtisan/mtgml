@@ -68,7 +68,7 @@ if __name__ == "__main__":
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
-    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 2 * pick_batch_size, args.seed)
+    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 4 * pick_batch_size, args.seed)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
                                                        cube_batch_size, args.seed, noise_mean, noise_std)
     recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
@@ -206,7 +206,7 @@ if __name__ == "__main__":
                                              cube_adj_mtx_generator, deck_adj_mtx_generator),
                            hyper_config.get_int('epochs_for_completion', min=1, default=32,
                                help='The number of epochs it should take to go through the entire dataset.'))
-        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 16)
+        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
         with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
@@ -239,7 +239,7 @@ if __name__ == "__main__":
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
         tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                                     update_freq=128, embeddings_freq=None,
+                                     update_freq=256, embeddings_freq=None,
                                      profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
         tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)

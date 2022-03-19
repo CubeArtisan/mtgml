@@ -7,7 +7,7 @@ from mtgml.constants import LARGE_INT, MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.mlp import MLP
-from mtgml.layers.set_embedding import AttentiveSetEmbedding
+from mtgml.layers.set_embedding import AdditiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
 
 POOL_ORACLE_METADATA = {
@@ -51,7 +51,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                        seed_mod=31, help='The layer that rates based on the other cards that have been picked.')
                              if pool_context_ratings else None,
             'seen_pack_dims': seen_pack_dims,
-            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AttentiveSetEmbedding,
+            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AdditiveSetEmbedding,
                                                     fixed={'Decoder': {'Final': {'dims': seen_pack_dims, 'activation': 'linear'}}},
                                                     seed_mod=37, help='The layer that embeds the packs that have been seen so far.')
                           if seen_context_ratings else None,
@@ -138,7 +138,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             score_diffs = tf.subtract(tf.add(tf.constant(self.margin, dtype=scores.dtype),
                                              scores[:, 1:]), scores[:, :1],
                                       name='score_diffs') * mask[:, 1:]
-            clipped_diffs = tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name='clipped_score_diffs') * sample_weights[:, 1:]
+            clipped_diffs = tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name='clipped_score_diffs') * sample_weights[:, 1:] - (sample_weights[:, 1:] - 1) * self.margin
             triplet_losses = tf.math.reduce_sum(clipped_diffs) / num_in_packs
             tf.summary.scalar('triplet_loss', tf.reduce_mean(triplet_losses))
             triplet_loss_weighted = tf.math.multiply(triplet_losses,
