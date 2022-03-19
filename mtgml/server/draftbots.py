@@ -1,5 +1,3 @@
-import logging
-
 import numpy as np
 import numpy.ma as ma
 
@@ -60,7 +58,9 @@ def get_draft_scores(drafter_state, model, card_to_int):
                 in zip(model.draftbots.sublayer_metadata, oracle_weights, card_scores)]
                for card_scores in oracle_scores]
     returned_scores = [0.0 for _ in drafter_state["cardsInPack"]]
-    returned_oracles = [[x | {'weight': 0, 'score': 0} for x in model.draftbots.sublayer_metadata] for _ in drafter_state['cardsInPack']]
+    returned_oracles = [[metadata | {'weight': float(weight), 'score': 0}
+                         for metadata, weight in zip(model.draftbots.sublayer_metadata, oracle_weights)]
+                        for _ in drafter_state['cardsInPack']]
     for i, score, oracle in zip(original_cards_idx, scores, oracles):
         returned_scores[i] = float(score)
         returned_oracles[i] = oracle
