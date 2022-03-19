@@ -10,36 +10,16 @@ CubeAdjMtxReconstructor: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.2
+              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: &id001 !!python/tuple
-              - elu
-              - selu
-              - relu
-              - tanh
-              - sigmoid
-              - linear
-              - swish
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 32
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 1
+          value: 0
 CubeRecommender: !hcv
   help: The model for the draftbots
   value: !hc
@@ -53,12 +33,12 @@ CubeRecommender: !hcv
               help: The last dense layer in the MLP.
               value: !hc
                 activation: !hcv
-                  choices: *id001
+                  choices: []
                   help: The activation function on the output of the layer.
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 32
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -66,12 +46,12 @@ CubeRecommender: !hcv
               help: The 1st hidden layer.
               value: !hc
                 activation: !hcv
-                  choices: *id001
+                  choices: []
                   help: The activation function on the output of the layer.
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 32
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -86,17 +66,17 @@ CubeRecommender: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.2
+                  value: 0.5
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
                 activation: !hcv
-                  choices: *id001
+                  choices: []
                   help: The activation function on the output of the layer.
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 32
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -104,12 +84,12 @@ CubeRecommender: !hcv
               help: The 1st hidden layer.
               value: !hc
                 activation: !hcv
-                  choices: *id001
+                  choices: []
                   help: The activation function on the output of the layer.
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 32
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -124,46 +104,14 @@ CubeRecommender: !hcv
               value: null
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.2
+              value: 0
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
-          value: 0.1
+          value: 0.5
         normalize_sum: !hcv
           help: Average the sum of embeddings by the number of non-masked items.
           value: false
-    RecoverAdjMtx: !hcv
-      help: The MLP layer that tries to reconstruct the adjacency matrix row for the
-        single card cube
-      value: !hc
-        Dropout: !hcv
-          help: The dropout applied after each hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.2
-        Final: !hcv
-          help: The last dense layer in the MLP.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 32
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        num_hidden: !hcv
-          help: The number of hidden layers in the MLP.
-          value: 1
     RecoverCube: !hcv
       help: The MLP that tries to reconstruct the one hot encoding of the cube
       value: !hc
@@ -172,80 +120,7 @@ CubeRecommender: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.2
-        Final: !hcv
-          help: The last dense layer in the MLP.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 32
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        num_hidden: !hcv
-          help: The number of hidden layers in the MLP.
-          value: 1
-    scale_relevant_cards: !hcv
-      help: The amount to scale the loss on the cards in the noisy cube and the true
-        cube.
-      value: 5
-DeckAdjMtxReconstructor: !hcv
-  help: The model to reconstruct the deck adjacency matrix
-  value: !hc
-    RecoverAdjMtx: !hcv
-      help: The MLP layer that tries to reconstruct the adjacency matrix row for the
-        single card cube
-      value: !hc
-        Dropout: !hcv
-          help: The dropout applied after each hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.2
-        Final: !hcv
-          help: The last dense layer in the MLP.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 32
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        num_hidden: !hcv
-          help: The number of hidden layers in the MLP.
-          value: 1
-DraftBots: !hcv
-  help: The model for the draftbots
-  value: !hc
-    CardRating: !hcv
-      help: Translates embeddings into linear ratings.
-      value: !hc
-        Dropout: !hcv
-          help: The dropout applied after each hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.25
+              value: 0.5
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -261,88 +136,63 @@ DraftBots: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 8
+              value: 256
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
           value: 1
+    scale_relevant_cards: !hcv
+      help: The amount to scale the loss on the cards in the noisy cube and the true
+        cube.
+      value: 1
+DeckAdjMtxReconstructor: !hcv
+  help: The model to reconstruct the deck adjacency matrix
+  value: !hc
+    RecoverAdjMtx: !hcv
+      help: The MLP layer that tries to reconstruct the adjacency matrix row for the
+        single card cube
+      value: !hc
+        Dropout: !hcv
+          help: The dropout applied after each hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Final: !hcv
+          help: The last dense layer in the MLP.
+          value: !hc
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        num_hidden: !hcv
+          help: The number of hidden layers in the MLP.
+          value: 0
+DraftBots: !hcv
+  help: The model for the draftbots
+  value: !hc
+    CardRating: !hcv
+      help: Translates embeddings into linear ratings.
+      value: !hc
+        Dropout: !hcv
+          help: The dropout applied after each hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Final: !hcv
+          help: The last dense layer in the MLP.
+          value: !hc
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        num_hidden: !hcv
+          help: The number of hidden layers in the MLP.
+          value: 0
     EmbedPack: !hcv
       help: The layer that embeds the packs that have been seen so far.
       value: !hc
-        Attention: !hcv
-          help: The mapping from the item embeddings to the embeddings to add.
-          value: !hc
-            dropout: !hcv
-              help: The percent of values to get dropped out
-              value: 0.5
-            key_dims: !hcv
-              help: Size of the attention head for query and key.
-              value: 4
-            num_heads: !hcv
-              help: The number of separate heads of attention to use.
-              value: 4
-            use_bias: !hcv
-              help: Use bias in the dense layers
-              value: false
-            value_dims: !hcv
-              help: Size of the attention head for value.
-              value: 8
-        AttentionStack: !hcv
-          help: The layers to get interactions between cards.
-          value: !hc
-            Final: !hcv
-              help: The last dense layer in the MLP.
-              value: !hc
-                AttentionForH: !hcv
-                  help: The attention block that uses the inducing vectors
-                  value: !hc
-                    dropout: !hcv
-                      help: The percent of values to get dropped out
-                      value: 0.25
-                    key_dims: !hcv
-                      help: Size of the attention head for query and key.
-                      value: 8
-                    num_heads: !hcv
-                      help: The number of separate heads of attention to use.
-                      value: 8
-                    output_dims: !hcv
-                      help: The number of output dimensions from this layer.
-                      value: 32
-                    use_bias: !hcv
-                      help: Use bias in the dense layers
-                      value: true
-                    value_dims: !hcv
-                      help: Size of the attention head for value.
-                      value: 4
-                FinalAttention: !hcv
-                  help: The attention block that recombines the input.
-                  value: !hc
-                    dropout: !hcv
-                      help: The percent of values to get dropped out
-                      value: 0.25
-                    key_dims: !hcv
-                      help: Size of the attention head for query and key.
-                      value: 8
-                    num_heads: !hcv
-                      help: The number of separate heads of attention to use.
-                      value: 8
-                    output_dims: !hcv
-                      help: The number of output dimensions from this layer.
-                      value: 32
-                    use_bias: !hcv
-                      help: Use bias in the dense layers
-                      value: true
-                    value_dims: !hcv
-                      help: Size of the attention head for value.
-                      value: 4
-                num_inducing_vectors: !hcv
-                  help: The number of points to use to simulate attention.
-                  value: 8
-            num_hidden: !hcv
-              help: The number of hidden layers in the MLP.
-              value: 0
         Decoder: !hcv
           help: The mapping from the added item embeddings to the embeddings to return.
           value: !hc
@@ -356,7 +206,14 @@ DraftBots: !hcv
               help: The 1st hidden layer.
               value: !hc
                 activation: !hcv
-                  choices: []
+                  choices: &id001 !!python/tuple
+                  - elu
+                  - selu
+                  - relu
+                  - tanh
+                  - sigmoid
+                  - linear
+                  - swish
                   help: The activation function on the output of the layer.
                   value: selu
                 dims: !hcv
@@ -368,46 +225,57 @@ DraftBots: !hcv
             num_hidden: !hcv
               help: The number of hidden layers in the MLP.
               value: 1
+        Encoder: !hcv
+          help: The mapping from the item embeddings to the embeddings to add.
+          value: !hc
+            Dropout: !hcv
+              help: The dropout applied after each hidden layer.
+              value: !hc
+                rate: !hcv
+                  help: The percent of values that get replaced with zero.
+                  value: 0.5
+            Final: !hcv
+              help: The last dense layer in the MLP.
+              value: !hc
+                activation: !hcv
+                  choices: *id001
+                  help: The activation function on the output of the layer.
+                  value: selu
+                dims: !hcv
+                  help: The number of dimensions in the output of this layer.
+                  value: 128
+                use_bias: !hcv
+                  help: Whether to use bias on the output.
+                  value: true
+            Hidden_0: !hcv
+              help: The 1st hidden layer.
+              value: !hc
+                activation: !hcv
+                  choices: *id001
+                  help: The activation function on the output of the layer.
+                  value: selu
+                dims: !hcv
+                  help: The number of dimensions in the output of this layer.
+                  value: 256
+                use_bias: !hcv
+                  help: Whether to use bias on the output.
+                  value: true
+            num_hidden: !hcv
+              help: The number of hidden layers in the MLP.
+              value: 1
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
+            noise_shape: !hcv
+              help: The shape of the generated noise which will be broadcast as needed.
+              value: null
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.67
-        Pooling: !hcv
-          help: The layer to collapse down to one embedding.
-          value: !hc
-            Attention: !hcv
-              help: The attention layer that pools the results.
-              value: !hc
-                dropout: !hcv
-                  help: The percent of values to get dropped out
-                  value: 0.25
-                key_dims: !hcv
-                  help: Size of the attention head for query and key.
-                  value: 8
-                num_heads: !hcv
-                  help: The number of separate heads of attention to use.
-                  value: 8
-                output_dims: !hcv
-                  help: The number of output dimensions from this layer.
-                  value: 32
-                use_bias: !hcv
-                  help: Use bias in the dense layers
-                  value: true
-                value_dims: !hcv
-                  help: Size of the attention head for value.
-                  value: 4
-        atten_output_dims: !hcv
-          help: The number of dimensions in the output of the attention layer.
-          value: 32
+              value: 0.5
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
           value: 0.5
-        log_scores: !hcv
-          help: Whether to log an image of the attention scores.
-          value: false
         normalize_sum: !hcv
           help: Average the sum of embeddings by the number of non-masked items.
           value: false
@@ -417,24 +285,6 @@ DraftBots: !hcv
         EmbedContext: !hcv
           help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
           value: !hc
-            Attention: !hcv
-              help: The mapping from the item embeddings to the embeddings to add.
-              value: !hc
-                dropout: !hcv
-                  help: The percent of values to get dropped out
-                  value: 0.25
-                key_dims: !hcv
-                  help: Size of the attention head for query and key.
-                  value: 4
-                num_heads: !hcv
-                  help: The number of separate heads of attention to use.
-                  value: 8
-                use_bias: !hcv
-                  help: Use bias in the dense layers
-                  value: false
-                value_dims: !hcv
-                  help: Size of the attention head for value.
-                  value: 8
             AttentionStack: !hcv
               help: The layers to get interactions between cards.
               value: !hc
@@ -446,43 +296,43 @@ DraftBots: !hcv
                       value: !hc
                         dropout: !hcv
                           help: The percent of values to get dropped out
-                          value: 0.25
+                          value: 0.5
                         key_dims: !hcv
                           help: Size of the attention head for query and key.
                           value: 8
                         num_heads: !hcv
                           help: The number of separate heads of attention to use.
-                          value: 8
+                          value: 16
                         output_dims: !hcv
                           help: The number of output dimensions from this layer.
-                          value: 32
+                          value: 64
                         use_bias: !hcv
                           help: Use bias in the dense layers
                           value: true
                         value_dims: !hcv
                           help: Size of the attention head for value.
-                          value: 4
+                          value: 8
                     FinalAttention: !hcv
                       help: The attention block that recombines the input.
                       value: !hc
                         dropout: !hcv
                           help: The percent of values to get dropped out
-                          value: 0.25
+                          value: 0.5
                         key_dims: !hcv
                           help: Size of the attention head for query and key.
                           value: 8
                         num_heads: !hcv
                           help: The number of separate heads of attention to use.
-                          value: 8
+                          value: 16
                         output_dims: !hcv
                           help: The number of output dimensions from this layer.
-                          value: 32
+                          value: 64
                         use_bias: !hcv
                           help: Use bias in the dense layers
                           value: true
                         value_dims: !hcv
                           help: Size of the attention head for value.
-                          value: 4
+                          value: 8
                     num_inducing_vectors: !hcv
                       help: The number of points to use to simulate attention.
                       value: 8
@@ -503,12 +353,12 @@ DraftBots: !hcv
                   help: The 1st hidden layer.
                   value: !hc
                     activation: !hcv
-                      choices: *id001
+                      choices: []
                       help: The activation function on the output of the layer.
                       value: selu
                     dims: !hcv
                       help: The number of dimensions in the output of this layer.
-                      value: 32
+                      value: 128
                     use_bias: !hcv
                       help: Whether to use bias on the output.
                       value: true
@@ -520,7 +370,7 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.2
+                  value: 0.5
             Pooling: !hcv
               help: The layer to collapse down to one embedding.
               value: !hc
@@ -529,29 +379,29 @@ DraftBots: !hcv
                   value: !hc
                     dropout: !hcv
                       help: The percent of values to get dropped out
-                      value: 0.25
+                      value: 0.5
                     key_dims: !hcv
                       help: Size of the attention head for query and key.
                       value: 8
                     num_heads: !hcv
                       help: The number of separate heads of attention to use.
-                      value: 8
+                      value: 16
                     output_dims: !hcv
                       help: The number of output dimensions from this layer.
-                      value: 32
+                      value: 64
                     use_bias: !hcv
                       help: Use bias in the dense layers
                       value: true
                     value_dims: !hcv
                       help: Size of the attention head for value.
-                      value: 4
+                      value: 8
             atten_output_dims: !hcv
               help: The number of dimensions in the output of the attention layer.
               value: 64
             decoding_dropout_rate: !hcv
               help: The percent of values to dropout from the result of dense layers
                 in the decoding step.
-              value: 0.25
+              value: 0.5
             log_scores: !hcv
               help: Whether to log an image of the attention scores.
               value: false
@@ -567,7 +417,7 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.25
+                  value: 0
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
@@ -583,7 +433,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 64
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -614,24 +464,6 @@ DraftBots: !hcv
         EmbedContext: !hcv
           help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
           value: !hc
-            Attention: !hcv
-              help: The mapping from the item embeddings to the embeddings to add.
-              value: !hc
-                dropout: !hcv
-                  help: The percent of values to get dropped out
-                  value: 0.25
-                key_dims: !hcv
-                  help: Size of the attention head for query and key.
-                  value: 4
-                num_heads: !hcv
-                  help: The number of separate heads of attention to use.
-                  value: 8
-                use_bias: !hcv
-                  help: Use bias in the dense layers
-                  value: false
-                value_dims: !hcv
-                  help: Size of the attention head for value.
-                  value: 4
             AttentionStack: !hcv
               help: The layers to get interactions between cards.
               value: !hc
@@ -643,7 +475,7 @@ DraftBots: !hcv
                       value: !hc
                         dropout: !hcv
                           help: The percent of values to get dropped out
-                          value: 0.25
+                          value: 0.5
                         key_dims: !hcv
                           help: Size of the attention head for query and key.
                           value: 8
@@ -652,19 +484,19 @@ DraftBots: !hcv
                           value: 8
                         output_dims: !hcv
                           help: The number of output dimensions from this layer.
-                          value: 32
+                          value: 64
                         use_bias: !hcv
                           help: Use bias in the dense layers
                           value: true
                         value_dims: !hcv
                           help: Size of the attention head for value.
-                          value: 4
+                          value: 8
                     FinalAttention: !hcv
                       help: The attention block that recombines the input.
                       value: !hc
                         dropout: !hcv
                           help: The percent of values to get dropped out
-                          value: 0.25
+                          value: 0.5
                         key_dims: !hcv
                           help: Size of the attention head for query and key.
                           value: 8
@@ -673,16 +505,16 @@ DraftBots: !hcv
                           value: 8
                         output_dims: !hcv
                           help: The number of output dimensions from this layer.
-                          value: 32
+                          value: 64
                         use_bias: !hcv
                           help: Use bias in the dense layers
                           value: true
                         value_dims: !hcv
                           help: Size of the attention head for value.
-                          value: 4
+                          value: 8
                     num_inducing_vectors: !hcv
                       help: The number of points to use to simulate attention.
-                      value: 8
+                      value: 4
                 num_hidden: !hcv
                   help: The number of hidden layers in the MLP.
                   value: 0
@@ -726,7 +558,7 @@ DraftBots: !hcv
                   value: !hc
                     dropout: !hcv
                       help: The percent of values to get dropped out
-                      value: 0.25
+                      value: 0.5
                     key_dims: !hcv
                       help: Size of the attention head for query and key.
                       value: 8
@@ -741,14 +573,14 @@ DraftBots: !hcv
                       value: true
                     value_dims: !hcv
                       help: Size of the attention head for value.
-                      value: 4
+                      value: 8
             atten_output_dims: !hcv
               help: The number of dimensions in the output of the attention layer.
               value: 32
             decoding_dropout_rate: !hcv
               help: The percent of values to dropout from the result of dense layers
                 in the decoding step.
-              value: 0.7
+              value: 0.5
             log_scores: !hcv
               help: Whether to log an image of the attention scores.
               value: false
@@ -764,7 +596,7 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.25
+                  value: 0
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
@@ -780,7 +612,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 32
+                  value: 64
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -796,7 +628,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 64
+          value: 32
         set_embed_type: !hcv
           choices: !!python/tuple
           - additive
@@ -827,28 +659,28 @@ DraftBots: !hcv
       value: true
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
-      value: 32
+      value: 64
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 64
+      value: 128
 adam_learning_rate: !hcv
   help: The learning rate to use for adam
   value: 0.001
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 1
+  value: 16
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 8
+  value: 32
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
-  value: 0.7
+  value: 0.75
 cube_noise_std: !hcv
   help: The median of the noise distribution for cubes.
-  value: 0.1
+  value: 0.15
 dtype: !hcv
   choices: !!python/tuple
   - 16
@@ -858,7 +690,7 @@ dtype: !hcv
   value: 32
 epochs_for_completion: !hcv
   help: The number of epochs it should take to go through the entire dataset.
-  value: 32
+  value: 1
 just_draftbots: !hcv
   help: ''
   value: false
@@ -876,7 +708,7 @@ optimizer: !hcv
   value: adam
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 64
+  value: 512
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: false
+  value: true
