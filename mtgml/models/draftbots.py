@@ -165,8 +165,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 hundred = tf.constant(100, dtype=loss_dtype)
                 ten = tf.constant(10, dtype=loss_dtype)
                 card_rating_loss = \
-                    (tf.math.abs(hundred - tf.cast(tf.math.reduce_variance(card_ratings), dtype=loss_dtype)) / ten
-                     + tf.math.abs(tf.cast(tf.math.reduce_mean(card_ratings), dtype=loss_dtype) - hundred))\
+                    (tf.math.abs(hundred - tf.cast(tf.math.reduce_variance(card_ratings), dtype=loss_dtype))
+                     + tf.math.abs(tf.cast(tf.math.reduce_mean(card_ratings), dtype=loss_dtype) - hundred * ten))\
                     * tf.constant(self.rating_stddev_weight, dtype=loss_dtype, name='rating_stddev_weight')
                 tf.summary.scalar('card_rating_loss', card_rating_loss)
             chosen_idx = tf.zeros_like(y_idx)

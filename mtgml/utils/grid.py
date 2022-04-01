@@ -10,3 +10,12 @@ def interpolate(pickNum, numPicks, packNum, numPacks):
     coords = ((floorpackIdx, floorpickIdx), (floorpackIdx, ceilpickIdx), (ceilpackIdx, floorpickIdx), (ceilpackIdx, ceilpickIdx))
     weights = ((1 - modpackIdx) * (1 - modpickIdx), (1 - modpackIdx) * modpickIdx, modpackIdx * (1 - modpickIdx), modpackIdx * modpickIdx)
     return coords, weights
+
+
+def pad(arr, desired_length, value=0):
+    if isinstance(arr, tuple):
+        if len(arr) < desired_length:
+            arr = list(arr)
+        else:
+            return arr[:desired_length]
+    return arr + [value for _ in range(desired_length - len(arr))]

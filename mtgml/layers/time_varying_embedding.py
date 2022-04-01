@@ -20,6 +20,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
         self.embeddings = self.add_weight('embeddings', shape=(*self.time_shape, self.dims),
                                           initializer=tf.keras.initializers.GlorotNormal(seed=self.seed),
                                           trainable=True)
+
     def call(self, inputs, training=False):
         if isinstance(inputs, (list, tuple)):
             coords, coord_weights = inputs

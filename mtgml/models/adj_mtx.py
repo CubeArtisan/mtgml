@@ -1,3 +1,4 @@
+from mtgml.layers.wrapped import WDense
 import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
@@ -16,8 +17,10 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         return {
             "num_cards": num_cards,
             'recover_adj_mtx': hyper_config.get_sublayer('RecoverAdjMtx', sub_layer_type=MLP,
-                                                         fixed={'Final': {'activation': 'softmax', 'dims': num_cards - 1}},
                                                          help='The MLP layer that tries to reconstruct the adjacency matrix row for the single card cube'),
+            'final_recovery': hyper_config.get_sublayer('FinalRecoverAdjMtx', sub_layer_type=WDense,
+                                                        fixed={'activation': 'softmax', 'dims': num_cards - 1},
+                                                        help='The last layer for reconstructing the adj_mtx.'),
             'adj_mtx_metrics': {
                 'adj_mtx_abs_error': tf.keras.metrics.MeanAbsoluteError(name='adj_mtx_abs_error'),
             },
@@ -44,13 +47,14 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         adj_row = tf.cast(inputs[1], dtype=self.compute_dtype, name='adj_row')
         card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name='card_embeddings')
         embed_single_card = tf.gather(card_embeddings, single_card)
-        decoded_single_card = self.recover_adj_mtx(embed_single_card, training=training)
+        decoded_single_card_pre = self.recover_adj_mtx(embed_single_card, training=training)
+        decoded_single_card = self.final_recovery(decoded_single_card_pre, training=training)
         adj_mtx_losses = tf.keras.losses.kl_divergence(adj_row, decoded_single_card)
-        loss = tf.math.reduce_mean(adj_mtx_losses, axis=-1)
+        loss = tf.nn.compute_average_loss(adj_mtx_losses)
         self.add_metric(adj_mtx_losses, f'{self.name}_loss')
         tf.summary.scalar(f'{self.name}_loss', tf.reduce_mean(adj_mtx_losses))
-        for name, metric in self.adj_mtx_metrics.items():
-            metric.update_state(adj_row, decoded_single_card)
-            tf.summary.scalar(name, metric.result())
+        self.add_loss(loss)
+        # for name, metric in self.adj_mtx_metrics.items():
+        #     metric.update_state(adj_row, decoded_single_card)
+        #     tf.summary.scalar(name, metric.result())
         return loss
-

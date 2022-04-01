@@ -11,8 +11,8 @@ import zstandard as zstd
 from jsonslicer import JsonSlicer
 from tqdm.auto import tqdm
 
-from mtgml.constants import MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
-from mtgml.utils.grid import interpolate
+from mtgml.constants import MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS, RISKINESS_VALUE
+from mtgml.utils.grid import interpolate, pad
 
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
@@ -31,15 +31,6 @@ default_basic_ids = [
     "a3fb7228-e76b-4e96-a40e-20b5fed75685",
 ]
 default_basics = [card_to_int[c] for c in default_basic_ids]
-
-
-def pad(arr, desired_length, value=0):
-    if isinstance(arr, tuple):
-        if len(arr) < desired_length:
-            arr = list(arr)
-        else:
-            return arr[:desired_length]
-    return arr + [value for _ in range(desired_length - len(arr))]
 
 
 def picks_from_draft(draft):
@@ -143,7 +134,6 @@ def calculate_devotion(cost, cmc):
 DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc']) for c in int_to_card])
 COLOR_IDENTITY = [np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in int_to_card]
 
-
 def calculate_riskiness(pick):
     # if pick[6][0][0] == 0 and pick[6][0][1] < 5: return np.ones((MAX_CARDS_IN_PACK,))
     total_devotions = DEVOTION[pick[2]].sum(axis=0)
@@ -152,7 +142,7 @@ def calculate_riskiness(pick):
     usable_colors_mask[list(dev_indices)] = 1
     usable_colors_mask += COLOR_IDENTITY[pick[0][0]]
     if usable_colors_mask.sum() == 0: return np.ones((MAX_CARDS_IN_PACK,), dtype=np.float32)
-    return np.array([10.0 if (usable_colors_mask * COLOR_IDENTITY[i]).sum() == 0 and COLOR_IDENTITY[i].sum() > 0 else 1.0 for i in pad(pick[0], MAX_CARDS_IN_PACK)], dtype=np.float32)
+    return np.array([RISKINESS_VALUE if (usable_colors_mask * COLOR_IDENTITY[i]).sum() == 0 and COLOR_IDENTITY[i].sum() > 0 else 1.0 for i in pad(pick[0], MAX_CARDS_IN_PACK)], dtype=np.float32)
 
 PREFIX = struct.Struct(f'{MAX_CARDS_IN_PACK}H{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f8B4f16fB3x')
 

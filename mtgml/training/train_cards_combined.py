@@ -13,14 +13,15 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 
+from mtgml.constants import MAX_TOKENS
 from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator
-from mtgml_native.generators.draftbot_generator import DraftbotGenerator
-from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.models.combined_model import CombinedModel
+from mtgml.models.card_embeddings import CombinedCardModel
+from mtgml.preprocessing.tokenize_card import tokens, tokenizeCard
 from mtgml.tensorboard.callback import TensorBoardFix
+from mtgml.utils.grid import pad
 from mtgml.utils.tqdm_callback import TQDMProgressBar
 
 BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
@@ -47,43 +48,32 @@ if __name__ == "__main__":
     logging.info('Loading card data for seeding weights.')
     with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
-
+    tokenized = [pad(tokenizeCard(c), MAX_TOKENS) for c in cards_json]
+    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    Path(log_dir).mkdir(exist_ok=True, parents=True)
+    with open(Path(log_dir) / 'token_metadata.tsv', 'w') as fp:
+        fp.write('Index\tToken\n')
+        for i, token in enumerate(tokens):
+            fp.write(f'{i}\t{token}\n')
     config_path = Path('ml_files')/args.name/'hyper_config.yaml'
     data = {}
     if config_path.exists():
         with open(config_path, 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
     print('Initializing Generators')
-    hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
+    hyper_config = HyperConfig(layer_type=CombinedCardModel, data=data, fixed={
         'num_cards': len(cards_json) + 1,
+        'num_tokens': len(tokens),
+        'card_token_map': tokenized,
     })
-    cube_batch_size = hyper_config.get_int('cube_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
-                                           help='The number of cube samples to evaluate at a time')
-    pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
-                                           help='The number of picks to evaluate at a time')
     adj_mtx_batch_size = hyper_config.get_int('adj_mtx_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
                                               help='The number of rows of the adjacency matrices to evaluate at a time.')
-    noise_mean = hyper_config.get_float('cube_noise_mean', min=0, max=1, default=0.7,
-                                        help='The median of the noise distribution for cubes.')
-    noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
-                                       help='The median of the noise distribution for cubes.')
-    draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
-    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', pick_batch_size, args.seed)
-    recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
-                                                       cube_batch_size, args.seed, noise_mean, noise_std)
-    recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
-                                                            cube_batch_size, args.seed, 0, 0)
     deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     deck_adj_mtx_generator.on_epoch_end()
     cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
     cube_adj_mtx_generator.on_epoch_end()
-    print(f'There are {len(draftbot_train_generator)} training pick batches')
-    print(f'There are {len(draftbot_validation_generator)} validation pick batches')
-    print(f'There are {len(recommender_train_generator)} training recommender batches')
-    print(f'There are {len(recommender_validation_generator)} validation recommender batches')
     print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
-    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
         log_dir = "logs/debug/"
         logging.info('Enabling Debugging')
@@ -97,9 +87,9 @@ if __name__ == "__main__":
     if args.deterministic:
         tf.config.experimental.enable_op_determinism()
 
-    Path(log_dir).mkdir(exist_ok=True, parents=True)
     dtype = hyper_config.get_choice('dtype', choices=(16, 32, 64), default=32,
                                     help='The size of the floating point numbers to use for calculations in the model')
+    print(dtype, dtype==16)
     if dtype == 16:
         dtype = 'mixed_float16'
     elif dtype == 32:
@@ -152,6 +142,7 @@ if __name__ == "__main__":
     metadata = os.path.join(log_dir, 'metadata.tsv')
     with open(metadata, "w") as f:
         f.write('Index\tName\tColors\tMana Value\tType\n')
+        f.write('0\tN/A\tN/A\tN/A\tN/A\n')
         for i, card in enumerate(cards_json):
             f.write(f'{i+1}\t"{card["name"]}"\t{"".join(color_name[x] for x in sorted(card.get("color_identity")))}\t{card["cmc"]}\t{card.get("type")}\n')
 
@@ -159,9 +150,10 @@ if __name__ == "__main__":
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     # strategy = tf.distribute.experimental.CentralStorageStrategy()
-    strategy = tf.distribute.MirroredStrategy()
+    # strategy = tf.distribute.MirroredStrategy()
+    strategy = tf.distribute.get_strategy()
     with strategy.scope():
-        model = hyper_config.build(name='CombinedModel', dynamic=False)
+        model = hyper_config.build(name='CombinedCardModel', dynamic=False, )
     if model is None:
         sys.exit(1)
     optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
@@ -203,13 +195,12 @@ if __name__ == "__main__":
         model.load_weights(latest)
 
     logging.info('Starting training')
-    with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator, strategy.scope():
+    with strategy.scope():
         train_generator = \
-            SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator,
-                                             cube_adj_mtx_generator, deck_adj_mtx_generator),
-                           hyper_config.get_int('epochs_for_completion', min=1, default=32,
+            SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator),
+                           hyper_config.get_int('epochs_for_completion', min=1, default=1,
                                help='The number of epochs it should take to go through the entire dataset.'))
-        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
+        validation_generator = SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
         with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
@@ -218,16 +209,12 @@ if __name__ == "__main__":
         if not args.debug:
             mcp_callback = tf.keras.callbacks.ModelCheckpoint(
                 filepath=output_dir + 'model',
-                monitor='val_loss',
                 verbose=True,
-                save_best_only=True,
                 save_weights_only=True,
-                mode='min',
                 save_freq='epoch')
             cp_callback = tf.keras.callbacks.ModelCheckpoint(
                 filepath=log_dir + '/model-{epoch:04d}.ckpt',
                 verbose=True,
-                save_best_only=False,
                 save_weights_only=True,
                 save_freq='epoch')
             callbacks.append(mcp_callback)
@@ -239,8 +226,8 @@ if __name__ == "__main__":
         num_batches = len(train_generator)
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
-        tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                                     update_freq=64, embeddings_freq=None,
+        tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=None, write_graph=True,
+                                     update_freq=128, embeddings_freq=None,
                                      profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
         tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)
@@ -248,18 +235,10 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
-        pick_train_example, cube_train_example, *rest = validation_generator[0][0]
-        print(pick_train_example[-1])
-        pick_train_example = pick_train_example[:8]
-        cube_train_example = cube_train_example[:1]
-        # Make sure it compiles the correct setup for evaluation
-        model((pick_train_example, cube_train_example, *rest), training=False)
-        print(model.summary())
-        # model.save(f'ml_files/current', save_format='tf')
         model.fit(
             train_generator,
-            validation_data=validation_generator,
-            validation_freq=1,
+            # validation_data=validation_generator,
+            # validation_freq=1,
             epochs=args.epochs,
             callbacks=callbacks,
             verbose=0,
