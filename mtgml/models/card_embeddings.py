@@ -286,18 +286,18 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
         card_tokens = tf.concat([cube_tokens, deck_tokens], axis=0)
         generated, masked_tokens, card_text_loss = self.card_text((card_tokens, self.token_embeds.embeddings,
                                                                    self.position_embeds.embeddings), training=training)
-        cube_card_embeds =  self.card_text.encode_tokens((cube_tokens, self.token_embeds.embeddings,
-                                                          self.position_embeds.embeddings),
-                                                   training=training, mask=cube_tokens > 0)[:, 0, :]
-        deck_card_embeds =  self.card_text.encode_tokens((deck_tokens, self.token_embeds.embeddings,
-                                                          self.position_embeds.embeddings),
-                                                   training=training, mask=deck_tokens > 0)[:, 0, :]
-        cube_loss = self.cube_adj_mtx_reconstructor((tf.range(tf.shape(cube_tokens)[0], dtype=tf.int32),
-                                                     cube_adj_row, cube_card_embeds), training=training)
-        deck_loss = self.deck_adj_mtx_reconstructor((tf.range(tf.shape(deck_tokens)[0], dtype=tf.int32),
-                                                     deck_adj_row, deck_card_embeds), training=training)
-        loss = cube_loss + deck_loss + card_text_loss
-        tf.summary.scalar('loss', loss)
-        return loss
+        # cube_card_embeds =  self.card_text.encode_tokens((cube_tokens, self.token_embeds.embeddings,
+        #                                                   self.position_embeds.embeddings),
+        #                                            training=training, mask=cube_tokens > 0)[:, 0, :]
+        # deck_card_embeds =  self.card_text.encode_tokens((deck_tokens, self.token_embeds.embeddings,
+        #                                                   self.position_embeds.embeddings),
+        #                                            training=training, mask=deck_tokens > 0)[:, 0, :]
+        # cube_loss = self.cube_adj_mtx_reconstructor((tf.range(tf.shape(cube_tokens)[0], dtype=tf.int32),
+        #                                              cube_adj_row, cube_card_embeds), training=training)
+        # deck_loss = self.deck_adj_mtx_reconstructor((tf.range(tf.shape(deck_tokens)[0], dtype=tf.int32),
+        #                                              deck_adj_row, deck_card_embeds), training=training)
+        # loss = cube_loss + deck_loss + card_text_loss
+        # tf.summary.scalar('loss', loss)
+        # return loss
         tf.summary.scalar('loss', card_text_loss)
         return card_text_loss
