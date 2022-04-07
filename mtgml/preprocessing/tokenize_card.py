@@ -1,121 +1,94 @@
 import re
+import sys
 
-tokens = {'[nil]': 0, '[mask]': 1}
-def getToken(tkn):
-    tkn = tkn.lower()
-    if tkn not in tokens:
-        tokens[tkn] = len(tokens)
-    return tokens[tkn]
+from mtgml.preprocessing.tokens import tokens, extra_productions, referenced_card_names, extra_card_names, regexes
 
 
-def tokenizeColor(color):
-    return '{' + color.replace('-', '/') + '}'
+class TokenTrie:
+    def __init__(self, words):
+        self.inhabited = '' in words
+        first_chars = {c[0] for c in words if len(c) > 0}
+        self.lookup = {c: TokenTrie([w[1:] for w in words if len(w) > 0 and w[0] == c]) for c in first_chars}
 
+    def __getitem__(self, query):
+        if query != '' and query[0] in self.lookup:
+            recursed = self.lookup[query[0]][query[1:]]
+            if recursed is not None:
+                return query[0] + recursed
+        if self.inhabited:
+            return ''
+        else:
+            return None
 
-NUMBERS = {
-    'one': '1',
-    'two': '2',
-    'three': '3',
-    'four': '4',
-    'five': '5',
-    'six': '6',
-    'seven': '7',
-    'eight': '8',
-    'nine': '9',
-    'ten': '10',
-    'eleven': '11',
-    'twelve': '12',
-    'thirteen': '13',
-    'fourteen': '14',
-    'fifteen': '15',
-    'sixteen': '16',
-    'seventeen': '17',
-    'eighteen': '18',
-    'nineteen': '19',
-    'twenty': '20',
-    'twenty-six': '26',
-    'forty': '40',
-
-    # 'ninety-9': '99',
+token_to_idx = {v: i for i, v in enumerate(tokens)}
+productions = {
+    p[0]: p[1]
+    for p in
+       [(t, (t,)) for t in tokens]
+        + list(extra_productions)
+        + [(t, ('~~',)) for t in referenced_card_names]
+        + [(t, ('~',)) for t in extra_card_names]
 }
+usage_table = {k: 0 for k in productions.keys()}
+max_len = max(len(k) for k in productions.keys())
+if sys.getrecursionlimit() < 10 * max_len:
+    sys.setrecursionlimit(10 * max_len)
+production_trie = TokenTrie(productions.keys())
 
-def processOracleText(txt, name):
-    txt = txt.replace(name, '~')
-    if ',' in name:
-        name = name.split(',')[0]
-        txt = re.sub(r'\b' + name + r'\b', '~', txt)
+
+def tokenize_string(txt):
+    tokenized = []
     txt = txt.lower()
-    txt = re.sub(r'(\{[^}]+\})', r' \1 ', txt) # split symbols apart
-    txt = re.sub(r'([0-9x])\/([0-9+-x])', r'\1 / \2', txt) # split +x/+1 apart
-
-    # txt = re.sub(r'([0-9x½])\/([0-9+-x])', r'\1 / \2', txt) # split +x/+1 apart
-
-    txt = re.sub(r'\([^)]+\)', '', txt) # remove reminder text
-    for word, num in NUMBERS.items():
-        txt = re.sub(r'\b' + word + r'\b', num, txt)
-    txt = re.sub(r"\b'", ' " ', txt) # split signle quotes but not contractions.
-
-    txt = re.sub(r"^.+ — ", '', txt, flags=re.MULTILINE)
-    txt = re.sub(r"([^a-z])'", r'\1 " ', txt) # split signle quotes but not contractions.
-    txt = re.sub(r'^-([^0-9])', r'\1', txt)
-    txt = re.sub(r'([0-9])-([0-9])', r'\1 to \2', txt)
-    txt = txt.replace('non-', 'non ')
-    txt = re.sub(r'\bnon([^e])', r'non \1', txt)
-    txt = txt.replace('this spell', ' ~ ')
-    txt = txt.replace('®', '')
-
-    txt = txt.replace(':', ' : ')
-    txt = txt.replace('.', ' . ')
-    txt = txt.replace(',', ' , ')
-    txt = txt.replace('+', ' + ')
-    txt = txt.replace(';', ' ; ')
-    txt = txt.replace('"', ' " ')
-    txt = txt.replace('?', ' ? ')
-    txt = txt.replace('!', ' ! ')
-    txt = txt.replace("'s", " 's ")
-    txt = txt.replace("’s", " 's ")
-
-    txt = txt.replace("s'", "s 's ")
-
-    txt = txt.replace('+', ' + ')
-    txt = txt.replace('[', ' [ ')
-    txt = txt.replace(']', ' ] ')
-    txt = txt.replace('\n', ' [CRLF] ')
-    txt = re.sub(r' +', ' ', txt) # remove repeated spaces.
-    return txt
+    og_text = txt
+    for match, replacement in regexes:
+        txt = re.sub(match, replacement, txt)
+    processed_text = txt
+    while len(txt) > 0:
+        prefix = production_trie[txt]
+        if prefix is None:
+            print(og_text, '\n')
+            print(processed_text, '\n')
+            print(txt)
+            raise Exception('Could not produce txt from tokens.')
+        else:
+            usage_table[prefix] += 1
+            for token in productions[prefix]:
+                if token != prefix:
+                    usage_table[token] += 1
+                tokenized.append(token_to_idx[token])
+            txt = txt[len(prefix):]
+    return tokenized
 
 
-def tokenizeString(txt):
-    return [getToken(s) for s in txt.split(' ')]
-
-
-def tokenizeCard(card):
-    result = [getToken('[CARD]')]
+def tokenize_card(card):
+    card_string = '[[card]]'
+    if 'power' in card:
+        card_string += f' [[power]] {card["power"]}'
+    if 'toughness' in card:
+        card_string += f' [[toughness]] {card["toughness"]}'
+    if 'loyalty' in card:
+        card_string += f' [[loyalty]] {card["loyalty"]}'
     filtered_cost = [c for c in card['parsed_cost'] if len(c) > 0]
     if len(filtered_cost) > 0:
-        result.append(getToken('[COST]'))
-        result += [getToken(tokenizeColor(c)) for c in filtered_cost]
-    result.append(getToken('[TYPE]'))
-    result += tokenizeString(card['type'])
-    oracle_text = processOracleText(card['oracle_text'], card['name'])
-    if len(oracle_text) > 0:
-        result.append(getToken('[ORACLE]'))
-        result += tokenizeString(oracle_text)
-    if 'power' in card:
-        result += [getToken('[POWER]'), getToken(card['power'])]
-    if 'toughness' in card:
-        result += [getToken('[TOUGNESS]'), getToken(card['toughness'])]
-    if 'loyalty' in card:
-        result += [getToken('[LOYALTY]'), getToken(card['loyalty'])]
-    return result
+        card_string += f' [[cost]] {" ".join("{" + c + "}" for c in filtered_cost)}'
+    card_string += f' [[type]] {card["type"]}'
+    oracle = card["oracle_text"]
+    name = card["name"]
+    oracle = oracle.replace(name, '~')
+    if ',' in name:
+        name = name.split(',')[0]
+        oracle = re.sub(r'\b' + name + r'\b', '~', oracle)
+    oracle = re.sub(r"[^•]+ — ", '', oracle) # remove ability words we want to focus on mechanics.
+    card_string += f' [[oracle]] {oracle}'
+    return tokenize_string(card_string)
 
 
 def untokenize(tkns):
-    inverse_tokens = {v: k for k, v in tokens.items()}
-    return ' '.join(inverse_tokens[tkn] for tkn in tkns)
+    return ' '.join(tokens[tkn] for tkn in tkns)
+
 
 if __name__ == '__main__':
     import json
     with open('data/maps/int_to_card.json') as fp:
         int_to_card = json.load(fp)
-    tokenized = [tokenizeCard(c) for c in int_to_card]
+    tokenized = [tokenize_card(c) for i, c in enumerate(int_to_card)]

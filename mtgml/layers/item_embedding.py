@@ -18,10 +18,10 @@ class ItemEmbedding(ConfigurableLayer):
 
     def build(self, input_shapes):
         super(ItemEmbedding, self).build(input_shapes)
-        print(self.num_items, self.dims)
         self.embeddings = self.add_weight('embeddings', shape=(self.num_items, self.dims),
                                           initializer=tf.keras.initializers.GlorotUniform(seed=self.seed),
                                           trainable=True)
+        print('built', self.name)
 
     def compute_mask(self, inputs, mask=None):
         our_mask = inputs > 0

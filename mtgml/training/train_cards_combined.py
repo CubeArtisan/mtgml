@@ -19,7 +19,7 @@ from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.models.card_embeddings import CombinedCardModel
-from mtgml.preprocessing.tokenize_card import tokens, tokenizeCard
+from mtgml.preprocessing.tokenize_card import tokens, tokenize_card
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.grid import pad
 from mtgml.utils.tqdm_callback import TQDMProgressBar
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     logging.info('Loading card data for seeding weights.')
     with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
-    tokenized = [pad(tokenizeCard(c), MAX_TOKENS) for c in cards_json]
+    tokenized = [pad(tokenize_card(c), MAX_TOKENS) for c in cards_json]
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     Path(log_dir).mkdir(exist_ok=True, parents=True)
     with open(Path(log_dir) / 'token_metadata.tsv', 'w') as fp:
