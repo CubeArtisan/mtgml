@@ -43,13 +43,11 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         embedded in the recommendations. As the individual items must pull towards items
         represented strongly within the graph.
         """
-        single_card = tf.cast(inputs[0], dtype=tf.int32, name='single_card')
+        card_embed = tf.cast(inputs[0], dtype=self.compute_dtype, name='single_card')
         adj_row = tf.cast(inputs[1], dtype=self.compute_dtype, name='adj_row')
-        card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name='card_embeddings')
-        embed_single_card = tf.gather(card_embeddings, single_card)
-        decoded_single_card_pre = self.recover_adj_mtx(embed_single_card, training=training)
-        decoded_single_card = self.final_recovery(decoded_single_card_pre, training=training)
-        adj_mtx_losses = tf.keras.losses.kl_divergence(adj_row, decoded_single_card)
+        decoded_adj_row_pre = self.recover_adj_mtx(card_embed, training=training)
+        decoded_adj_row = self.final_recovery(decoded_adj_row_pre, training=training)
+        adj_mtx_losses = tf.keras.losses.kl_divergence(adj_row, decoded_adj_row)
         loss = tf.nn.compute_average_loss(adj_mtx_losses)
         self.add_metric(adj_mtx_losses, f'{self.name}_loss')
         tf.summary.scalar(f'{self.name}_loss', tf.reduce_mean(adj_mtx_losses))

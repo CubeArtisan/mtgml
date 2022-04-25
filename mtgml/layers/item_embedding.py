@@ -14,14 +14,14 @@ class ItemEmbedding(ConfigurableLayer):
             'num_items': num_items,
             'dims': hyper_config.get_int('dims', min=8, max=512, default=512,
                                          help='The number of dimensions the items should be embedded into.'),
+            'trainable': hyper_config.get_bool('trainable', default=True, help='Whether the embeddings should be trained.'),
         }
 
     def build(self, input_shapes):
         super(ItemEmbedding, self).build(input_shapes)
         self.embeddings = self.add_weight('embeddings', shape=(self.num_items, self.dims),
                                           initializer=tf.keras.initializers.GlorotUniform(seed=self.seed),
-                                          trainable=True)
-        print('built', self.name)
+                                          trainable=self.trainable)
 
     def compute_mask(self, inputs, mask=None):
         our_mask = inputs > 0

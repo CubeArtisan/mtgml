@@ -61,8 +61,6 @@ if __name__ == "__main__":
                                            help='The number of cube samples to evaluate at a time')
     pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
                                            help='The number of picks to evaluate at a time')
-    adj_mtx_batch_size = hyper_config.get_int('adj_mtx_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
-                                              help='The number of rows of the adjacency matrices to evaluate at a time.')
     noise_mean = hyper_config.get_float('cube_noise_mean', min=0, max=1, default=0.7,
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
@@ -73,15 +71,10 @@ if __name__ == "__main__":
                                                        cube_batch_size, args.seed, noise_mean, noise_std)
     recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
                                                             cube_batch_size, args.seed, 0, 0)
-    deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
-    deck_adj_mtx_generator.on_epoch_end()
-    cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
-    cube_adj_mtx_generator.on_epoch_end()
     print(f'There are {len(draftbot_train_generator)} training pick batches')
     print(f'There are {len(draftbot_validation_generator)} validation pick batches')
     print(f'There are {len(recommender_train_generator)} training recommender batches')
     print(f'There are {len(recommender_validation_generator)} validation recommender batches')
-    print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
@@ -205,11 +198,10 @@ if __name__ == "__main__":
     logging.info('Starting training')
     with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator, strategy.scope():
         train_generator = \
-            SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator,
-                                             cube_adj_mtx_generator, deck_adj_mtx_generator),
+            SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator),
                            hyper_config.get_int('epochs_for_completion', min=1, default=32,
                                help='The number of epochs it should take to go through the entire dataset.'))
-        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
+        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator), 1)
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
         with open(log_dir + '/hyper_config.yaml', 'w') as config_file:

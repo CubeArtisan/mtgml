@@ -13,9 +13,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 
-from mtgml.constants import MAX_TOKENS
 from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator
-from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.models.card_embeddings import CombinedCardModel
@@ -29,6 +27,60 @@ EMBED_DIMS_CHOICES = tuple(2 ** i + j for i in range(0, 10) for j in range(2))
 ACTIVATION_CHOICES = ('relu', 'selu', 'swish', 'tanh', 'sigmoid', 'linear', 'gelu', 'elu')
 OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb', 'adadelta',
                      'nadam', 'rmsprop')
+
+
+class CardIndexGenerator(tf.keras.utils.Sequence):
+    def __init__(self, num_cards, rows, columns, deck_adj_mtx, cube_adj_mtx, use_columns):
+        self.num_cards = num_cards
+        self.row_idxs = np.arange(num_cards)
+        self.column_idxs = np.arange(num_cards)
+        print('use_columns', use_columns)
+        self.use_columns = use_columns
+        self.rows = rows if use_columns else (rows + columns)
+        self.columns = columns
+        self.deck_adj_mtx = deck_adj_mtx
+        self.cube_adj_mtx = cube_adj_mtx
+        zeros = 0
+        for i, row in enumerate(cube_adj_mtx):
+            if row[i] == 0:
+                zeros += 1
+        print("Number of cube zeros", zeros)
+        zeros = 0
+        for i, row in enumerate(deck_adj_mtx):
+            if row[i] == 0:
+                zeros += 1
+        print("Number of deck zeros", zeros)
+        self.on_epoch_end()
+
+    def on_epoch_end(self):
+        print("ended epoch")
+        np.random.shuffle(self.row_idxs)
+        np.random.shuffle(self.column_idxs)
+        self.row_batches = []
+        self.column_batches = []
+        for i in range(self.num_cards // self.rows):
+            row = self.row_idxs[i * self.rows:(i+1) * self.rows]
+            if self.use_columns:
+                for j in range(self.num_cards // self.columns):
+                    self.row_batches.append(row)
+                    self.column_batches.append(self.column_idxs[j * self.columns:(j+1) * self.columns])
+            else:
+                self.row_batches.append(row)
+                self.column_batches.append(())
+        self.row_batches = np.array(self.row_batches, dtype=np.int32)
+        self.column_batches = np.array(self.column_batches, dtype=np.int32)
+        self.batch_idxs = np.arange(len(self.row_batches))
+        np.random.shuffle(self.batch_idxs)
+
+    def __len__(self):
+        return len(self.batch_idxs)
+
+    def __getitem__(self, idx):
+        batch_idx = self.batch_idxs[idx]
+        return ((self.row_batches[batch_idx], self.column_batches[batch_idx]),)
+
+
+
 if __name__ == "__main__":
     locale.setlocale(locale.LC_ALL, '')
     logging.basicConfig(level=logging.INFO)
@@ -48,7 +100,9 @@ if __name__ == "__main__":
     logging.info('Loading card data for seeding weights.')
     with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
-    tokenized = [pad(tokenize_card(c), MAX_TOKENS) for c in cards_json]
+    tokenized = [tokenize_card(c) for c in cards_json]
+    max_length = max(len(c) for c in tokenized)
+    tokenized = np.array([pad(c, max_length) for c in tokenized], dtype=np.int32)
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     Path(log_dir).mkdir(exist_ok=True, parents=True)
     with open(Path(log_dir) / 'token_metadata.tsv', 'w') as fp:
@@ -61,17 +115,17 @@ if __name__ == "__main__":
         with open(config_path, 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
     print('Initializing Generators')
+    adj_mtx_batch_size = 200
+    cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(tokenized), 64, args.seed * 7 + 3)
+    cube_adj_mtx_generator.on_epoch_end()
+    deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(tokenized), 256, args.seed)
+    deck_adj_mtx_generator.on_epoch_end()
     hyper_config = HyperConfig(layer_type=CombinedCardModel, data=data, fixed={
-        'num_cards': len(cards_json) + 1,
         'num_tokens': len(tokens),
         'card_token_map': tokenized,
+        'deck_adj_mtx': deck_adj_mtx_generator.get_adj_mtx(),
+        'cube_adj_mtx': cube_adj_mtx_generator.get_adj_mtx(),
     })
-    adj_mtx_batch_size = hyper_config.get_int('adj_mtx_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
-                                              help='The number of rows of the adjacency matrices to evaluate at a time.')
-    deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
-    deck_adj_mtx_generator.on_epoch_end()
-    cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
-    cube_adj_mtx_generator.on_epoch_end()
     print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     if args.debug:
@@ -186,6 +240,10 @@ if __name__ == "__main__":
         weight_decay = hyper_config.get_float('novograd_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
                                               help='The weight decay for novograd optimization per batch.')
         opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
+    elif optimizer == 'lamb':
+        weight_decay = hyper_config.get_float('lamb_weight_decay', min=1e-10, max=1e-01, default=1e-06, logdist=True,
+                                              help='The weight decay for lamb optimization per batch.')
+        opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
     else:
         raise Exception('Need to specify a valid optimizer type')
     model.compile(optimizer=opt)
@@ -196,11 +254,16 @@ if __name__ == "__main__":
 
     logging.info('Starting training')
     with strategy.scope():
-        train_generator = \
-            SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator),
-                           hyper_config.get_int('epochs_for_completion', min=1, default=1,
-                               help='The number of epochs it should take to go through the entire dataset.'))
-        validation_generator = SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
+        # train_generator = \
+        #     SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator),
+        #                    hyper_config.get_int('epochs_for_completion', min=1, default=1,
+        #                        help='The number of epochs it should take to go through the entire dataset.'))
+        # validation_generator = SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
+        train_generator = SplitGenerator(CardIndexGenerator(len(tokenized), 64, 64, deck_adj_mtx_generator.get_adj_mtx(),
+                                                            cube_adj_mtx_generator.get_adj_mtx(),
+                                                            use_columns=hyper_config.get_bool('fine_tuning', default=False, help='Whether to current fine tune the model.')),
+                                         hyper_config.get_int('epochs_for_completion', min=1, default=1,
+                                         help='The number of epochs it shoudl take to go through the entire dataset.'))
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
         with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
@@ -211,12 +274,12 @@ if __name__ == "__main__":
                 filepath=output_dir + 'model',
                 verbose=True,
                 save_weights_only=True,
-                save_freq='epoch')
+                save_freq=len(train_generator))
             cp_callback = tf.keras.callbacks.ModelCheckpoint(
                 filepath=log_dir + '/model-{epoch:04d}.ckpt',
                 verbose=True,
                 save_weights_only=True,
-                save_freq='epoch')
+                save_freq=5 * len(train_generator))
             callbacks.append(mcp_callback)
             callbacks.append(cp_callback)
         if args.time_limit > 0:
@@ -227,7 +290,7 @@ if __name__ == "__main__":
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
         tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=None, write_graph=True,
-                                     update_freq=128, embeddings_freq=None,
+                                     update_freq=len(train_generator) // 5, embeddings_freq=None,
                                      profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
         tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)
@@ -235,6 +298,8 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
+        model(tf.cast(((0,), (1,)), dtype=tf.int32), training=False)
+        print(model.summary())
         model.fit(
             train_generator,
             # validation_data=validation_generator,

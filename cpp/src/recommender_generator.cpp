@@ -261,4 +261,4 @@ PYBIND11_MODULE(recommender_generator, m) {
         .def("__getitem__", &CubeGenerator::getitem)
         .def("next", &CubeGenerator::next)
         .def("on_epoch_end", &CubeGenerator::queue_new_epoch);
-};
+}

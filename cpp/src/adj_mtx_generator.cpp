@@ -2,6 +2,7 @@
 #include <atomic>
 #include <array>
 #include <cstdint>
+#include <numeric>
 #include <string>
 #include <thread>
 #include <valarray>
@@ -39,7 +40,7 @@ private:
     std::size_t length;
     std::size_t pos{0};
 
-    std::valarray<float> adj_mtx;
+    std::vector<float> adj_mtx;
 
     std::size_t initial_seed;
     pcg32 main_rng;
@@ -47,7 +48,7 @@ private:
     std::vector<std::uint16_t> card_indices;
     bool joined{false};
     std::thread initialization_thread;
-    static constexpr std::size_t load_thread_count = 16;
+    static constexpr std::size_t load_thread_count = 32;
 
     void load_rows(std::size_t num_objects, std::size_t offset, const T* file_start) {
         for (std::size_t i=offset; i < num_objects; i += load_thread_count) {
@@ -55,8 +56,8 @@ private:
             for (std::size_t j=0; j < row.size(); j++) {
                 std::uint16_t j_val = row[j];
                 if (j_val == 0) break;
-                if (j_val > num_cards) std::cout << i << ", " << j_val << std::endl;
-                for (std::size_t k=0; k < j; k++) {
+                /* if (j_val > num_cards) std::cout << i << ", " << j_val << std::endl; */
+                for (std::size_t k=0; k <= j; k++) {
                     std::uint16_t k_val = row[k];
                     adj_mtx[(j_val - 1) * num_cards + (k_val - 1)] += 1;
                     adj_mtx[(k_val - 1) * num_cards + (j_val - 1)] += 1;
@@ -66,41 +67,64 @@ private:
     }
 
     void normalize_rows(std::size_t offset) {
+        std::size_t empty_rows = 0;
         for (std::size_t i=offset; i < num_cards; i += load_thread_count) {
-            const auto slice = adj_mtx[std::slice(i * num_cards, num_cards, 1)];
-            // We need to materialize the valarray here to have it read nicely since you can't sum a slice.
-            const std::valarray<float> row{slice};
-            const float row_sum = row.sum();
-            if (row_sum == 0) adj_mtx[i * (num_cards + 1)] = 1.0;
-            else slice /= std::valarray<float>(row_sum, num_cards);
+            auto begin = adj_mtx.begin();
+            auto end = adj_mtx.begin();
+            std::advance(begin, i * num_cards);
+            std::advance(end, i * num_cards + num_cards);
+            /* const float row_sum = std::accumulate(begin, end, 0); */
+            const float row_sum = adj_mtx[i * (num_cards + 1)];
+            if (row_sum > 0) for (std::size_t j=i * num_cards; j < (i + 1) * num_cards; j++) adj_mtx[j] /= row_sum;
+            else {
+                adj_mtx[i * (num_cards + 1)] = 1.0;
+                /* std::cout << "empty row " << i  << " adj_mtx " << batch_size << std::endl; */
+                empty_rows += 1;
+            }
         }
     }
 
     void initialize(std::string filename) {
         mio::basic_mmap_source<std::byte> mmap(filename);
         std::size_t num_objects = mmap.size() / sizeof(T);
+        std::cout << num_objects << " for adj_mtx " << batch_size << std::endl;
         auto file_start = reinterpret_cast<const T*>(mmap.data());
         std::array<std::thread, load_thread_count> loading_array;
         std::cout << "Created loading array." << std::endl;
-        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i] = std::thread([i, num_objects, file_start, this](){ load_rows(num_objects, i, file_start); });
+        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i] = std::thread([=, this](){ load_rows(num_objects, i, file_start); });
         std::cout << "Started first set of threads." << std::endl;
         for (std::size_t i=0; i < load_thread_count; i++) loading_array[i].join();
-        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i] = std::thread([i, this](){ normalize_rows(i); });
+        for (std::size_t i=0; i < load_thread_count; i++) loading_array[i] = std::thread([=, this](){ normalize_rows(i); });
         std::cout << "Started second set of threads." << std::endl;
         for (std::size_t i=0; i < load_thread_count; i++) loading_array[i].join();
         std::iota(card_indices.begin(), card_indices.end(), 0);
+        std::cout << "Finished loading adj_mtx " << batch_size << std::endl;
         joined = true;
     }
 
 public:
     AdjMtxGenerator(std::string filename, std::size_t num_cards, std::size_t batch_size, std::size_t seed)
         : num_cards{num_cards}, batch_size{batch_size}, length{num_cards / batch_size},
-          initial_seed{seed}, adj_mtx(0.0, num_cards * num_cards), main_rng(initial_seed, 0),
-          card_indices(num_cards), initialization_thread([this, filename]() { this->initialize(filename); })
+          adj_mtx(num_cards * num_cards, 0.0), initial_seed{seed}, main_rng(initial_seed, 0),
+          card_indices(num_cards, 0), initialization_thread([this, filename]() { this->initialize(filename); })
     { }
 
     void queue_new_epoch() & {
         std::ranges::shuffle(card_indices, main_rng);
+    }
+    py::array_t<float> get_adj_mtx() {
+        using namespace std::chrono_literals;
+        {
+            py::gil_scoped_release release;
+            while (!joined) {
+                std::cout << "Waiting on the adjacency matrix." << std::endl;
+                std::this_thread::sleep_for(1'000ms);
+            }
+        }
+        std::cout << "Read adj_mtx " << batch_size << std::endl;
+        return py::array_t<float>{std::array<std::size_t, 2>{num_cards, num_cards},
+                                  std::array<std::size_t, 2>{sizeof(float) * num_cards, sizeof(float)},
+                                  adj_mtx.data()};
     }
 
     Result next() & {
@@ -150,12 +174,14 @@ PYBIND11_MODULE(adj_mtx_generator, m) {
         .def(py::init<std::string, std::size_t, std::size_t, std::size_t>())
         .def("__len__", &CubeAdjMtxGenerator::size)
         .def("__getitem__", &CubeAdjMtxGenerator::get_item)
+        .def("get_adj_mtx", &CubeAdjMtxGenerator::get_adj_mtx)
         .def("next", &CubeAdjMtxGenerator::next)
         .def("on_epoch_end", &CubeAdjMtxGenerator::queue_new_epoch);
     py::class_<DeckAdjMtxGenerator>(m, "DeckAdjMtxGenerator")
         .def(py::init<std::string, std::size_t, std::size_t, std::size_t>())
         .def("__len__", &DeckAdjMtxGenerator::size)
         .def("__getitem__", &DeckAdjMtxGenerator::get_item)
+        .def("get_adj_mtx", &DeckAdjMtxGenerator::get_adj_mtx)
         .def("next", &DeckAdjMtxGenerator::next)
         .def("on_epoch_end", &DeckAdjMtxGenerator::queue_new_epoch);
-};
+}

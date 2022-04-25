@@ -11,7 +11,7 @@ class MLP(ConfigurableLayer):
         num_hidden = hyper_config.get_int('num_hidden', min=0, max=8, default=1,
                                           help='The number of hidden layers in the MLP.')
         dense_props = {
-            'dims': hyper_config.get_int('dims', min=8, max=1024, default=256, help='The number of dimensions for the output.'),
+            'dims': hyper_config.get_int('dims', min=8, max=1024, default=512, help='The number of dimensions for the output.'),
             'use_bias': hyper_config.get_bool('use_bias', default=True, help='Whether to add on a bias at each layer.'),
             'activation': hyper_config.get_choice('activation', choices=ACTIVATION_CHOICES, default='selu',
                                                   help='The activation function on the output of the layer.'),
