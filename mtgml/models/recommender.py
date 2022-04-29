@@ -2,7 +2,8 @@ import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
-from mtgml.layers.set_embedding import AdditiveSetEmbedding
+from mtgml.layers.contextual_rating import ContextualRating
+from mtgml.layers.wrapped import WDense
 
 """
     - adj_mtx is the adjacency matrix created by create_mtx.py
@@ -14,13 +15,16 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
     def get_properties(cls, hyper_config, input_shapes=None):
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
                                          help='The number of cards that must be embedded. Should be 1 + maximum index in the input.')
+        dims = hyper_config.get_int('dims', min=8, max=1024, default=512,
+                                    help='The number of dims for the transformer stream.')
         return {
+            'card_embeddings': tf.constant(hyper_config.get_list('card_embeddings', default=None, help='The card embeddings.')),
             "num_cards": num_cards,
-            'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=AdditiveSetEmbedding,
+            'downcast_embeddings': hyper_config.get_sublayer('DowncastEmbeddings', sub_layer_type=WDense,
+                                                             fixed={ 'dims': dims },
+                                                             help='Downcast the size of the card embeddings to make it fit in memory.'),
+            'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=ContextualRating,
                                                     help='Combine the card embeddings to get an embedding for the cube.'),
-            'recover_cube': hyper_config.get_sublayer('RecoverCube', sub_layer_type=MLP,
-                                                      fixed={'Final': {'activation': 'sigmoid', 'dims': num_cards - 1}},
-                                                      help='The MLP that tries to reconstruct the one hot encoding of the cube'),
             'cube_metrics': {
                 'cube_recall_at_25': tf.keras.metrics.RecallAtPrecision(0.25, name='cube_recall_at_25'),
                 'cube_recall_at_50': tf.keras.metrics.RecallAtPrecision(0.5, name='cube_recall_at_50'),
@@ -35,32 +39,19 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         }
 
     def call(self, inputs, training=None):
-        """
-        input contains two things:
-            input[0] = the binary vectors representing the collections
-            input[1] = a diagonal matrix of size (self.N X self.N)
-
-        We run the same encoder for each type of input, but with different
-        decoders. This is because the goal is to make sure that the compression
-        for collections still does a reasonable job compressing individual items.
-        So a penalty term (regularization) is added to the model in the ability to
-        reconstruct the probability distribution (adjacency matrix) on the item level
-        from the encoding.
-
-        The hope is that this regularization enforces this conditional probability to be
-        embedded in the recommendations. As the individual items must pull towards items
-        represented strongly within the graph.
-        """
+        inputs = inputs[0]
+        if len(inputs) == 1 and len(inputs[0]) == 2:
+            inputs = inputs[0]
         noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name='noisy_cube')
-        if len(inputs) == 3:
-            card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name='card_embeddings')
-        else:
-            card_embeddings = tf.cast(inputs[1], dtype=self.compute_dtype, name='card_embeddings')
-        embed_noisy_cube = tf.gather(card_embeddings, noisy_cube, name='embed_noisy_cube')
-        encoded_noisy_cube = self.embed_cube(embed_noisy_cube, training=training)
-        decoded_noisy_cube = self.recover_cube(encoded_noisy_cube, training=training)
-        if len(inputs) == 3:
+        embed_noisy_cube = tf.gather(self.card_embeddings, noisy_cube, name='embed_noisy_cube_pre')
+        embed_noisy_cube = self.downcast_embeddings(embed_noisy_cube, training=training, mask=noisy_cube > 0)
+        cube_distances = self.embed_cube((self.card_embeddings[1:], embed_noisy_cube), training=training,
+                                         mask=(None, noisy_cube > 0))
+        max_op = tf.grad_pass_through(lambda x: tf.maximum(tf.constant(0, dtype=self.compute_dtype), x))
+        decoded_noisy_cube = max_op(tf.constant(1, dtype=self.compute_dtype) + tf.math.tanh(cube_distances))
+        if len(inputs) == 2:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name='true_cube_arr')
+            print('true_cube', true_cube.shape)
             true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype), axis=-2)[:,1:]
             cube_losses = tf.keras.losses.binary_crossentropy(tf.expand_dims(true_cube, -1), tf.constant(1 - 2e-10, dtype=self.compute_dtype) * tf.expand_dims(decoded_noisy_cube, -1) + tf.constant(1e-10, dtype=self.compute_dtype))
             noisy_cube_spread = tf.reduce_max(tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2)
@@ -73,6 +64,7 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
             for name, metric in self.cube_metrics.items():
                 metric.update_state(true_cube, decoded_noisy_cube)
                 tf.summary.scalar(name, metric.result())
+            self.add_loss(loss)
             return loss
         return decoded_noisy_cube
 

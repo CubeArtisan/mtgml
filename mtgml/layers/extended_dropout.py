@@ -7,8 +7,8 @@ class ExtendedDropout(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
         return {
-            'rate': hyper_config.get_float('rate', min=0, max=0.99, step=0.01, default=0.2,
-                                           help='The percent of values that get replaced with zero.'),
+            'rate': tf.constant(hyper_config.get_float('rate', min=0, max=0.99, step=0.01, default=0.2,
+                                                       help='The percent of values that get replaced with zero.'), dtype=tf.float32),
             'noise_shape': hyper_config.get_list('noise_shape', default=None,
                                                   help='The shape of the generated noise which will be broadcast as needed.'),
             'return_mask': hyper_config.get_bool('return_mask', default=False,
@@ -42,6 +42,7 @@ class ExtendedDropout(ConfigurableLayer):
         return tf.convert_to_tensor(noise_shape)
 
     def call(self, inputs, training=False, mask=None):
+        print(self.rate)
         if 0 >= self.rate or not training:
             result = inputs
             noise_mask = tf.cast(tf.ones_like(inputs), tf.bool)

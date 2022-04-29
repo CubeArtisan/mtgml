@@ -39,17 +39,23 @@ production_trie = TokenTrie(productions.keys())
 def tokenize_string(txt):
     tokenized = []
     txt = txt.lower()
-    og_text = txt
+    # og_text = txt
     for match, replacement in regexes:
         txt = re.sub(match, replacement, txt)
-    processed_text = txt
+    # processed_text = txt
     while len(txt) > 0:
         prefix = production_trie[txt]
         if prefix is None:
-            print(og_text, '\n')
-            print(processed_text, '\n')
-            print(txt)
-            raise Exception('Could not produce txt from tokens.')
+            tokenized.append(1)
+            idx = re.search(r'[^a-zA-Z\-]', txt)
+            if idx is None:
+                txt = ''
+            else:
+                txt = txt[idx.start():]
+            # print(og_text, '\n')
+            # print(processed_text, '\n')
+            # print(txt)
+            # raise Exception('Could not produce txt from tokens.')
         else:
             usage_table[prefix] += 1
             for token in productions[prefix]:

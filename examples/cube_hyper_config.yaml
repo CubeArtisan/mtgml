@@ -1,0 +1,232 @@
+DowncastEmbeddings: !hcv
+  help: Downcast the size of the card embeddings to make it fit in memory.
+  value: !hc
+    activation: !hcv
+      choices: !!python/tuple
+      - elu
+      - selu
+      - relu
+      - tanh
+      - sigmoid
+      - linear
+      - swish
+      help: The activation function on the output of the layer.
+      value: selu
+    use_bias: !hcv
+      help: Whether to use bias on the output.
+      value: true
+EmbedCube: !hcv
+  help: Combine the card embeddings to get an embedding for the cube.
+  value: !hc
+    EmbedContext: !hcv
+      help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
+      value: !hc
+        Decoder: !hcv
+          help: The mapping from the added item embeddings to the embeddings to return.
+          value: !hc
+            activation: !hcv
+              choices: &id001 !!python/tuple
+              - elu
+              - selu
+              - relu
+              - tanh
+              - sigmoid
+              - linear
+              - swish
+              help: The activation function on the output of the layer.
+              value: selu
+            dims: !hcv
+              help: The number of dimensions for the output.
+              value: 512
+            num_hidden: !hcv
+              help: The number of hidden layers in the MLP.
+              value: 0
+            use_batch_norm: !hcv
+              help: Use batch normalization between layers
+              value: false
+            use_bias: !hcv
+              help: Whether to add on a bias at each layer.
+              value: true
+            use_layer_norm: !hcv
+              help: Use layer normalization between layers
+              value: false
+        ItemDropout: !hcv
+          help: Drops out entire items from the set.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Pooling: !hcv
+          help: The layer to collapse down to one embedding.
+          value: !hc
+            Attention: !hcv
+              help: The attention layer that pools the results.
+              value: !hc
+                dropout: !hcv
+                  help: The percent of values to get dropped out
+                  value: 0.25
+                key_dims: !hcv
+                  help: Size of the attention head for query and key.
+                  value: 32
+                num_heads: !hcv
+                  help: The number of separate heads of attention to use.
+                  value: 2
+                output_dims: !hcv
+                  help: The number of output dimensions from this layer.
+                  value: 512
+                use_bias: !hcv
+                  help: Use bias in the dense layers
+                  value: true
+                value_dims: !hcv
+                  help: Size of the attention head for value.
+                  value: 32
+        decoding_dropout_rate: !hcv
+          help: The percent of values to dropout from the result of dense layers in
+            the decoding step.
+          value: 0.1
+        encoding: !hcv
+          help: The layers to get interactions between cards.
+          value: !hc
+            Transformer_0: !hcv
+              help: The 0th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_1: !hcv
+              help: The 1th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_2: !hcv
+              help: The 2th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            activation: !hcv
+              choices: *id001
+              help: The activation function on the output of the layer.
+              value: selu
+            attention dropout_rate: !hcv
+              help: The dropout rate for the attention layers of the transformer blocks.
+              value: 0.25
+            dense dropout_rate: !hcv
+              help: The dropout rate for the dense layers of the transformer blocks.
+              value: 0.25
+            dims: !hcv
+              help: The number of dimensions for the output.
+              value: 512
+            key_dims: !hcv
+              help: Size of the attention head for query and key.
+              value: 32
+            num_heads: !hcv
+              help: The number of separate heads of attention to use.
+              value: 4
+            num_hidden_dense: !hcv
+              help: The number of hidden dense layers
+              value: 1
+            num_hidden_layers: !hcv
+              help: Number of transformer blocks.
+              value: 2
+            output_dims: !hcv
+              help: The number of output dimensions from this layer.
+              value: 128
+            use_bias: !hcv
+              help: Use bias in the dense layers
+              value: true
+            value_dims: !hcv
+              help: Size of the attention head for value.
+              value: 32
+    EmbedItem: !hcv
+      help: Transforms the card embeddings to the embedding used to calculate distances.
+      value: !hc
+        Dropout: !hcv
+          help: The dropout applied after each hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.5
+        activation: !hcv
+          choices: *id001
+          help: The activation function on the output of the layer.
+          value: selu
+        dims: !hcv
+          help: The number of dimensions for the output.
+          value: 512
+        num_hidden: !hcv
+          help: The number of hidden layers in the MLP.
+          value: 1
+        use_batch_norm: !hcv
+          help: Use batch normalization between layers
+          value: false
+        use_bias: !hcv
+          help: Whether to add on a bias at each layer.
+          value: true
+        use_layer_norm: !hcv
+          help: Use layer normalization between layers
+          value: false
+    bounded_distance: !hcv
+      help: Transform the distance to be in the range (0, 1)
+      value: false
+    final_activation: !hcv
+      choices: *id001
+      help: The final activation before calculating distance
+      value: linear
+    measure_dims: !hcv
+      help: The number of dimensions to calculate distance in
+      value: 256
+    set_embed_type: !hcv
+      choices: !!python/tuple
+      - additive
+      - attentive
+      help: The kind of set embedding to use to get the context embedding for distance
+        calculation.
+      value: attentive
+cube_batch_size: !hcv
+  help: The number of cube samples to evaluate at a time
+  value: 8
+cube_noise_mean: !hcv
+  help: The median of the noise distribution for cubes.
+  value: 0.7
+cube_noise_std: !hcv
+  help: The median of the noise distribution for cubes.
+  value: 0.15
+dims: !hcv
+  help: The number of dims for the transformer stream.
+  value: 512
+dtype: !hcv
+  choices: !!python/tuple
+  - 16
+  - 32
+  - 64
+  help: The size of the floating point numbers to use for calculations in the model
+  value: 32
+epochs_for_completion: !hcv
+  help: The number of epochs it should take to go through the entire dataset.
+  value: 1
+lamb_learning_rate: !hcv
+  help: The learning rate to use for adam
+  value: 0.0001
+lamb_weight_decay: !hcv
+  help: The weight lamb_weight_decay
+  value: 1.0e-06
+optimizer: !hcv
+  choices: !!python/tuple
+  - adam
+  - adamax
+  - adadelta
+  - nadam
+  - sgd
+  - lazyadam
+  - rectadam
+  - novograd
+  help: The optimizer type to use for optimization
+  value: lamb
+scale_relevant_cards: !hcv
+  help: The amount to scale the loss on the cards in the noisy cube and the true cube.
+  value: 5
+use_xla: !hcv
+  help: Whether to use xla to speed up calculations.
+  value: true

@@ -1,84 +1,10 @@
-from mtgml.layers.item_embedding import ItemEmbedding
 import tensorflow as tf
 
-from mtgml.constants import ACTIVATION_CHOICES
+from mtgml.layers.item_embedding import ItemEmbedding
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
-from mtgml.layers.wrapped import WDense, WMultiHeadAttention
-from mtgml.models.adj_mtx import AdjMtxReconstructor
-
-
-class Transformer(ConfigurableLayer):
-    @classmethod
-    def get_properties(cls, hyper_config, input_shapes=None):
-        return {
-            'attention': hyper_config.get_sublayer(f'Attention', sub_layer_type=WMultiHeadAttention, seed_mod=39,
-                                                   help=f'The initial attention layer'),
-            'final_mlp': hyper_config.get_sublayer(f'FinalMLP', sub_layer_type=MLP, seed_mod = 47,
-                                                   fixed={'use_layer_norm': False, 'use_batch_norm': False},
-                                                   help=f'The final transformation.'),
-            'layer_norm': tf.keras.layers.LayerNormalization(),
-            'supports_masking': True,
-        }
-
-    def call(self, inputs, training=False):
-        if len(inputs) == 1:
-            tokens = inputs
-            attended = self.attention(tokens, tokens, training=training)
-        else:
-            tokens, attention_mask = inputs
-            attended = self.attention(tokens, tokens, attention_mask=attention_mask, training=training)
-        transformed = self.final_mlp(attended, training=training)
-        return self.layer_norm(transformed + tokens)
-
-
-class DocumentEncoder(ConfigurableLayer):
-    @classmethod
-    def get_properties(cls, hyper_config, input_shapes=None):
-        num_layers = hyper_config.get_int('num_hidden_layers', min=0, max=16, default=2,
-                                          help='Number of transformer blocks.') + 1
-
-        attention_props = {
-            'dropout': hyper_config.get_float('attention dropout_rate', min=0, max=1, default=0.25,
-                                                   help='The dropout rate for the attention layers of the transformer blocks.'),
-            'num_heads': hyper_config.get_int('num_heads', min=1, max=64, default=4,
-                                              help='The number of separate heads of attention to use.'),
-            'key_dims': hyper_config.get_int('key_dims', min=1, max=64, default=32,
-                                             help='Size of the attention head for query and key.'),
-            'value_dims': hyper_config.get_int('value_dims', min=1, max=64, default=32,
-                                               help='Size of the attention head for value.'),
-            'use_bias': hyper_config.get_bool('use_bias', default=True, help='Use bias in the dense layers'),
-            'output_dims': hyper_config.get_int('output_dims', min=8, max=512, default=128,
-                                                help='The number of output dimensions from this layer.'),
-        }
-        dense_props = {
-            'num_hidden': hyper_config.get_int('num_hidden_dense', min=0, max=12, default=2, help='The number of hidden dense layers'),
-            'dims': hyper_config.get_int('dims', min=8, max=1024, default=512, help='The number of dimensions for the output.'),
-            'use_bias': hyper_config.get_bool('use_bias', default=True, help='Whether to add on a bias at each layer.'),
-            'activation': hyper_config.get_choice('activation', choices=ACTIVATION_CHOICES, default='selu',
-                                                  help='The activation function on the output of the layer.'),
-            'Dropout': {'rate': hyper_config.get_float('dense dropout_rate', min=0, max=1, default=0.25,
-                                                       help='The dropout rate for the dense layers of the transformer blocks.')},
-        }
-        return {
-            'seq_length': input_shapes[1] if input_shapes is not None else 1,
-            'layers': tuple(hyper_config.get_sublayer(f'Transformer_{i}', sub_layer_type=Transformer, seed_mod=23,
-                                                      fixed={'FinalMLP': dense_props,
-                                                             'Attention': attention_props},
-                                                      help=f'The {i}th transformer layer.')
-                            for i in range(num_layers)),
-            'supports_masking': True,
-        }
-
-    def call(self, inputs, mask=None, training=False):
-        token_embeds = inputs
-        if mask is None:
-            mask = tf.ones(tf.shape(token_embeds)[:-1], dtype=tf.bool)
-        embeddings = tf.expand_dims(tf.cast(mask, dtype=self.compute_dtype), -1) * (token_embeds)
-        attention_mask = tf.logical_and(tf.expand_dims(mask, -1), tf.expand_dims(mask, -2), name='attention_mask')
-        for layer in self.layers:
-            embeddings = layer((embeddings, attention_mask), training=training)
-        return embeddings
+from mtgml.layers.wrapped import WDense
+from mtgml.layers.bert import BERT
 
 
 class MaskTokens(ConfigurableLayer):
@@ -130,7 +56,7 @@ class MaskedModel(ConfigurableLayer, tf.keras.Model):
         return {
             'mask_tokens': hyper_config.get_sublayer('MaskTokens', sub_layer_type=MaskTokens, seed_mod=3,
                                                      help='The amount of tokens to replace with the MASK token.'),
-            'encode_tokens': hyper_config.get_sublayer('EncodeTokens', sub_layer_type=DocumentEncoder, seed_mod=5,
+            'encode_tokens': hyper_config.get_sublayer('EncodeTokens', sub_layer_type=BERT, seed_mod=5,
                                                        help='Process the tokens to figure out their meaning.'),
             'reconstruct_tokens': hyper_config.get_sublayer('ReconstructTokens', sub_layer_type=ReconstructToken, seed_mod=7,
                                                             help='Try to figure out the original identity of each token.'),
@@ -171,7 +97,7 @@ class Electra(ConfigurableLayer, tf.keras.Model):
             'num_tokens': num_tokens,
             'generator': hyper_config.get_sublayer('Generator', sub_layer_type=MaskedModel, seed_mod=61,
                                                    help='The generator that replaces some tokens with likely replacements.'),
-            'encoder': hyper_config.get_sublayer('CardEncoder', sub_layer_type=DocumentEncoder, seed_mod=73,
+            'encoder': hyper_config.get_sublayer('CardEncoder', sub_layer_type=BERT, seed_mod=73,
                                                  help='Encodes the sampled card tokens.'),
             'hidden': hyper_config.get_sublayer('HiddenDense', sub_layer_type=WDense, seed_mod=83,
                                                       help='Hidden layer for determining if a token was replaced or not.'),
@@ -241,33 +167,35 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
             'card_text': hyper_config.get_sublayer('CardTextModel', sub_layer_type=MaskedModel, seed_mod=91,
                                                    fixed={'num_tokens': num_tokens},
                                                    help='The model for learning card representations.'),
-            'extra_layers': hyper_config.get_sublayer('ExtraLayers', sub_layer_type=DocumentEncoder, seed_mod=131,
+            'extra_layers': hyper_config.get_sublayer('ExtraLayers', sub_layer_type=BERT, seed_mod=131,
                                                       help='The extra layers for learning card embeddings.')
                             if fine_tuning else None,
-            'cube_adj_mtx_mlp': hyper_config.get_sublayer('CubeAdjMtxMLP', sub_layer_type=MLP,
-                                                          help='The mlp to process the paired embeddings')
-                                if fine_tuning else None,
-            'cube_adj_mtx_dense': hyper_config.get_sublayer('CubeAdjMtxFinal', sub_layer_type=WDense,
-                                                            fixed={'activation': 'sigmoid', 'dims': 1},
-                                                            help='The layer to get the pairs of card adj_cells out.')
-                                  if fine_tuning else None,
-            'deck_adj_mtx_mlp': hyper_config.get_sublayer('DeckAdjMtxMLP', sub_layer_type=MLP,
-                                                          help='The mlp to process the paired embeddings')
-                                if fine_tuning else None,
-            'deck_adj_mtx_dense': hyper_config.get_sublayer('DeckAdjMtxFinal', sub_layer_type=WDense,
-                                                            fixed={'activation': 'sigmoid', 'dims': 1},
-                                                            help='The layer to get the pairs of card adj_cells out.')
-                                  if fine_tuning else None,
             'deck_adj_mtx': tf.constant(hyper_config.get_list('deck_adj_mtx', default=None, help=''), dtype=tf.float32)
                             if fine_tuning else None,
             'cube_adj_mtx': tf.constant(hyper_config.get_list('cube_adj_mtx', default=None, help=''), dtype=tf.float32)
                             if fine_tuning else None,
-            'primary_layer': hyper_config.get_sublayer('TransformFirstCard', sub_layer_type=WDense,
+            'cube_1_layer': hyper_config.get_sublayer('CubeTransformFirstCard', sub_layer_type=WDense,
                                                        fixed={'activation': 'linear', 'dims': embed_dims},
                                                        help='Transform the first card in the pair.')
                              if fine_tuning else None,
-            'secondary_layer': hyper_config.get_sublayer('TransformSecondCard', sub_layer_type=WDense,
-                                                         fixed={'activation': 'linear', 'dims': embed_dims},
+            'cube_1_layer': hyper_config.get_sublayer('CubeTransformFirstCard', sub_layer_type=WDense,
+                                                       fixed={'activation': 'linear', 'dims': embed_dims},
+                                                       help='Transform the first card in the pair.')
+                             if fine_tuning else None,
+            'cube_2_layer': hyper_config.get_sublayer('CubeTransformSecondCard', sub_layer_type=WDense,
+                                                       fixed={'activation': 'linear', 'dims': embed_dims},
+                                                       help='Transform the first card in the pair.')
+                             if fine_tuning else None,
+            'deck_1_layer': hyper_config.get_sublayer('DeckTransformFirstCard', sub_layer_type=WDense,
+                                                       fixed={'activation': 'linear', 'dims': embed_dims},
+                                                       help='Transform the first card in the pair.')
+                             if fine_tuning else None,
+            'deck_2_layer': hyper_config.get_sublayer('DeckTransformSecondCard', sub_layer_type=WDense,
+                                                       fixed={'activation': 'linear', 'dims': embed_dims},
+                                                       help='Transform the first card in the pair.')
+                             if fine_tuning else None,
+            'downcast_embeds': hyper_config.get_sublayer('DowncastEmbeds', sub_layer_type=WDense,
+                                                         fixed={'activation': 'linear'},
                                                          help='Transform the second card in the pair.')
                                if fine_tuning else None,
             'fine_tuning': fine_tuning,
@@ -278,6 +206,8 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
         self.card_text.build(self.card_token_map.shape[1])
         self.token_embeds.build(input_shapes=(None, None))
         self.position_embeds.build(input_shapes=(None, None))
+        self.temperature = self.add_weight('temperature', shape=(), initializer=tf.constant_initializer(0.5),
+                                           trainable=True)
 
     def call(self, inputs, training=False):
         cube_card_indices, deck_card_indices = inputs
@@ -293,35 +223,65 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
             token_embeds = tf.gather(self.token_embeds.embeddings, card_tokens) + tf.expand_dims(self.position_embeds.embeddings, -3)
             card_embeds =  self.card_text.encode_tokens(token_embeds, training=training, mask=card_tokens > 0)
             card_embeds = self.extra_layers(card_embeds, training=training, mask=card_tokens > 0)[:, 0]
+            # card_embeds = self.downcast_embeds(card_embeds, training=training)
             cube_card_embeds = card_embeds[:tf.shape(cube_card_indices)[0]]
             deck_card_embeds = card_embeds[tf.shape(cube_card_indices)[0]:]
-            exp_cube_indices = tf.expand_dims(tf.zeros_like(deck_card_indices), -2) + tf.expand_dims(cube_card_indices, -1)
-            exp_deck_indices = tf.expand_dims(tf.zeros_like(cube_card_indices), -1) + tf.expand_dims(deck_card_indices, -2)
-            card_idx_mtx = tf.stack([exp_cube_indices, exp_deck_indices], -1)
-            cube_prob_mtx = tf.cast(-tf.math.log(tf.gather_nd(self.cube_adj_mtx, card_idx_mtx) + 1e-06), dtype=self.compute_dtype)
-            deck_prob_mtx = tf.cast(-tf.math.log(tf.gather_nd(self.deck_adj_mtx, card_idx_mtx) + 1e-06), dtype=self.compute_dtype)
-            card_embed_mtx = tf.expand_dims(self.primary_layer(cube_card_embeds, training=training), -2) \
-                             + tf.expand_dims(self.secondary_layer(deck_card_embeds, training=training), -3)
-            cube_transformed = self.cube_adj_mtx_mlp(card_embed_mtx, training=training)
-            deck_transformed = self.deck_adj_mtx_mlp(card_embed_mtx, training=training)
-            cube_probs = tf.squeeze(self.cube_adj_mtx_dense(cube_transformed, training=training), -1)
-            deck_probs = tf.squeeze(self.deck_adj_mtx_dense(deck_transformed, training=training), -1)
-            cube_final = -tf.math.log(cube_probs + 1e-06)
-            deck_final = -tf.math.log(deck_probs + 1e-06)
-            cube_loss = tf.reduce_mean(tf.keras.metrics.mean_squared_error(cube_final, cube_prob_mtx))
-            deck_loss = tf.reduce_mean(tf.keras.metrics.mean_squared_error(deck_final, deck_prob_mtx))
-            self.add_loss(cube_loss)
-            self.add_loss(deck_loss)
+            if training:
+                exp_cube_indices = tf.expand_dims(tf.zeros_like(deck_card_indices), -2) + tf.expand_dims(cube_card_indices, -1)
+                exp_deck_indices = tf.expand_dims(tf.zeros_like(cube_card_indices), -1) + tf.expand_dims(deck_card_indices, -2)
+                card_idx_mtx = tf.stack([exp_cube_indices, exp_deck_indices], -1)
+                # cube_prob_mtx = tf.cast(tf.gather_nd(self.cube_adj_mtx, card_idx_mtx) + 1e-10, dtype=self.compute_dtype)
+                deck_prob_mtx = tf.cast(tf.gather_nd(self.deck_adj_mtx, card_idx_mtx) + 1e-10, dtype=self.compute_dtype)
+                # cube_prob_mtx = cube_prob_mtx / tf.reduce_sum(cube_prob_mtx, -1, keepdims=True)
+                deck_prob_mtx = deck_prob_mtx / tf.reduce_sum(deck_prob_mtx, -1, keepdims=True)
+                # cube_probs = tf.nn.softmax(tf.keras.losses.cosine_similarity(self.cube_1_layer(cube_card_embeds, training=training),
+                #                                                               self.cube_2_layer(deck_card_embeds, training=training)) * 20) + 1e-10
+                deck_probs = tf.nn.softmax(-tf.keras.losses.cosine_similarity(self.deck_1_layer(cube_card_embeds, training=training),
+                                                                              self.deck_2_layer(deck_card_embeds, training=training)) * self.temperature) + 1e-10
+                # cube_probs = cube_probs / tf.reduce_sum(cube_probs, -1, keepdims=True)
+                deck_probs = deck_probs / tf.reduce_sum(deck_probs, -1, keepdims=True)
+                # cube_loss = tf.reduce_mean(tf.math.abs(tf.keras.losses.kl_divergence(cube_prob_mtx, cube_probs)))
+                deck_loss = tf.reduce_mean(tf.math.abs(tf.keras.losses.kl_divergence(deck_prob_mtx, deck_probs)))
+                # self.add_loss(cube_loss)
+                # self.add_loss(deck_loss)
+                deck_l1_loss = tf.reduce_mean(tf.math.abs(deck_prob_mtx - deck_probs))
+                # self.add_loss(deck_l1_loss)
+                deck_l2_loss = tf.reduce_mean(tf.math.pow(deck_prob_mtx - deck_probs, 2))
+                # self.add_loss(deck_l2_loss)
+                cross_entropy_loss = -64 * tf.reduce_mean((deck_prob_mtx * tf.math.log(deck_probs) + (1 - deck_prob_mtx) * tf.math.log(1 - deck_probs)))
+                self.add_loss(cross_entropy_loss)
+                deck_entropy = tf.reduce_mean(tf.reduce_sum(deck_probs * -tf.math.log(deck_probs), axis=-1)) / tf.math.log(2.0)
+                deck_entropy_loss = 0.01 * deck_entropy
+                self.add_loss(deck_entropy_loss)
 
-            loss = cube_loss + deck_loss
-            tf.summary.histogram('cube_final', cube_final)
-            tf.summary.histogram('deck_final', deck_final)
-            # tf.summary.histogram('cube_prob_mtx', cube_prob_mtx)
-            # tf.summary.histogram('deck_prob_mtx', deck_prob_mtx)
-            # tf.summary.scalar('cube_loss', cube_loss)
-            # tf.summary.scalar('deck_loss', deck_loss)
-            self.add_metric(cube_loss, 'cube_loss')
-            self.add_metric(deck_loss, 'deck_loss')
-            return cube_card_embeds #, cube_probs, deck_probs
+                loss = deck_loss + deck_l1_loss + deck_l2_loss + cross_entropy_loss
+                # loss = cube_loss + deck_loss
+                # cube_entropy = tf.reduce_mean(tf.reduce_sum(cube_probs * -tf.math.log(cube_probs), axis=-1))
+                # cube_mtx_entropy = tf.reduce_mean(tf.reduce_sum(cube_prob_mtx * -tf.math.log(cube_prob_mtx), axis=-1))
+                deck_mtx_entropy = tf.reduce_mean(tf.reduce_sum(deck_prob_mtx * -tf.math.log(deck_prob_mtx), axis=-1)) / tf.math.log(2.0)
+                # tf.summary.scalar('cube_entropy', cube_entropy)
+                tf.summary.scalar('deck_entropy', deck_entropy)
+                # tf.summary.scalar('cube_mtx_entropy', cube_mtx_entropy)
+                tf.summary.scalar('deck_mtx_entropy', deck_mtx_entropy)
+                # tf.summary.histogram('cube_prob_mtx', cube_prob_mtx)
+                tf.summary.histogram('deck_prob_mtx', deck_prob_mtx)
+                # tf.summary.histogram('cube_probs', cube_probs)
+                tf.summary.histogram('deck_probs', deck_probs)
+                # tf.summary.scalar('cube_loss', cube_loss)
+                # tf.summary.scalar('deck_loss', deck_loss)
+                # tf.summary.scalar('deck_l1_loss', deck_l1_loss)
+                # tf.summary.scalar('deck_l2_loss', deck_l2_loss)
+                # tf.summary.scalar('cross_entropy_loss', cross_entropy_loss)
+                tf.summary.scalar('temperature', self.temperature)
+                # self.add_metric(cube_loss, 'cube_loss')
+                self.add_metric(deck_loss, 'deck_loss')
+                self.add_metric(deck_l1_loss, 'deck_l1_loss')
+                self.add_metric(deck_l2_loss, 'deck_l2_loss')
+                self.add_metric(cross_entropy_loss, 'cross_entropy_loss')
+                return deck_probs
+                # return cube_probs, deck_probs
+            else:
+                loss = 0
+                return cube_card_embeds
         tf.summary.scalar('loss', loss)
         return loss

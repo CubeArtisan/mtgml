@@ -29,11 +29,12 @@ class MLP(ConfigurableLayer):
                           else None,
             'dropout': hyper_config.get_sublayer(f'Dropout', sub_layer_type=WDropout, seed_mod=11,
                                                  fixed={'noise_shape': None},
-                                                 help='The dropout applied after each hidden layer.')
+                                                 help='The dropout applied after each hidden layer.'),
+            'supports_masking': True,
         }
         return props
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, mask=None):
         for i, hidden in enumerate(self.layers):
             inputs = hidden(inputs, training=training)
             inputs = self.dropout(inputs, training=training)

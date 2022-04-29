@@ -26,7 +26,7 @@
               pkgs.cutensor_cudatoolkit_11_3
               pkgs.cudnn_cudatoolkit_11_3
               pkgs.linuxPackages.nvidia_x11
-              pkgs.python39Packages.python
+              pkgs.python310Packages.python
               pkgs.cmake
               pkgs.ninja
               pkgs.pkg-config

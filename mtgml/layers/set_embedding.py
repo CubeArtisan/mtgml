@@ -4,9 +4,10 @@ from mtgml.config.hyper_config import HyperConfig
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
-from mtgml.layers.wrapped import WDropout, WMultiHeadAttention
+from mtgml.layers.wrapped import WDense, WDropout, WMultiHeadAttention
 from mtgml.layers.attention import InducedSetAttentionBlockStack, PoolingByMultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
+from mtgml.layers.bert import BERT
 
 SET_EMBEDDING_CHOICES = ('additive', 'attentive')
 
@@ -22,6 +23,7 @@ class AdditiveSetEmbedding(ConfigurableLayer):
             'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
                                                  fixed={"Dropout": {'rate': decoding_dropout}},
                                                  help='The mapping from the added item embeddings to the embeddings to return.'),
+            'final': hyper_config.get_sublayer('Final', sub_layer_type=WDense, seed_mod=137, help='The last layer to cast to size'),
             'zero_masked': ZeroMasked(HyperConfig(seed=hyper_config.seed * 47)),
             'item_dropout': hyper_config.get_sublayer('ItemDropout', sub_layer_type=ExtendedDropout,
                                                       seed_mod=53, fixed={'all_last_dim': True, 'return_mask': False,
@@ -46,9 +48,7 @@ class AdditiveSetEmbedding(ConfigurableLayer):
                                            axis=-1, keepdims=True, name='num_valid')
             summed_embeds = tf.math.divide(summed_embeds, num_valid + 1e-09, name='normalized_embeds')
         summed_embeds = self.decoder_dropout(summed_embeds, training=training)
-        return self.decoder(summed_embeds, training=training)
-        hidden = self.dropout(self.hidden(summed_embeds), training=training)
-        return self.output_layer(hidden)
+        return self.final(self.decoder(summed_embeds, training=training), training=training)
 
     def compute_mask(self, inputs, mask=None):
         if mask is None:
@@ -62,10 +62,8 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.1,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         return {
-            'isabs': hyper_config.get_sublayer('AttentionStack', sub_layer_type=InducedSetAttentionBlockStack, seed_mod=29,
-                                              help='The layers to get interactions between cards.'),
-            # 'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=39,
-            #                                        help='The layers to model interactions between items.'),
+            'encode_items': hyper_config.get_sublayer('encoding', sub_layer_type=BERT, seed_mod=29,
+                                                      help='The layers to get interactions between cards.'),
             'pooling': hyper_config.get_sublayer('Pooling', sub_layer_type=PoolingByMultiHeadAttention, seed_mod=53,
                                                  fixed={'out_set_size': 1},
                                                  help='The layer to collapse down to one embedding.'),
@@ -87,8 +85,8 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         dropout_mask = tf.cast(dropout_mask, tf.bool)
         dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
         encoded_items = self.zero_masked(dropped, mask=dropout_mask)
-        # encoded_items = self.attention(encoded_items, encoded_items, encoded_items, training=training)
-        encoded_items = self.isabs(encoded_items, training=training)
+        print(encoded_items.shape)
+        encoded_items = self.encode_items(encoded_items, training=training)
         encoded_items = self.pooling(encoded_items, training=training)
         return self.decoder(encoded_items, training=training)
 

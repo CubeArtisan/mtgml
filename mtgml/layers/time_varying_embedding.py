@@ -18,7 +18,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
     def build(self, input_shapes):
         super(TimeVaryingEmbedding, self).build(input_shapes)
         self.embeddings = self.add_weight('embeddings', shape=(*self.time_shape, self.dims),
-                                          initializer=tf.keras.initializers.GlorotNormal(seed=self.seed),
+                                          initializer=tf.constant_initializer(1e-08),
                                           trainable=True)
 
     def call(self, inputs, training=False):

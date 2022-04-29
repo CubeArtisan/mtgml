@@ -45,7 +45,7 @@ if __name__ == "__main__":
     tokenized = [tokenize_card(c) for c in cards_json]
     max_length = max(len(c) for c in tokenized)
     tokenized = np.array([pad(c, max_length) for c in tokenized], dtype=np.int32)
-    config_path = Path('ml_files')/args.name/'hyper_config.yaml'
+    config_path = Path('ml_files')/args.name/'nlp_hyper_config.yaml'
     data = {}
     if config_path.exists():
         with open(config_path, 'r') as config_file:
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     color_name = {'W': 'White', 'U': 'Blue', 'B': 'Black', 'R': "Red", 'G': 'Green'}
 
     logging.info('Loading Combined model.')
-    output_dir = f'././ml_files/{args.name}/'
+    output_dir = f'ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     # strategy = tf.distribute.experimental.CentralStorageStrategy()
     # strategy = tf.distribute.MirroredStrategy()
@@ -141,10 +141,9 @@ if __name__ == "__main__":
     if model is None:
         sys.exit(1)
     model.compile()
-    latest = tf.train.latest_checkpoint(output_dir)
-    if latest is not None:
-        logging.info('Loading Checkpoint.')
-        model.load_weights(latest)
+    latest = output_dir + 'nlp_model'
+    logging.info('Loading Checkpoint.')
+    model.load_weights(latest)
 
     logging.info('Starting training')
     with strategy.scope():
@@ -153,5 +152,5 @@ if __name__ == "__main__":
         predictions = model.predict(
             dataset,
         )
-        np.save('card_embeddings.npy', predictions)
+        np.save(output_dir + 'card_embeddings.npy', predictions)
         print(predictions)

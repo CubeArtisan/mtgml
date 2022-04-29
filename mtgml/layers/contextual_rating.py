@@ -46,20 +46,20 @@ class ContextualRating(ConfigurableLayer):
 
     def call(self, inputs, training=False, mask=None):
         items, context = inputs
-        item_embeds = self.embed_item(items, training=training)
-        context_embed = self.embed_context(context, training=training)
+        if mask is None:
+            mask = [None, None]
+        item_embeds = self.embed_item(items, training=training, mask=mask[0])
+        context_embed = self.embed_context(context, training=training, mask=mask[1])
         embed_diffs = tf.math.subtract(item_embeds, tf.expand_dims(context_embed, 1, name='expanded_context_embeds'),
                                        name='embed_diffs')
         distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), -1, name='distances')
-        large = tf.constant(LARGE_INT, dtype=self.compute_dtype)
         if self.bounded_distance:
             one = tf.constant(1, dtype=self.compute_dtype)
-            nonlinear_distances = tf.math.divide(large, tf.math.add(one, distances,
+            nonlinear_distances = tf.math.divide(one, tf.math.add(one, distances,
                                                                   name='distances_incremented'),
                                                  name='nonlinear_distances')
         else:
             nonlinear_distances = tf.math.negative(distances, name='negative_distances')
-        # nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
         # Logging for tensorboard
         tf.summary.histogram('distances', distances)
         if self.bounded_distance:
