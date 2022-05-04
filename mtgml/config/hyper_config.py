@@ -49,14 +49,15 @@ class HyperConfig(Generic[LayerType]):
                 min: Union[int, None] = None, max: Union[int, None] = None,
                 step: Union[int, None] = None, logdist: Union[bool, None] = None) -> Union[int,None]:
         if name in self.fixed:
-            return self.fixed[name]
+            return int(self.fixed[name])
         if name in self.data:
             if self.data[name].value is not None:
-                return self.data[name].value
+                return int(self.data[name].value)
         else:
             self.data[name] = HyperConfigValue(help=help, min=min, max=max, step=step,
                                                logdist=logdist, value=default)
-        return default
+            assert default is not None
+            return int(default)
 
     def get_float(self, name: str, *, default: Union[float, None], help: str,
                   min: Union[float, None] = None, max: Union[float, None] = None,

@@ -1,7 +1,6 @@
 import tensorflow as tf
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
-from mtgml.layers.mlp import MLP
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.wrapped import WDense
 

@@ -46,6 +46,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
                                          help='The number of items that must be embedded. Should be 1 + the max index expected to see.')
         sublayer_count = len([x for x in (pool_context_ratings, seen_context_ratings, item_ratings) if x])
+        # dims = hyper_config.get_int('dims', min=8, max=1024, default=512,
+        #                             help='The number of dims for the transformer stream.')
         return {
             'card_embeddings': tf.constant(hyper_config.get_list('card_embeddings', default=None, help='The card embeddings.')),
             'num_cards': num_cards - 1,
@@ -78,9 +80,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                           fixed={'dims': sublayer_count, 'time_shape': (3, 15)},
                                                           help='The weights for each of the sublayers that get combined together linearly.'),
             'sublayer_metadata': sublayer_metadatas,
-            'downcast_embeddings': hyper_config.get_sublayer('DowncastEmbeddings', sub_layer_type=WDense,
-                                                             fixed={ 'dims': dims },
-                                                             help='Downcast the size of the card embeddings to make it fit in memory.'),
+            # 'downcast_embeddings': hyper_config.get_sublayer('DowncastEmbeddings', sub_layer_type=WDense,
+            #                                                  fixed={ 'dims': dims },
+            #                                                  help='Downcast the size of the card embeddings to make it fit in memory.'),
         }
 
     def call(self, inputs, training=False):

@@ -28,6 +28,18 @@ CardTextModel: !hcv
             FinalMLP: !hcv
               help: The final transformation.
               value: !hc {}
+        Transformer_4: !hcv
+          help: The 4th transformer layer.
+          value: !hc
+            FinalMLP: !hcv
+              help: The final transformation.
+              value: !hc {}
+        Transformer_5: !hcv
+          help: The 5th transformer layer.
+          value: !hc
+            FinalMLP: !hcv
+              help: The final transformation.
+              value: !hc {}
         activation: !hcv
           choices: &id001 !!python/tuple
           - elu
@@ -59,10 +71,10 @@ CardTextModel: !hcv
           value: 1
         num_hidden_layers: !hcv
           help: Number of transformer blocks.
-          value: 3
+          value: 5
         output_dims: !hcv
           help: The number of output dimensions from this layer.
-          value: 512
+          value: 128
         use_bias: !hcv
           help: Use bias in the dense layers
           value: true
@@ -74,7 +86,7 @@ CardTextModel: !hcv
       value: !hc
         rate: !hcv
           help: The mean proportion of tokens to replace with the MASK token.
-          value: 0.5
+          value: 0.65
     ReconstructTokens: !hcv
       help: Try to figure out the original identity of each token.
       value: !hc
@@ -88,81 +100,30 @@ CardTextModel: !hcv
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
-CubeAdjMtxFinal: !hcv
-  help: The layer to get the pairs of card adj_cells out.
+CubeTransformFirstCard: !hcv
+  help: Transform the first card in the pair.
   value: !hc
     use_bias: !hcv
       help: Whether to use bias on the output.
       value: true
-CubeAdjMtxMLP: !hcv
-  help: The mlp to process the paired embeddings
-  value: !hc
-    Dropout: !hcv
-      help: The dropout applied after each hidden layer.
-      value: !hc
-        rate: !hcv
-          help: The percent of values that get replaced with zero.
-          value: 0.5
-    activation: !hcv
-      choices: &id002 !!python/tuple
-      - elu
-      - selu
-      - relu
-      - tanh
-      - sigmoid
-      - linear
-      - swish
-      help: The activation function on the output of the layer.
-      value: selu
-    dims: !hcv
-      help: The number of dimensions for the output.
-      value: 512
-    num_hidden: !hcv
-      help: The number of hidden layers in the MLP.
-      value: 1
-    use_batch_norm: !hcv
-      help: Use batch normalization between layers
-      value: false
-    use_bias: !hcv
-      help: Whether to add on a bias at each layer.
-      value: true
-    use_layer_norm: !hcv
-      help: Use layer normalization between layers
-      value: false
-DeckAdjMtxFinal: !hcv
-  help: The layer to get the pairs of card adj_cells out.
+CubeTransformSecondCard: !hcv
+  help: Transform the first card in the pair.
   value: !hc
     use_bias: !hcv
       help: Whether to use bias on the output.
       value: true
-DeckAdjMtxMLP: !hcv
-  help: The mlp to process the paired embeddings
+DeckTransformFirstCard: !hcv
+  help: Transform the first card in the pair.
   value: !hc
-    Dropout: !hcv
-      help: The dropout applied after each hidden layer.
-      value: !hc
-        rate: !hcv
-          help: The percent of values that get replaced with zero.
-          value: 0.5
-    activation: !hcv
-      choices: *id002
-      help: The activation function on the output of the layer.
-      value: selu
-    dims: !hcv
-      help: The number of dimensions for the output.
-      value: 512
-    num_hidden: !hcv
-      help: The number of hidden layers in the MLP.
-      value: 1
-    use_batch_norm: !hcv
-      help: Use batch normalization between layers
-      value: false
     use_bias: !hcv
-      help: Whether to add on a bias at each layer.
+      help: Whether to use bias on the output.
       value: true
-    use_layer_norm: !hcv
-      help: Use layer normalization between layers
-      value: false
+DeckTransformSecondCard: !hcv
+  help: Transform the first card in the pair.
+  value: !hc
+    use_bias: !hcv
+      help: Whether to use bias on the output.
+      value: true
 DowncastEmbeds: !hcv
   help: Transform the second card in the pair.
   value: !hc
@@ -187,8 +148,14 @@ ExtraLayers: !hcv
         FinalMLP: !hcv
           help: The final transformation.
           value: !hc {}
+    Transformer_2: !hcv
+      help: The 2th transformer layer.
+      value: !hc
+        FinalMLP: !hcv
+          help: The final transformation.
+          value: !hc {}
     activation: !hcv
-      choices: *id002
+      choices: []
       help: The activation function on the output of the layer.
       value: selu
     attention dropout_rate: !hcv
@@ -196,7 +163,7 @@ ExtraLayers: !hcv
       value: 0.1
     dense dropout_rate: !hcv
       help: The dropout rate for the dense layers of the transformer blocks.
-      value: 0.2
+      value: 0.1
     dims: !hcv
       help: The number of dimensions for the output.
       value: 512
@@ -211,10 +178,10 @@ ExtraLayers: !hcv
       value: 1
     num_hidden_layers: !hcv
       help: Number of transformer blocks.
-      value: 1
+      value: 2
     output_dims: !hcv
       help: The number of output dimensions from this layer.
-      value: 512
+      value: 128
     use_bias: !hcv
       help: Use bias in the dense layers
       value: true
@@ -233,18 +200,6 @@ TokenEmbeddings: !hcv
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
-TransformFirstCard: !hcv
-  help: Transform the first card in the pair.
-  value: !hc
-    use_bias: !hcv
-      help: Whether to use bias on the output.
-      value: true
-TransformSecondCard: !hcv
-  help: Transform the second card in the pair.
-  value: !hc
-    use_bias: !hcv
-      help: Whether to use bias on the output.
-      value: true
 dtype: !hcv
   choices: !!python/tuple
   - 16
@@ -257,7 +212,7 @@ embed_dims: !hcv
   value: 512
 epochs_for_completion: !hcv
   help: The number of epochs it shoudl take to go through the entire dataset.
-  value: 60
+  value: 100
 fine_tuning: !hcv
   help: Whether to run fine tuning on the model now.
   value: true

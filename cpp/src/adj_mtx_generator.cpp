@@ -57,7 +57,7 @@ private:
                 std::uint16_t j_val = row[j];
                 if (j_val == 0) break;
                 /* if (j_val > num_cards) std::cout << i << ", " << j_val << std::endl; */
-                for (std::size_t k=0; k <= j; k++) {
+                for (std::size_t k=0; k < j; k++) {
                     std::uint16_t k_val = row[k];
                     adj_mtx[(j_val - 1) * num_cards + (k_val - 1)] += 1;
                     adj_mtx[(k_val - 1) * num_cards + (j_val - 1)] += 1;

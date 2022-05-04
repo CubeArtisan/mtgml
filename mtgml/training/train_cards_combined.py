@@ -8,12 +8,13 @@ import sys
 import time
 from pathlib import Path
 
+import horovod.tensorflow.keras as hvd
 import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 
-from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator
+from mtgml_native.generators.adj_mtx_generator import DeckAdjMtxGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.models.card_embeddings import CombinedCardModel
@@ -32,36 +33,30 @@ OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb
 class CardIndexGenerator(tf.keras.utils.Sequence):
     def __init__(self, num_cards, rows, columns, deck_adj_mtx, cube_adj_mtx, use_columns):
         self.num_cards = num_cards
-        self.row_idxs = np.arange(num_cards)
-        self.column_idxs = np.arange(num_cards)
-        print('use_columns', use_columns)
         self.use_columns = use_columns
         self.rows = rows if use_columns else (rows + columns)
         self.columns = columns
-        self.deck_adj_mtx = deck_adj_mtx
+        self.deck_adj_mtx = deck_adj_mtx / np.sum(deck_adj_mtx, axis=1, keepdims=True)
         self.cube_adj_mtx = cube_adj_mtx
-        zeros = 0
-        for i, row in enumerate(cube_adj_mtx):
-            if row[i] == 0:
-                zeros += 1
-        print("Number of cube zeros", zeros)
-        zeros = 0
-        for i, row in enumerate(deck_adj_mtx):
-            if row[i] == 0:
-                zeros += 1
-        print("Number of deck zeros", zeros)
+        if use_columns:
+            valid_cards = [i for i, x in enumerate(self.deck_adj_mtx) if x[i] < 1]
+        else:
+            valid_cards = np.arange(num_cards, dtype=np.int32)
+        self.row_idxs = np.array(valid_cards, dtype=np.int32)
+        self.column_idxs = np.array(valid_cards, dtype=np.int32)
+        self.num_valid = len(valid_cards)
+        logging.debug('NUM VALID', self.num_valid)
         self.on_epoch_end()
 
     def on_epoch_end(self):
-        print("ended epoch")
         np.random.shuffle(self.row_idxs)
-        np.random.shuffle(self.column_idxs)
         self.row_batches = []
         self.column_batches = []
-        for i in range(self.num_cards // self.rows):
+        for i in range(self.num_valid // self.rows):
             row = self.row_idxs[i * self.rows:(i+1) * self.rows]
             if self.use_columns:
-                for j in range(self.num_cards // self.columns):
+                np.random.shuffle(self.column_idxs)
+                for j in range(self.num_valid // self.columns):
                     self.row_batches.append(row)
                     self.column_batches.append(self.column_idxs[j * self.columns:(j+1) * self.columns])
             else:
@@ -73,9 +68,10 @@ class CardIndexGenerator(tf.keras.utils.Sequence):
         np.random.shuffle(self.batch_idxs)
 
     def __len__(self):
-        return len(self.batch_idxs)
+        return len(self.batch_idxs) // hvd.size()
 
     def __getitem__(self, idx):
+        idx = hvd.size() * idx + hvd.rank()
         batch_idx = self.batch_idxs[idx]
         return ((self.row_batches[batch_idx], self.column_batches[batch_idx]),)
 
@@ -115,21 +111,27 @@ if __name__ == "__main__":
     if config_path.exists():
         with open(config_path, 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
-    print('Initializing Generators')
+    logging.info('Initializing Generators')
     adj_mtx_batch_size = 200
-    cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(tokenized), 64, args.seed * 7 + 3)
-    cube_adj_mtx_generator.on_epoch_end()
+    cube_adj_mtx_generator = [] # CubeAdjMtxGenerator('data/train_cubes.bin', len(tokenized), 64, args.seed * 7 + 3)
+    # cube_adj_mtx_generator.on_epoch_end()
     deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(tokenized), 256, args.seed)
     deck_adj_mtx_generator.on_epoch_end()
     hyper_config = HyperConfig(layer_type=CombinedCardModel, data=data, fixed={
         'num_tokens': len(tokens),
         'card_token_map': tokenized,
         'deck_adj_mtx': deck_adj_mtx_generator.get_adj_mtx(),
-        'cube_adj_mtx': cube_adj_mtx_generator.get_adj_mtx(),
+        'cube_adj_mtx': [], # cube_adj_mtx_generator.get_adj_mtx(),
         'fine_tuning': args.fine_tuning,
     })
-    print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
+    logging.info(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
+    # os.environ["HOROVOD_ENABLE_XLA_OPS"] = "1"
+    hvd.init()
+    physical_devices = tf.config.list_physical_devices('GPU')
+    for gpu in physical_devices:
+        tf.config.experimental.set_memory_growth(gpu, True)
+    tf.config.set_visible_devices(physical_devices[hvd.local_rank()], 'GPU')
     if args.debug:
         log_dir = "logs/debug/"
         logging.info('Enabling Debugging')
@@ -145,7 +147,6 @@ if __name__ == "__main__":
 
     dtype = hyper_config.get_choice('dtype', choices=(16, 32, 64), default=32,
                                     help='The size of the floating point numbers to use for calculations in the model')
-    print(dtype, dtype==16)
     if dtype == 16:
         dtype = 'mixed_float16'
     elif dtype == 32:
@@ -205,11 +206,7 @@ if __name__ == "__main__":
     logging.info('Loading Combined model.')
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    # strategy = tf.distribute.experimental.CentralStorageStrategy()
-    # strategy = tf.distribute.MirroredStrategy()
-    strategy = tf.distribute.get_strategy()
-    with strategy.scope():
-        model = hyper_config.build(name='CombinedCardModel', dynamic=False, )
+    model = hyper_config.build(name='CombinedCardModel', dynamic=False, )
     if model is None:
         sys.exit(1)
     optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
@@ -248,6 +245,7 @@ if __name__ == "__main__":
         opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
     else:
         raise Exception('Need to specify a valid optimizer type')
+    opt = hvd.DistributedOptimizer(opt)
     model.compile(optimizer=opt)
     latest = tf.train.latest_checkpoint(output_dir)
     latest = output_dir + 'nlp_model'
@@ -256,64 +254,66 @@ if __name__ == "__main__":
         model.load_weights(latest)
 
     logging.info('Starting training')
-    with strategy.scope():
-        # train_generator = \
-        #     SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator),
-        #                    hyper_config.get_int('epochs_for_completion', min=1, default=1,
-        #                        help='The number of epochs it should take to go through the entire dataset.'))
-        # validation_generator = SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generatorhyper_config))
-        epochs_for_completion = hyper_config.get_int('epochs_for_completion', min=1, default=1,
-                                                     help='The number of epochs it shoudl take to go through the entire dataset.')
-        if not args.fine_tuning:
-            epochs_for_completion = 1
-        train_generator = SplitGenerator(CardIndexGenerator(len(tokenized), 64, 64, deck_adj_mtx_generator.get_adj_mtx(),
-                                                            cube_adj_mtx_generator.get_adj_mtx(),
-                                                            use_columns=args.fine_tuning),
-                                         epochs_for_completion=epochs_for_completion)
-        with open(config_path, 'w') as config_file:
-            yaml.dump(hyper_config.get_config(), config_file)
-        with open(log_dir + '/nlp_hyper_config.yaml', 'w') as config_file:
-            yaml.dump(hyper_config.get_config(), config_file)
-        callbacks = []
-        if not args.debug:
-            mcp_callback = tf.keras.callbacks.ModelCheckpoint(
-                filepath=output_dir + 'nlp_model',
-                verbose=True,
-                save_weights_only=True,
-                save_freq=len(train_generator))
-            cp_callback = tf.keras.callbacks.ModelCheckpoint(
-                filepath=log_dir + '/model-{epoch:04d}.ckpt',
-                verbose=True,
-                save_weights_only=True,
-                save_freq=5 * len(train_generator))
-            callbacks.append(mcp_callback)
-            callbacks.append(cp_callback)
-        if args.time_limit > 0:
-            to_callback = tfa.callbacks.TimeStopping(seconds=60 * args.time_limit, verbose=1)
-            callbacks.append(to_callback)
-        nan_callback = tf.keras.callbacks.TerminateOnNaN()
-        num_batches = len(train_generator)
-        es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
-                                                       mode='max', restore_best_weights=True, verbose=True)
-        tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=None, write_graph=True,
-                                     update_freq=max(len(train_generator) // 5, 1), embeddings_freq=None,
-                                     profile_batch=0 if args.debug or not args.profile else (128, 135))
-        BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
-        tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)
-        callbacks.append(nan_callback)
-        # callbacks.append(es_callback)
-        callbacks.append(tb_callback)
-        callbacks.append(tqdm_callback)
-        model(tf.cast(((0,1), (1,1)), dtype=tf.int32), training=False)
-        model(tf.cast(((0,1), (1,1)), dtype=tf.int32), training=True)
-        model.temperature.assign(1.0)
-        print(model.summary())
-        model.fit(
-            train_generator,
-            # validation_data=validation_generator,
-            # validation_freq=1,
-            epochs=args.epochs,
-            callbacks=callbacks,
-            verbose=0,
-            max_queue_size=2**10,
-        )
+    # train_generator = \
+    #     SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generator),
+    #                    hyper_config.get_int('epochs_for_completion', min=1, default=1,
+    #                        help='The number of epochs it should take to go through the entire dataset.'))
+    # validation_generator = SplitGenerator(CombinedGenerator(cube_adj_mtx_generator, deck_adj_mtx_generatorhyper_config))
+    epochs_for_completion = hyper_config.get_int('epochs_for_completion', min=1, default=1,
+                                                 help='The number of epochs it shoudl take to go through the entire dataset.')
+    if not args.fine_tuning:
+        epochs_for_completion = 1
+    count = 60
+    train_generator = SplitGenerator(CardIndexGenerator(len(tokenized), count, count, deck_adj_mtx_generator.get_adj_mtx(),
+                                                        [], # cube_adj_mtx_generator.get_adj_mtx(),
+                                                        use_columns=args.fine_tuning),
+                                     epochs_for_completion=epochs_for_completion)
+    with open(config_path, 'w') as config_file:
+        yaml.dump(hyper_config.get_config(), config_file)
+    with open(log_dir + '/nlp_hyper_config.yaml', 'w') as config_file:
+        yaml.dump(hyper_config.get_config(), config_file)
+    callbacks = []
+    if not args.debug and hvd.rank() == 0:
+        mcp_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=output_dir + 'nlp_model',
+            verbose=True,
+            save_weights_only=True,
+            save_freq=len(train_generator))
+        cp_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=log_dir + '/model-{epoch:04d}.ckpt',
+            verbose=True,
+            save_weights_only=True,
+            save_freq=5 * len(train_generator))
+        callbacks.append(mcp_callback)
+        callbacks.append(cp_callback)
+    if args.time_limit > 0:
+        to_callback = tfa.callbacks.TimeStopping(seconds=60 * args.time_limit, verbose=1)
+        callbacks.append(to_callback)
+    nan_callback = tf.keras.callbacks.TerminateOnNaN()
+    num_batches = len(train_generator)
+    es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
+                                                   mode='max', restore_best_weights=True, verbose=True)
+    tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=None, write_graph=True,
+                                 update_freq=max(len(train_generator) // 25, 1), embeddings_freq=None,
+                                 profile_batch=0 if args.debug or not args.profile else (128, 135))
+    BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
+    tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)
+    hvd_callback = hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+    callbacks.append(hvd_callback)
+    callbacks.append(nan_callback)
+    # callbacks.append(es_callback)
+    callbacks.append(tb_callback)
+    callbacks.append(tqdm_callback)
+    # model((tf.cast((0,1), dtype=tf.int32), tf.cast((1,), dtype=tf.int32)), training=False)
+    # model((tf.cast((0,1), dtype=tf.int32), tf.cast((1,), dtype=tf.int32)), training=True)
+    # model.temperature.assign(5)
+    # logging.info(model.summary())
+    model.fit(
+        train_generator,
+        # validation_data=validation_generator,
+        # validation_freq=1,
+        epochs=args.epochs,
+        callbacks=callbacks,
+        verbose=0,
+        max_queue_size=2**10,
+    )

@@ -1,3 +1,4 @@
+import horovod.tensorflow.keras as hvd
 import tensorflow as tf
 
 from mtgml.layers.item_embedding import ItemEmbedding
@@ -71,7 +72,7 @@ class MaskedModel(ConfigurableLayer, tf.keras.Model):
         reconstruction_token_losses = tf.keras.metrics.sparse_categorical_crossentropy(tokens, tf.nn.softmax(reconstructed) + 1e-10)
         mask = tf.cast(tokens > 0, dtype=self.compute_dtype)
         reconstruction_example_losses = tf.math.divide_no_nan(tf.reduce_sum(mask * reconstruction_token_losses, keepdims=True), tf.reduce_sum(mask, keepdims=True), name='reconstruction_sample_losses')
-        reconstruction_loss = tf.nn.compute_average_loss(reconstruction_example_losses)
+        reconstruction_loss = tf.reduce_mean(reconstruction_example_losses) / 2.0
         self.add_loss(reconstruction_loss)
 
         tf.summary.scalar('reconstruction_loss', reconstruction_loss)
@@ -127,7 +128,7 @@ class Electra(ConfigurableLayer, tf.keras.Model):
         pred_correct = tf.where(tokens == sampled, 1 - pred_replaced, pred_replaced) + 1e-10
         token_losses = -mask * tf.math.log(tf.where(tokens > 0, pred_correct, tf.ones_like(pred_correct)))
         sample_losses = tf.math.divide_no_nan(tf.reduce_sum(token_losses, keepdims=True), tf.reduce_sum(mask, keepdims=True), name='sample_losses')
-        sample_loss = tf.nn.compute_average_loss(sample_losses)
+        sample_loss = tf.reduce_mean(sample_losses) / 2.0
         self.add_loss(sample_loss)
 
         was_replaced = tf.cast(tokens != sampled, dtype=self.compute_dtype)
@@ -186,18 +187,14 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
                                                        fixed={'activation': 'linear', 'dims': embed_dims},
                                                        help='Transform the first card in the pair.')
                              if fine_tuning else None,
-            'deck_1_layer': hyper_config.get_sublayer('DeckTransformFirstCard', sub_layer_type=WDense,
+            # 'deck_row_layer': hyper_config.get_sublayer('DeckTransformFirstCard', sub_layer_type=WDense,
+            #                                            fixed={'activation': 'linear', 'dims': embed_dims},
+            #                                            help='Transform the first card in the pair.')
+            #                  if fine_tuning else None,
+            'deck_column_layer': hyper_config.get_sublayer('DeckTransformSecondCard', sub_layer_type=WDense,
                                                        fixed={'activation': 'linear', 'dims': embed_dims},
                                                        help='Transform the first card in the pair.')
                              if fine_tuning else None,
-            'deck_2_layer': hyper_config.get_sublayer('DeckTransformSecondCard', sub_layer_type=WDense,
-                                                       fixed={'activation': 'linear', 'dims': embed_dims},
-                                                       help='Transform the first card in the pair.')
-                             if fine_tuning else None,
-            'downcast_embeds': hyper_config.get_sublayer('DowncastEmbeds', sub_layer_type=WDense,
-                                                         fixed={'activation': 'linear'},
-                                                         help='Transform the second card in the pair.')
-                               if fine_tuning else None,
             'fine_tuning': fine_tuning,
         }
 
@@ -206,82 +203,89 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
         self.card_text.build(self.card_token_map.shape[1])
         self.token_embeds.build(input_shapes=(None, None))
         self.position_embeds.build(input_shapes=(None, None))
-        self.temperature = self.add_weight('temperature', shape=(), initializer=tf.constant_initializer(0.5),
-                                           trainable=True)
+        self.first_step = self.add_weight('first_step', shape=(), dtype=tf.bool, trainable=False, initializer=tf.constant_initializer(True))
+        if self.fine_tuning:
+            # self.cube_temperature = self.add_weight('cube_temperature', shape=(), initializer=tf.constant_initializer(0.5),
+            #                                         trainable=True)
+            self.deck_temperature = self.add_weight('deck_temperature', shape=(), initializer=tf.constant_initializer(0.5),
+                                                    trainable=True)
+
+    def compare_with_adj_mtx(self, row_embeds, column_embeds, card_idx_mtx, mtx_type, name=None):
+        adj_mtx = getattr(self, f'{mtx_type}_adj_mtx')
+        row_layer = getattr(self, f'{mtx_type}_row_layer', None) or (lambda x: x)
+        column_layer = getattr(self, f'{mtx_type}_column_layer')
+        temperature = getattr(self, f'{mtx_type}_temperature')
+        with tf.name_scope(name or 'CompareWithAdjMtx'):
+            unnormalized_true_probs = tf.cast(tf.gather_nd(adj_mtx, card_idx_mtx, name='adj_mtx_probs') + 1e-10, dtype=self.compute_dtype)
+            true_probs = unnormalized_true_probs / tf.reduce_sum(unnormalized_true_probs, axis=-1, keepdims=True, name='true_probs_row_sum')
+            row_embeds_transformed = row_layer(row_embeds)
+            column_embeds_transformed = column_layer(column_embeds)
+            exp_row_embeds = tf.expand_dims(row_embeds_transformed, -2) + tf.expand_dims(tf.zeros_like(column_embeds_transformed), -3)
+            exp_column_embeds = tf.expand_dims(tf.zeros_like(row_embeds_transformed), -2) + tf.expand_dims(column_embeds_transformed, -3)
+            similarities = -tf.keras.losses.cosine_similarity(exp_row_embeds, exp_column_embeds)
+            unnormalized_pred_probs = tf.nn.softmax(similarities * temperature, name='pred_probs') + 1e-10 # We add this to guarantee none get rounded to zero and to match how we did it above so they give the same values.
+            pred_probs = unnormalized_pred_probs / tf.reduce_sum(unnormalized_pred_probs, axis=-1, keepdims=True, name='pred_probs')
+            # We divide by log(2) to normalize it to bits instead of nats (base e) for interpretability.
+            divergence_loss = tf.reduce_mean(tf.math.abs(tf.keras.losses.kl_divergence(true_probs, pred_probs))) / tf.math.log(2.0)
+            # By keeping the temperature low we give it the best chance of avoiding vanishing gradients.
+            # It also encourages it to use the whole range of cosine similarity instead of bunching together.
+            # L2 is better than L1 loss here because we want it small not zero.
+            temperature_loss = temperature * temperature * 0.01
+            self.add_loss(divergence_loss)
+            self.add_loss(temperature_loss)
+
+            # More losses worth considering but not using to optimize.
+            l1_loss = tf.reduce_mean(tf.math.abs(true_probs - pred_probs), name='l1_loss')
+            l2_loss = tf.reduce_mean(tf.math.pow(true_probs - pred_probs, 2), name='l2_loss')
+            # Need to work out if this truly is a valid loss for float outcomes instead of binary. I believe it is.
+            cross_entropy_loss = -tf.reduce_mean(true_probs * tf.math.log(pred_probs) + (1 - true_probs) * tf.math.log(1 - pred_probs))
+            self.add_metric(divergence_loss, f'{mtx_type}_divergence_loss')
+            self.add_metric(temperature, f'{mtx_type}_temperature')
+            self.add_metric(l1_loss, f'{mtx_type}_l1_loss')
+            self.add_metric(l2_loss, f'{mtx_type}_l2_loss')
+            self.add_metric(cross_entropy_loss, f'{mtx_type}_cross_entropy_loss')
+
+            # Some additional metrics worth logging.
+            mean_similarity = 1 - tf.reduce_mean(similarities)
+            # We again normalize to bits for interpretability
+            pred_entropy = tf.reduce_mean(tf.reduce_sum(pred_probs * -tf.math.log(pred_probs), axis=-1)) / tf.math.log(2.0)
+            true_entropy = tf.reduce_mean(tf.reduce_sum(true_probs * -tf.math.log(true_probs), axis=-1)) / tf.math.log(2.0)
+            tf.summary.scalar('mean_similarity', mean_similarity)
+            tf.summary.scalar('entropy_pred', pred_entropy)
+            tf.summary.scalar('entropy_true', true_entropy)
+            tf.summary.histogram('probs_true', true_probs)
+            tf.summary.histogram('probs_pred', pred_probs)
+
+            return temperature_loss + divergence_loss
+
+
 
     def call(self, inputs, training=False):
-        cube_card_indices, deck_card_indices = inputs
-        cube_card_indices = tf.cast(cube_card_indices, dtype=tf.int32)
-        deck_card_indices = tf.cast(deck_card_indices, dtype=tf.int32)
-        cube_tokens = tf.gather(self.card_token_map, cube_card_indices, name='cube_tokens')
-        deck_tokens = tf.gather(self.card_token_map, deck_card_indices, name='deck_tokens')
+        row_card_indices, column_card_indices = inputs
+        row_card_indices = tf.cast(row_card_indices, dtype=tf.int32)
+        column_card_indices = tf.cast(column_card_indices, dtype=tf.int32)
+        card_indices = tf.concat([row_card_indices, column_card_indices], axis=0, name='card_indices')
         if not self.fine_tuning:
-            _, _, loss = self.card_text((cube_tokens, self.token_embeds.embeddings,
+            card_tokens = tf.gather(self.card_token_map, card_indices, name='cube_tokens')
+            _, _, loss = self.card_text((card_tokens, self.token_embeds.embeddings,
                                    self.position_embeds.embeddings), training=training)
+            return loss
         else:
-            card_tokens = tf.concat([cube_tokens, deck_tokens], 0)
+            card_tokens = tf.gather(self.card_token_map, card_indices, name='card_tokens')
             token_embeds = tf.gather(self.token_embeds.embeddings, card_tokens) + tf.expand_dims(self.position_embeds.embeddings, -3)
             card_embeds =  self.card_text.encode_tokens(token_embeds, training=training, mask=card_tokens > 0)
             card_embeds = self.extra_layers(card_embeds, training=training, mask=card_tokens > 0)[:, 0]
-            # card_embeds = self.downcast_embeds(card_embeds, training=training)
-            cube_card_embeds = card_embeds[:tf.shape(cube_card_indices)[0]]
-            deck_card_embeds = card_embeds[tf.shape(cube_card_indices)[0]:]
             if training:
-                exp_cube_indices = tf.expand_dims(tf.zeros_like(deck_card_indices), -2) + tf.expand_dims(cube_card_indices, -1)
-                exp_deck_indices = tf.expand_dims(tf.zeros_like(cube_card_indices), -1) + tf.expand_dims(deck_card_indices, -2)
-                card_idx_mtx = tf.stack([exp_cube_indices, exp_deck_indices], -1)
-                # cube_prob_mtx = tf.cast(tf.gather_nd(self.cube_adj_mtx, card_idx_mtx) + 1e-10, dtype=self.compute_dtype)
-                deck_prob_mtx = tf.cast(tf.gather_nd(self.deck_adj_mtx, card_idx_mtx) + 1e-10, dtype=self.compute_dtype)
-                # cube_prob_mtx = cube_prob_mtx / tf.reduce_sum(cube_prob_mtx, -1, keepdims=True)
-                deck_prob_mtx = deck_prob_mtx / tf.reduce_sum(deck_prob_mtx, -1, keepdims=True)
-                # cube_probs = tf.nn.softmax(tf.keras.losses.cosine_similarity(self.cube_1_layer(cube_card_embeds, training=training),
-                #                                                               self.cube_2_layer(deck_card_embeds, training=training)) * 20) + 1e-10
-                deck_probs = tf.nn.softmax(-tf.keras.losses.cosine_similarity(self.deck_1_layer(cube_card_embeds, training=training),
-                                                                              self.deck_2_layer(deck_card_embeds, training=training)) * self.temperature) + 1e-10
-                # cube_probs = cube_probs / tf.reduce_sum(cube_probs, -1, keepdims=True)
-                deck_probs = deck_probs / tf.reduce_sum(deck_probs, -1, keepdims=True)
-                # cube_loss = tf.reduce_mean(tf.math.abs(tf.keras.losses.kl_divergence(cube_prob_mtx, cube_probs)))
-                deck_loss = tf.reduce_mean(tf.math.abs(tf.keras.losses.kl_divergence(deck_prob_mtx, deck_probs)))
-                # self.add_loss(cube_loss)
-                # self.add_loss(deck_loss)
-                deck_l1_loss = tf.reduce_mean(tf.math.abs(deck_prob_mtx - deck_probs))
-                # self.add_loss(deck_l1_loss)
-                deck_l2_loss = tf.reduce_mean(tf.math.pow(deck_prob_mtx - deck_probs, 2))
-                # self.add_loss(deck_l2_loss)
-                cross_entropy_loss = -64 * tf.reduce_mean((deck_prob_mtx * tf.math.log(deck_probs) + (1 - deck_prob_mtx) * tf.math.log(1 - deck_probs)))
-                self.add_loss(cross_entropy_loss)
-                deck_entropy = tf.reduce_mean(tf.reduce_sum(deck_probs * -tf.math.log(deck_probs), axis=-1)) / tf.math.log(2.0)
-                deck_entropy_loss = 0.01 * deck_entropy
-                self.add_loss(deck_entropy_loss)
-
-                loss = deck_loss + deck_l1_loss + deck_l2_loss + cross_entropy_loss
-                # loss = cube_loss + deck_loss
-                # cube_entropy = tf.reduce_mean(tf.reduce_sum(cube_probs * -tf.math.log(cube_probs), axis=-1))
-                # cube_mtx_entropy = tf.reduce_mean(tf.reduce_sum(cube_prob_mtx * -tf.math.log(cube_prob_mtx), axis=-1))
-                deck_mtx_entropy = tf.reduce_mean(tf.reduce_sum(deck_prob_mtx * -tf.math.log(deck_prob_mtx), axis=-1)) / tf.math.log(2.0)
-                # tf.summary.scalar('cube_entropy', cube_entropy)
-                tf.summary.scalar('deck_entropy', deck_entropy)
-                # tf.summary.scalar('cube_mtx_entropy', cube_mtx_entropy)
-                tf.summary.scalar('deck_mtx_entropy', deck_mtx_entropy)
-                # tf.summary.histogram('cube_prob_mtx', cube_prob_mtx)
-                tf.summary.histogram('deck_prob_mtx', deck_prob_mtx)
-                # tf.summary.histogram('cube_probs', cube_probs)
-                tf.summary.histogram('deck_probs', deck_probs)
-                # tf.summary.scalar('cube_loss', cube_loss)
-                # tf.summary.scalar('deck_loss', deck_loss)
-                # tf.summary.scalar('deck_l1_loss', deck_l1_loss)
-                # tf.summary.scalar('deck_l2_loss', deck_l2_loss)
-                # tf.summary.scalar('cross_entropy_loss', cross_entropy_loss)
-                tf.summary.scalar('temperature', self.temperature)
-                # self.add_metric(cube_loss, 'cube_loss')
-                self.add_metric(deck_loss, 'deck_loss')
-                self.add_metric(deck_l1_loss, 'deck_l1_loss')
-                self.add_metric(deck_l2_loss, 'deck_l2_loss')
-                self.add_metric(cross_entropy_loss, 'cross_entropy_loss')
-                return deck_probs
-                # return cube_probs, deck_probs
+                # full_card_indices = hvd.allgather(card_indices, name='full_card_indices')
+                full_card_indices = card_indices
+                exp_row_indices = tf.expand_dims(tf.zeros_like(full_card_indices), -2) + tf.expand_dims(card_indices, -1)
+                exp_column_indices = tf.expand_dims(tf.zeros_like(card_indices), -1) + tf.expand_dims(full_card_indices, -2)
+                card_idx_mtx = tf.stack([exp_row_indices, exp_column_indices], -1, name='card_idx_mtx')
+                full_card_embeds = card_embeds
+                # full_card_embeds = hvd.allgather(card_embeds, name='full_card_embeds')
+                deck_loss = self.compare_with_adj_mtx(card_embeds, full_card_embeds, card_idx_mtx, 'deck', name='CompareWithDeckAdjMtx')
+                loss = deck_loss
+                return loss
             else:
-                loss = 0
-                return cube_card_embeds
-        tf.summary.scalar('loss', loss)
-        return loss
+                row_card_embeds = card_embeds[:tf.shape(row_card_indices)[0]]
+                return row_card_embeds
