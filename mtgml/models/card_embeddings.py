@@ -255,6 +255,7 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
             tf.summary.scalar('entropy_true', true_entropy)
             tf.summary.histogram('probs_true', true_probs)
             tf.summary.histogram('probs_pred', pred_probs)
+            tf.summary.histogram('similarities', similarities)
 
             return temperature_loss + divergence_loss
 
@@ -276,8 +277,8 @@ class CombinedCardModel(ConfigurableLayer, tf.keras.Model):
             card_embeds =  self.card_text.encode_tokens(token_embeds, training=training, mask=card_tokens > 0)
             card_embeds = self.extra_layers(card_embeds, training=training, mask=card_tokens > 0)[:, 0]
             if training:
-                # full_card_indices = hvd.allgather(card_indices, name='full_card_indices')
                 full_card_indices = card_indices
+                # full_card_indices = hvd.allgather(card_indices, name='full_card_indices')
                 exp_row_indices = tf.expand_dims(tf.zeros_like(full_card_indices), -2) + tf.expand_dims(card_indices, -1)
                 exp_column_indices = tf.expand_dims(tf.zeros_like(card_indices), -1) + tf.expand_dims(full_card_indices, -2)
                 card_idx_mtx = tf.stack([exp_row_indices, exp_column_indices], -1, name='card_idx_mtx')

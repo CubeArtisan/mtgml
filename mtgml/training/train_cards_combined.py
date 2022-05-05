@@ -302,7 +302,8 @@ if __name__ == "__main__":
     callbacks.append(hvd_callback)
     callbacks.append(nan_callback)
     # callbacks.append(es_callback)
-    callbacks.append(tb_callback)
+    if hvd.rank() == 0:
+        callbacks.append(tb_callback)
     callbacks.append(tqdm_callback)
     # model((tf.cast((0,1), dtype=tf.int32), tf.cast((1,), dtype=tf.int32)), training=False)
     # model((tf.cast((0,1), dtype=tf.int32), tf.cast((1,), dtype=tf.int32)), training=True)
