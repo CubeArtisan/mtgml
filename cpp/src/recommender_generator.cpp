@@ -98,7 +98,6 @@ public:
               noise_dist(noise, noise_std), main_rng(initial_seed, 1),
               task_producer{task_queue}, processed_consumer{processed_queue}
     {
-        std::cout << "Card Count: " << num_cards << std::endl;
         py::gil_scoped_release release;
         auto cube_file_start = reinterpret_cast<const CubeCards*>(cube_mmap.data());
         std::vector<float> cube_counts(num_cards, 0.0);
@@ -182,7 +181,7 @@ public:
 
     CubeData process_cube(const std::size_t index, pcg32& rng) {
         std::valarray<float> x1(0.0, num_cards);
-        float noise = std::ranges::clamp(noise_dist(rng), 0.3f, 0.9f);
+        float noise = std::ranges::clamp(noise_dist(rng), 0.2f, 0.9f);
         for (auto& x : x1) x = 0.0;
         const auto& row = reinterpret_cast<const CubeCards*>(cube_mmap.data())[index];
         for (const auto idx : row) {

@@ -214,9 +214,11 @@ class PoolingByMultiHeadAttention(ConfigurableLayer):
         self.seed_vectors = self.add_weight('seed_vectors', shape=(self.out_set_size, input_shapes[-1]),
                                             trainable=True)
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, mask=None):
+        if mask is not None:
+            mask = tf.expand_dims(mask, -2)
         shape = tf.concat([tf.shape(inputs)[:-2], tf.shape(self.seed_vectors)[-2:]], axis=0)
-        pooled = self.attention(self.seed_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs, training=training)
+        pooled = self.attention(self.seed_vectors + tf.zeros(shape, dtype=inputs.dtype), inputs, attention_mask=mask, training=training)
         if self.out_set_size == 1:
             return tf.squeeze(pooled, axis=-2)
         else:

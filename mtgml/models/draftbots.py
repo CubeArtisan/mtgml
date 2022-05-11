@@ -3,11 +3,11 @@ import math
 import numpy as np
 import tensorflow as tf
 
-from mtgml.constants import LARGE_INT, MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
+from mtgml.constants import LARGE_INT, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.mlp import MLP
-from mtgml.layers.set_embedding import AdditiveSetEmbedding
+from mtgml.layers.set_embedding import AttentiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
 
 POOL_ORACLE_METADATA = {
@@ -51,7 +51,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                        seed_mod=31, help='The layer that rates based on the other cards that have been picked.')
                              if pool_context_ratings else None,
             'seen_pack_dims': seen_pack_dims,
-            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AdditiveSetEmbedding,
+            'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AttentiveSetEmbedding,
                                                     fixed={'Decoder': {'Final': {'dims': seen_pack_dims, 'activation': 'linear'}}},
                                                     seed_mod=37, help='The layer that embeds the packs that have been seen so far.')
                           if seen_context_ratings else None,
@@ -65,7 +65,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                        seed_mod=31, help='The layer that rates based on the embeddings of the packs that have been seen.')
                              if seen_context_ratings else None,
             'rate_card': hyper_config.get_sublayer('CardRating', sub_layer_type=MLP, seed_mod=13,
-                                                   fixed={'Final': {'dims': 1, 'activation': 'relu'}},
+                                                   fixed={'Final': {'dims': 1, 'activation': 'linear'}},
                                                    help='Translates embeddings into linear ratings.')
                          if item_ratings else None,
             'log_loss_weight': hyper_config.get_float('log_loss_weight', min=0, max=1, step=0.01,
@@ -82,12 +82,12 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         }
 
     def call(self, inputs, training=False):
-        card_choices = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='card_choices'), (None, MAX_CARDS_IN_PACK))
+        card_choices = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='card_choices'), (None, None))
         # basics = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name='basics'), (None, MAX_BASICS))
-        pool = tf.ensure_shape(tf.cast(inputs[2], dtype=tf.int32, name='pool'), (None, MAX_PICKED))
-        seen_packs = tf.ensure_shape(tf.cast(inputs[3], dtype=tf.int32, name='seen_packs'), (None, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK))
-        seen_coords = tf.ensure_shape(tf.cast(inputs[4], dtype=tf.int32, name='seen_coords'), (None, MAX_SEEN_PACKS, 4, 2))
-        seen_coord_weights = tf.ensure_shape(tf.cast(inputs[5], dtype=self.compute_dtype, name='seen_coord_weights'), (None, MAX_SEEN_PACKS, 4))
+        pool = tf.ensure_shape(tf.cast(inputs[2], dtype=tf.int32, name='pool'), (None, None))
+        seen_packs = tf.ensure_shape(tf.cast(inputs[3], dtype=tf.int32, name='seen_packs'), (None, None, None))
+        seen_coords = tf.ensure_shape(tf.cast(inputs[4], dtype=tf.int32, name='seen_coords'), (None, None, 4, 2))
+        seen_coord_weights = tf.ensure_shape(tf.cast(inputs[5], dtype=self.compute_dtype, name='seen_coord_weights'), (None, None, 4))
         coords = tf.ensure_shape(tf.cast(inputs[6], dtype=tf.int32, name='coords'), (None, 4, 2))
         coord_weights = tf.ensure_shape(tf.cast(inputs[7], dtype=self.compute_dtype, name='coord_weights'), (None, 4))
         card_embeddings = tf.ensure_shape(tf.cast(inputs[8], dtype=self.compute_dtype, name='card_embeddings'), (self.num_cards + 1, None))
@@ -100,7 +100,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             sublayer_scores.append(self.rate_off_pool((card_choice_embeds, pool_embeds), training=training))
         if self.rate_off_seen:
             seen_pack_embeds = tf.gather(card_embeddings, seen_packs)
-            pack_embeds = self.embed_pack(seen_pack_embeds, training=training)
+            flat_seen_pack_embeds = tf.reshape(seen_pack_embeds, (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1]))
+            flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training)
+            pack_embeds = tf.reshape(flat_pack_embeds, (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]))
             position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
             pack_embeds =  pack_embeds + position_embeds
             pack_embeds._keras_mask = tf.math.reduce_any(seen_packs > 0, axis=-1)
@@ -127,8 +129,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             prob_chosen = tf.gather(probs, 0, axis=1, name='prob_chosen')
             num_in_packs = tf.reduce_sum(mask, name='num_in_packs')
             log_losses = tf.negative(tf.math.log((1 - 2e-10) * probs_correct + 1e-10, name='log_probs'), name='log_loss')
-            sample_weights = tf.where(scores > tf.expand_dims(scores[:, 0], -1), riskiness, tf.ones_like(riskiness))
-            log_losses = sample_weights * log_losses
+            log_losses = riskiness * log_losses
             log_loss = tf.reduce_sum(log_losses) / num_in_packs
             tf.summary.scalar('log_loss', log_loss)
             log_loss_weighted = tf.math.multiply(log_loss,
@@ -138,7 +139,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             score_diffs = tf.subtract(tf.add(tf.constant(self.margin, dtype=scores.dtype),
                                              scores[:, 1:]), scores[:, :1],
                                       name='score_diffs') * mask[:, 1:]
-            clipped_diffs = tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name='clipped_score_diffs') * sample_weights[:, 1:] - (sample_weights[:, 1:] - 1) * self.margin
+            clipped_diffs = tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name='clipped_score_diffs') * riskiness[:, 1:]
             triplet_losses = tf.math.reduce_sum(clipped_diffs) / num_in_packs
             tf.summary.scalar('triplet_loss', tf.reduce_mean(triplet_losses))
             triplet_loss_weighted = tf.math.multiply(triplet_losses,
@@ -151,24 +152,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             min_scores = min_scores + tf.stop_gradient(tf.reduce_min(scores + (1 - 2 * mask) * LARGE_INT, axis=-1) - min_scores)
             tf.summary.histogram('max_diff_scores', max_scores - min_scores)
-            tf.summary.histogram('min_scores', min_scores)
-            tf.summary.histogram('max_scores', max_scores)
-            low_score_loss = tf.reduce_mean(tf.maximum(min_scores - max_scores, -0.1)) + 0.1
-            high_score_loss = tf.reduce_mean(tf.maximum(max_scores - min_scores, 10)) - 10
-            self.add_metric(low_score_loss, 'low_score_loss')
-            self.add_metric(high_score_loss, 'high_score_loss')
-            # score_loss = low_score_loss + high_score_loss
-            score_loss = 0
-            card_rating_loss = tf.constant(0, dtype=loss_dtype)
             if self.rate_card:
                 card_ratings = self.rate_card(card_embeddings[1:], training=training)
-                hundred = tf.constant(100, dtype=loss_dtype)
-                ten = tf.constant(10, dtype=loss_dtype)
-                card_rating_loss = \
-                    (tf.math.abs(hundred - tf.cast(tf.math.reduce_variance(card_ratings), dtype=loss_dtype)) / ten
-                     + tf.math.abs(tf.cast(tf.math.reduce_mean(card_ratings), dtype=loss_dtype) - hundred))\
-                    * tf.constant(self.rating_stddev_weight, dtype=loss_dtype, name='rating_stddev_weight')
-                tf.summary.scalar('card_rating_loss', card_rating_loss)
             chosen_idx = tf.zeros_like(y_idx)
             scores = tf.cast(scores, dtype=tf.float32)
             top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
@@ -189,5 +174,5 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             tf.summary.histogram('prob_chosen', prob_chosen)
             tf.summary.histogram('log_losses', log_losses)
             tf.summary.histogram('triplet_losses', clipped_diffs)
-            return tf.cast(triplet_loss_weighted + log_loss_weighted + card_rating_loss + score_loss, dtype=self.compute_dtype)
+            return tf.reduce_mean(tf.cast(triplet_loss_weighted + log_loss_weighted, dtype=self.compute_dtype))
         return sublayer_scores, sublayer_weights

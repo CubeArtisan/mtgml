@@ -9,4 +9,4 @@ RUN apt-get clean && apt-get update && apt-get install -y libyajl-dev && pip ins
 COPY mtgml/ mtgml/
 COPY ml_files/latest/ ml_files/latest/
 
-ENTRYPOINT gunicorn -t 300 -b 0.0.0.0:8000 mtgml.server:app
+ENTRYPOINT python -m mtgml.server.__init__

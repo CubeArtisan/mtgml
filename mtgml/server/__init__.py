@@ -33,13 +33,15 @@ INT_TO_CARD = {int(k): v for k, v in enumerate(int_to_card)}
 def get_model():
     global MODEL
     if MODEL is None:
+        tf.keras.utils.set_random_seed(1)
+        tf.config.experimental.enable_op_determinism()
         with open(MODEL_PATH/'hyper_config.yaml', 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
         hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
             'num_cards': len(INT_TO_CARD) + 1,
             'DraftBots': { 'card_weights': np.ones((len(INT_TO_CARD) + 1,)) },
         })
-        tf.config.optimizer.set_jit(bool(hyper_config.get_bool('use_xla', default=False, help='Whether to use xla to speed up calculations.')))
+        # tf.config.optimizer.set_jit(bool(hyper_config.get_bool('use_xla', default=False, help='Whether to use xla to speed up calculations.')))
         MODEL = hyper_config.build(name='CombinedModel', dynamic=False)
         if MODEL is None:
             app.logger.error('Failed to load model')

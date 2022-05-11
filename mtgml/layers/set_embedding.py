@@ -7,6 +7,7 @@ from mtgml.layers.mlp import MLP
 from mtgml.layers.wrapped import WDropout, WMultiHeadAttention
 from mtgml.layers.attention import InducedSetAttentionBlockStack, PoolingByMultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
+from mtgml.layers.bert import BERT
 
 SET_EMBEDDING_CHOICES = ('additive', 'attentive')
 
@@ -62,10 +63,8 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         decoding_dropout = hyper_config.get_float('decoding_dropout_rate', min=0, max=0.99, step=0.01, default=0.1,
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         return {
-            'isabs': hyper_config.get_sublayer('AttentionStack', sub_layer_type=InducedSetAttentionBlockStack, seed_mod=29,
-                                              help='The layers to get interactions between cards.'),
-            # 'attention': hyper_config.get_sublayer('Attention', sub_layer_type=WMultiHeadAttention, seed_mod=39,
-            #                                        help='The layers to model interactions between items.'),
+            'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=BERT, seed_mod=39,
+                                                   help='The layers to model interactions between items.'),
             'pooling': hyper_config.get_sublayer('Pooling', sub_layer_type=PoolingByMultiHeadAttention, seed_mod=53,
                                                  fixed={'out_set_size': 1},
                                                  help='The layer to collapse down to one embedding.'),
@@ -86,10 +85,8 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         dropped, dropout_mask = self.item_dropout(inputs, training=training, mask=mask)
         dropout_mask = tf.cast(dropout_mask, tf.bool)
         dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
-        encoded_items = self.zero_masked(dropped, mask=dropout_mask)
-        # encoded_items = self.attention(encoded_items, encoded_items, encoded_items, training=training)
-        encoded_items = self.isabs(encoded_items, training=training)
-        encoded_items = self.pooling(encoded_items, training=training)
+        encoded_items = self.encoder(dropped, mask=dropout_mask, training=training)
+        encoded_items = self.pooling(encoded_items, training=training, mask=dropout_mask)
         return self.decoder(encoded_items, training=training)
 
     def compute_mask(self, inputs, mask=None):

@@ -3,6 +3,7 @@ import datetime
 import json
 import locale
 import logging
+import math
 import os
 import sys
 import time
@@ -13,7 +14,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 
-from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator
+from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator, PickAdjMtxGenerator
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from mtgml.generators.combined_generator import CombinedGenerator
@@ -57,12 +58,15 @@ if __name__ == "__main__":
     hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
         'num_cards': len(cards_json) + 1,
     })
+    tf.config.threading.set_intra_op_parallelism_threads(32)
+    tf.config.threading.set_inter_op_parallelism_threads(32)
+    strategy = tf.distribute.MirroredStrategy()
     cube_batch_size = hyper_config.get_int('cube_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
-                                           help='The number of cube samples to evaluate at a time')
+                                           help='The number of cube samples to evaluate at a time') * strategy.num_replicas_in_sync
     pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
-                                           help='The number of picks to evaluate at a time')
+                                           help='The number of picks to evaluate at a time') * strategy.num_replicas_in_sync
     adj_mtx_batch_size = hyper_config.get_int('adj_mtx_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
-                                              help='The number of rows of the adjacency matrices to evaluate at a time.')
+                                              help='The number of rows of the adjacency matrices to evaluate at a time.') * strategy.num_replicas_in_sync
     noise_mean = hyper_config.get_float('cube_noise_mean', min=0, max=1, default=0.7,
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
@@ -73,7 +77,9 @@ if __name__ == "__main__":
                                                        cube_batch_size, args.seed, noise_mean, noise_std)
     recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
                                                             cube_batch_size, args.seed, 0, 0)
-    deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
+    # deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
+    # deck_adj_mtx_generator.on_epoch_end()
+    deck_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     deck_adj_mtx_generator.on_epoch_end()
     cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
     cube_adj_mtx_generator.on_epoch_end()
@@ -145,67 +151,71 @@ if __name__ == "__main__":
             'disable_meta_optimizer': False,
             'min_graph_nodes': 1,
         })
-    tf.config.threading.set_intra_op_parallelism_threads(32)
-    tf.config.threading.set_inter_op_parallelism_threads(32)
 
     color_name = {'W': 'White', 'U': 'Blue', 'B': 'Black', 'R': "Red", 'G': 'Green'}
     metadata = os.path.join(log_dir, 'metadata.tsv')
     with open(metadata, "w") as f:
         f.write('Index\tName\tColors\tMana Value\tType\n')
+        f.write('0\tPlaceholderForNull\tNA\tNA\tNA\n')
         for i, card in enumerate(cards_json):
             f.write(f'{i+1}\t"{card["name"]}"\t{"".join(color_name[x] for x in sorted(card.get("color_identity")))}\t{card["cmc"]}\t{card.get("type")}\n')
 
     logging.info('Loading Combined model.')
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    model = hyper_config.build(name='CombinedModel', dynamic=False)
-    if model is None:
-        sys.exit(1)
-    optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
-                                        default='adam', help='The optimizer type to use for optimization')
-    learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
-                                           default=1e-03, help=f'The learning rate to use for {optimizer}')
-    # if hyper_config.get_bool('linear_warmup', default=False,
-    #                          help='Whether to linearly ramp up the learning rate from zero for the first epoch.'):
-    #     learning_rate = PiecewiseConstantDecayWithLinearWarmup(0, len(pick_generator_train), [0], [learning_rate, learning_rate])
-    if optimizer == 'adam':
-        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    elif optimizer == 'adamax':
-        opt = tf.keras.optimizers.Adamax(learning_rate=learning_rate)
-    elif optimizer == 'adadelta':
-        opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate)
-    elif optimizer == 'nadam':
-        opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
-    elif optimizer == 'sgd':
-        momentum = hyper_config.get_float('sgd_momentum', min=1e-05, max=1e-01, logdist=True,
-                                          default=1e-04, help='The momentum for sgd optimization.')
-        nesterov = hyper_config.get_bool('sgd_nesterov', default=False, help='Whether to use nesterov momentum for sgd.')
-        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum)
-    elif optimizer == 'lazyadam':
-        opt = tfa.optimizers.LazyAdam(learning_rate=learning_rate)
-    elif optimizer == 'rectadam':
-        weight_decay = hyper_config.get_float('rectadam_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
-                                              help='The weight decay for rectadam optimization per batch.')
-        opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=weight_decay)
-    elif optimizer == 'novograd':
-        weight_decay = hyper_config.get_float('novograd_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
-                                              help='The weight decay for novograd optimization per batch.')
-        opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
-    else:
-        raise Exception('Need to specify a valid optimizer type')
-    model.compile(optimizer=opt)
+    with strategy.scope():
+        model = hyper_config.build(name='CombinedModel', dynamic=False)
+        if model is None:
+            sys.exit(1)
+        optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
+                                            default='adam', help='The optimizer type to use for optimization')
+        learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
+                                               default=1e-03, help=f'The learning rate to use for {optimizer}') * math.sqrt(strategy.num_replicas_in_sync)
+        # if hyper_config.get_bool('linear_warmup', default=False,
+        #                          help='Whether to linearly ramp up the learning rate from zero for the first epoch.'):
+        #     learning_rate = PiecewiseConstantDecayWithLinearWarmup(0, len(pick_generator_train), [0], [learning_rate, learning_rate])
+        if optimizer == 'adam':
+            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        elif optimizer == 'adamax':
+            opt = tf.keras.optimizers.Adamax(learning_rate=learning_rate)
+        elif optimizer == 'adadelta':
+            opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate)
+        elif optimizer == 'nadam':
+            opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
+        elif optimizer == 'sgd':
+            momentum = hyper_config.get_float('sgd_momentum', min=1e-05, max=1e-01, logdist=True,
+                                              default=1e-04, help='The momentum for sgd optimization.')
+            nesterov = hyper_config.get_bool('sgd_nesterov', default=False, help='Whether to use nesterov momentum for sgd.')
+            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum)
+        elif optimizer == 'lazyadam':
+            opt = tfa.optimizers.LazyAdam(learning_rate=learning_rate)
+        elif optimizer == 'rectadam':
+            weight_decay = hyper_config.get_float('rectadam_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
+                                                  help='The weight decay for rectadam optimization per batch.')
+            opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=weight_decay)
+        elif optimizer == 'novograd':
+            weight_decay = hyper_config.get_float('novograd_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
+                                                  help='The weight decay for novograd optimization per batch.')
+            opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
+        elif optimizer == 'lamb':
+            weight_decay = hyper_config.get_float('lamb_weight_decay', min=1e-10, max=1e-01, default=1e-06, logdist=True,
+                                                  help='The weight decay for lamb optimization per batch.')
+            opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
+        else:
+            raise Exception('Need to specify a valid optimizer type')
+        model.compile(optimizer=opt)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
         logging.info('Loading Checkpoint.')
         model.load_weights(latest)
 
     logging.info('Starting training')
-    with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
+    with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator, strategy.scope():
+        epochs_for_completion = hyper_config.get_int('epochs_for_completion', min=1, default=32,
+                                                     help='The number of epochs it should take to go through the entire dataset.')
         train_generator = \
             SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator,
-                                             cube_adj_mtx_generator, deck_adj_mtx_generator),
-                           hyper_config.get_int('epochs_for_completion', min=1, default=32,
-                               help='The number of epochs it should take to go through the entire dataset.'))
+                                             cube_adj_mtx_generator, deck_adj_mtx_generator), epochs_for_completion)
         validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
@@ -215,19 +225,13 @@ if __name__ == "__main__":
         if not args.debug:
             mcp_callback = tf.keras.callbacks.ModelCheckpoint(
                 filepath=output_dir + 'model',
-                monitor='val_accuracy',
                 verbose=False,
-                save_best_only=True,
                 save_weights_only=True,
-                mode='max',
                 save_freq='epoch')
             cp_callback = tf.keras.callbacks.ModelCheckpoint(
                 filepath=log_dir + '/model-{epoch:04d}.ckpt',
-                monitor='val_accuracy',
                 verbose=True,
-                save_best_only=False,
                 save_weights_only=True,
-                mode='max',
                 save_freq='epoch')
             callbacks.append(mcp_callback)
             callbacks.append(cp_callback)
@@ -254,11 +258,13 @@ if __name__ == "__main__":
         # Make sure it compiles the correct setup for evaluation
         model((pick_train_example, cube_train_example, *rest), training=False)
         print(model.summary())
-        # model.save(f'ml_files/current', save_format='tf')
+        # model.cube_recommender.temperature.assign(1)
+        # model.cube_adj_mtx_reconstructor.temperature.assign(1)
+        # model.deck_adj_mtx_reconstructor.temperature.assign(1)
         model.fit(
             train_generator,
-            validation_data=validation_generator,
-            validation_freq=1,
+            # validation_data=validation_generator,
+            # validation_freq=epochs_for_completion,
             epochs=args.epochs,
             callbacks=callbacks,
             verbose=0,

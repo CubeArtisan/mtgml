@@ -42,7 +42,7 @@ class ExtendedDropout(ConfigurableLayer):
         return tf.convert_to_tensor(noise_shape)
 
     def call(self, inputs, training=False, mask=None):
-        if 0 >= self.rate or not training:
+        if self.rate <= 0 or not training:
             result = inputs
             noise_mask = tf.cast(tf.ones_like(inputs), tf.bool)
         elif self.rate >= 1:
@@ -52,10 +52,9 @@ class ExtendedDropout(ConfigurableLayer):
             noise_shape = self._get_noise_shape(inputs)
             noise = tf.random.uniform(noise_shape, minval=0, maxval=1, dtype=self.compute_dtype,
                                       seed=self.seed, name='noise')
-            noise_mult = tf.where(noise >= self.rate, tf.ones_like(inputs),
-                                  tf.zeros_like(inputs), name='noise_mult')
-            result = tf.math.multiply(inputs, noise_mult)
             noise_mask = noise >= self.rate
+            result = tf.where(noise_mask, inputs,
+                                  tf.zeros_like(inputs), name='noise_mult')
         result = tf.ensure_shape(result, self.input_shapes)
         if self.return_mask:
             if mask is not None:

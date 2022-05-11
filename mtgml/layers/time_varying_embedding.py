@@ -7,7 +7,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
     def get_properties(cls, hyper_config, input_shapes=None):
         time_shape = hyper_config.get_list('time_shape', default=None,
                                             help='The dimensions of the time space.')
-        if not time_shape and input_shape:
+        if not time_shape:
             raise NotImplementedError('You must supply a time shape.')
         return {
             'time_shape': time_shape,
@@ -20,6 +20,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
         self.embeddings = self.add_weight('embeddings', shape=(*self.time_shape, self.dims),
                                           initializer=tf.keras.initializers.GlorotNormal(seed=self.seed),
                                           trainable=True)
+
     def call(self, inputs, training=False):
         if isinstance(inputs, (list, tuple)):
             coords, coord_weights = inputs

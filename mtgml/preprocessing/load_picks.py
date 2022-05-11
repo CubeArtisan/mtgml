@@ -1,6 +1,7 @@
 import glob
 import json
 import locale
+import multiprocessing.pool
 import random
 import struct
 import sys
@@ -32,6 +33,8 @@ default_basic_ids = [
 ]
 default_basics = [card_to_int[c] for c in default_basic_ids]
 
+BUFFER_SIZE = 1024
+
 
 def pad(arr, desired_length, value=0):
     if isinstance(arr, tuple):
@@ -46,78 +49,76 @@ def picks_from_draft(draft):
     if isinstance(draft, dict):
         basics = [x + 1 for x in draft.get('basics', default_basics)][:MAX_BASICS]
         if 'picks' in draft:
+            BUFFER = np.zeros((len(int_to_card) + 1,), dtype=np.int16)
             seen = []
             seen_coords = []
             seen_coord_weights = []
             for pick in draft['picks']:
-                if not (all(isinstance(x, int) for x in pick['cardsInPack']) and
-                        all(isinstance(x, int) for x in pick['picked'])):
-                    break
                 picked_idx = pick.get('pickedIdx', pick.get('trashedIdx', None))
+                if not (all(isinstance(x, int) for x in pick['cardsInPack']) and
+                        all(isinstance(x, int) for x in pick['picked']) and
+                        len(seen) < MAX_SEEN_PACKS and 
+                        picked_idx is not None and 0 <= picked_idx < len(pick['cardsInPack']) and
+                        len(pick['picked']) <= MAX_PICKED): return
+                if len(pick['cardsInPack']) <= 1: continue
                 cards_in_pack = [x + 1 for x in pick['cardsInPack']]
                 coords, coord_weights = interpolate(pick['pickNum'], pick['numPicks'],
                                                     pick['packNum'], pick['numPacks'])
-                seen.append(cards_in_pack[:MAX_CARDS_IN_PACK])
+                cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
+                cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
+                seen.append(cards_in_pack)
                 seen_coords.append(coords)
                 seen_coord_weights.append(coord_weights)
-                if picked_idx is not None and 0 <= picked_idx < len(cards_in_pack):
-                    chosen = cards_in_pack[picked_idx]
-                    cards_in_pack = set(cards_in_pack)
-                    cards_in_pack.remove(chosen)
-                    cards_in_pack = [chosen, *cards_in_pack]
-                    picked = [x + 1 for x in pick['picked']]
-                    if len(picked) <= MAX_PICKED and len(seen) <= MAX_SEEN_PACKS and len(cards_in_pack) > 1:
-                        trashed = 0 if 'pickedIdx' in pick else 1
-                        yield (cards_in_pack[:MAX_CARDS_IN_PACK], basics, picked, tuple(seen),
-                               tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights,
-                               trashed)
+                picked = tuple(x + 1 for x in pick['picked'])[:MAX_PICKED]
+                trashed = 0 if 'pickedIdx' in pick else 1
+                yield (cards_in_pack, basics, picked, tuple(seen),
+                       tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights,
+                       trashed)
 
 
 def picks_from_draft2(draft):
     if 'picks' in draft:
+        BUFFER = np.zeros((len(int_to_card) + 1,), dtype=np.int16)
         seen = []
         seen_coords = []
         seen_coord_weights = []
         for pick in draft['picks']:
             if not (all(isinstance(x, int) for x in pick['cardsInPack']) and
-                    all(isinstance(x, int) for x in pick['picked'])):
-                break
-            cards_in_pack = list(old_int_to_new_int[x] + 1 for x in pick['cardsInPack'])
+                    all(isinstance(x, int) for x in pick['picked']) and
+                    len(seen) < MAX_SEEN_PACKS and
+                    len(pick['picked']) <= MAX_PICKED): return
+            cards_in_pack = [old_int_to_new_int[x] + 1 for x in pick['cardsInPack']]
             coords, coord_weights = interpolate(pick['pick'], pick['packSize'], pick['pack'],
                                                 pick['packs'])
+            chosen_card = old_int_to_new_int[pick['chosenCard']] + 1
+            picked_idx = cards_in_pack.index(chosen_card)
+            if picked_idx < 0: return
+            cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
+            cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
             seen.append(cards_in_pack[:MAX_CARDS_IN_PACK])
             seen_coords.append(coords)
             seen_coord_weights.append(coord_weights)
-            chosen_card = old_int_to_new_int[pick['chosenCard']] + 1
-            if chosen_card not in cards_in_pack:
-                continue
-            cards_in_pack = set(cards_in_pack)
-            cards_in_pack.remove(chosen_card)
-            cards_in_pack = [chosen_card, *cards_in_pack]
-            picked = [old_int_to_new_int[x] + 1 for x in pick['picked']]
-            if len(picked) <= MAX_PICKED and len(seen) <= MAX_SEEN_PACKS and len(cards_in_pack) > 1:
-                yield (cards_in_pack[:MAX_CARDS_IN_PACK], default_basics, picked, tuple(seen),
+            picked = [old_int_to_new_int[x] + 1 for x in pick['picked']][:MAX_PICKED]
+            if len(picked) <= MAX_PICKED and len(cards_in_pack) > 1:
+                yield (cards_in_pack, default_basics, picked, tuple(seen),
                        tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights, 0)
 
 
 DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
 
-def load_all_drafts(*args):
-    num_drafts = 0
+def load_all_drafts(pool, *args):
     for drafts_dir, picks_gen in zip(args, (picks_from_draft, picks_from_draft2)):
+        def load_drafts_file(drafts_file):
+            with open(drafts_file, 'rb') as fp:
+                drafts = JsonSlicer(fp, (None,))
+                def gen():
+                    for draft in drafts:
+                        yield from picks_gen(draft)
+                return list(gen())
         for draft_dir in drafts_dir.split(';'):
-            for drafts_file in tqdm(glob.glob(f'{draft_dir}/*.json'), leave=False, dynamic_ncols=True,
-                                    unit='file', unit_scale=1):
-                with open(drafts_file, 'rb') as fp:
-                    drafts = JsonSlicer(fp, (None,))
-                    for draft in tqdm(drafts, leave=False, dynamic_ncols=True, unit='draft', unit_scale=1,
-                                      smoothing=0.001, initial=num_drafts):
-                        num_drafts += 1
-                        rand_val = random.randint(0, 9)
-                        dest = DESTS[rand_val]
-                        for pick in picks_gen(draft):
-                            yield (dest, pick)
-    print(f'Total drafts {num_drafts:n}')
+            files = glob.glob(f'{draft_dir}/*.json')
+            yield from tqdm(pool.imap_unordered(func=load_drafts_file, iterable=files, chunksize=1),
+                            leave=False, dynamic_ncols=True, unit='file', unit_scale=1, total=len(files))
 
 COLORS = { 'W': 0, 'w': 0, 'U': 1, 'u': 1, 'B': 2, 'b': 2, 'R': 3, 'r': 3, 'G': 4, 'g': 4 }
 
@@ -129,8 +130,12 @@ def colors_to_mask(colors):
     return result
 
 
-def calculate_devotion(cost, cmc):
+def calculate_devotion(cost, cmc, color_identity, type_line):
     final_cost = np.zeros((5,), dtype=np.float32)
+    if 'Land' in type_line:
+        for color in color_identity:
+            final_cost[COLORS[color]] = 1 / len(color_identity)
+        return final_cost
     for symbol in cost:
         if '2' in symbol or 'p' in symbol: continue
         add = np.zeros((5,), dtype=np.float32)
@@ -140,24 +145,38 @@ def calculate_devotion(cost, cmc):
         final_cost += add / max(add.sum(), 1)
     return final_cost * final_cost.sum() / max(cmc, 1)
 
-DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc']) for c in int_to_card])
-COLOR_IDENTITY = [np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in int_to_card]
+DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc'], c['color_identity'], c['type']) for c in int_to_card])
+COLOR_IDENTITY = np.array([np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in int_to_card])
+DEVOTION_AND_IDENTITY = DEVOTION + COLOR_IDENTITY
 
 
-def calculate_riskiness(pick):
-    # if pick[6][0][0] == 0 and pick[6][0][1] < 5: return np.ones((MAX_CARDS_IN_PACK,))
-    total_devotions = DEVOTION[pick[2]].sum(axis=0)
-    dev_indices = set(i for i in np.argsort(total_devotions)[:2] if total_devotions[i] > 0)
-    usable_colors_mask = np.zeros((5,), dtype=np.float32)
-    usable_colors_mask[list(dev_indices)] = 1
-    usable_colors_mask += COLOR_IDENTITY[pick[0][0]]
-    if usable_colors_mask.sum() == 0: return np.ones((MAX_CARDS_IN_PACK,), dtype=np.float32)
-    return np.array([10.0 if (usable_colors_mask * COLOR_IDENTITY[i]).sum() == 0 and COLOR_IDENTITY[i].sum() > 0 else 1.0 for i in pad(pick[0], MAX_CARDS_IN_PACK)], dtype=np.float32)
+def calculate_riskiness(pack, pool):
+    total_devotions = DEVOTION[pool].sum(axis=-2, keepdims=True)
+    total_devotion = np.sum(total_devotions, axis=-1, keepdims=True)
+    pack_colors = DEVOTION_AND_IDENTITY[pack]
+    pack_used_colors = np.where((total_devotions > total_devotion / 5) | (np.take(pack_colors, [0], axis=-2) > 0),
+                                pack_colors, np.zeros_like(pack_colors))
+    extra_colors = pack_colors.sum(axis=-1) - pack_used_colors.sum(axis=-1)
+    pack_unused_colors = np.where(np.squeeze(total_devotion, -1) > 5, extra_colors, np.zeros_like(extra_colors))
+    return pack_unused_colors * 4 + 1
 
 PREFIX = struct.Struct(f'{MAX_CARDS_IN_PACK}H{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f8B4f16fB3x')
 
 
-def write_pick(pick, output_file):
+POOL_ARRAY = np.zeros((BUFFER_SIZE, MAX_PICKED), dtype=np.int32)
+PACK_ARRAY = np.zeros((BUFFER_SIZE, MAX_CARDS_IN_PACK), dtype=np.int32)
+def write_picks(picks, output_file):
+    for i, pick in enumerate(picks):
+        POOL_ARRAY[i, :len(pick[2])] = pick[2]
+        POOL_ARRAY[i, len(pick[2]):] = 0
+        PACK_ARRAY[i, :len(pick[0])] = pick[0]
+        PACK_ARRAY[i, len(pick[0]):] = 0
+    riskinesses = calculate_riskiness(PACK_ARRAY, POOL_ARRAY).tolist()
+    for pick, riskiness in zip(picks, riskinesses):
+        write_pick(pick, riskiness, output_file)
+
+
+def write_pick(pick, riskiness, output_file):
     cards_in_pack, basics, picked, seen, seen_coords, seen_coord_weights, coords, coord_weights, trashed = pick
     seen = pad([x for pack in seen for x in pad(pack, MAX_CARDS_IN_PACK)], MAX_CARDS_IN_PACK * MAX_SEEN_PACKS)
     seen_coords = pad([y for pack in seen_coords for x in pack for y in x], MAX_SEEN_PACKS * 4 * 2)
@@ -165,7 +184,7 @@ def write_pick(pick, output_file):
     coords = [x for coord in coords for x in coord]
     prefix = PREFIX.pack(*pad(cards_in_pack, MAX_CARDS_IN_PACK), *pad(basics, MAX_BASICS),
                          *pad(picked, MAX_PICKED), *seen, *seen_coords, *seen_coord_weights, *coords,
-                         *coord_weights, *calculate_riskiness(pick), trashed)
+                         *coord_weights, *riskiness, trashed)
     output_file.write(prefix)
 
 
@@ -246,8 +265,20 @@ if __name__ == '__main__':
     train_filename = Path('data/train_picks.bin')
     validation_filename = Path('data/validation_picks.bin')
     evaluation_filename = Path('data/evaluation_picks.bin')
+    num_picks = 0
     with open(train_filename, 'wb') as train_file, open(validation_filename, 'wb') as validation_file, \
-          open(evaluation_filename, 'wb') as evaluation_file:
+          open(evaluation_filename, 'wb') as evaluation_file, \
+          multiprocessing.pool.ThreadPool(processes=1) as read_pool, \
+          multiprocessing.pool.ThreadPool(processes=1) as write_pool:
         output_files = [train_file, validation_file, evaluation_file]
-        for dest, pick in load_all_drafts(*sys.argv[1:]):
-            write_pick(pick, output_files[dest])
+        for picks in load_all_drafts(read_pool, *sys.argv[1:]):
+            for i in range(len(picks) // BUFFER_SIZE):
+                rand_val = random.randint(0, 9)
+                dest = DESTS[rand_val]
+                write_pool.apply(write_picks, (picks[i * BUFFER_SIZE:(i + 1) * BUFFER_SIZE], output_files[dest]))
+                num_picks += BUFFER_SIZE
+        read_pool.close()
+        write_pool.close()
+        read_pool.join()
+        write_pool.join()
+    print(f'There were {num_picks} total picks')
