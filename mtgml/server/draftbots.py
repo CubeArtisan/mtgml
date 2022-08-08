@@ -4,7 +4,7 @@ import numpy.ma as ma
 from mtgml.constants import MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
 from mtgml.utils.grid import interpolate
 
-def get_draft_scores(drafter_state, model, card_to_int):
+def get_draft_scores(drafter_state, model, card_to_int, tracer):
     cards_in_pack = np.zeros((1, MAX_CARDS_IN_PACK), dtype=np.int32)
     original_cards_idx = []
     idx = 0
@@ -41,8 +41,9 @@ def get_draft_scores(drafter_state, model, card_to_int):
         idx_pack += 1
     coords, weights = interpolate(drafter_state['pickNum'], drafter_state['numPicks'], drafter_state['packNum'],
                                   drafter_state['numPacks'])
-    oracle_scores, oracle_weights = model.draftbots((cards_in_pack, basics, picked, seen_packs, seen_coords, seen_weights,
-                                                            [coords], [weights], model.embed_cards.embeddings), training=False)
+    with tracer.start_as_current_span('call_draftbots'):
+        oracle_scores, oracle_weights = model.draftbots((cards_in_pack, basics, picked, seen_packs, seen_coords, seen_weights,
+                                                                [coords], [weights], model.embed_cards.embeddings), training=False)
     oracle_scores = oracle_scores.numpy()[0]
     oracle_scores = ma.masked_array(oracle_scores, mask=np.broadcast_to(np.expand_dims(cards_in_pack[0] == 0, -1), oracle_scores.shape))
     oracle_scores_min = np.amin(oracle_scores, axis=0)
