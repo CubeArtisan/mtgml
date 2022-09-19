@@ -1,0 +1,4 @@
+outs:
+- md5: a10c3b6dda511448764a777465a7eeca
+  size: 39472595
+  path: int_to_card.json

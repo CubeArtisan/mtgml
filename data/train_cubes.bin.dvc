@@ -1,0 +1,4 @@
+outs:
+- md5: a422dc563c46afc6db8cba3718faa5c4
+  size: 53181360
+  path: train_cubes.bin

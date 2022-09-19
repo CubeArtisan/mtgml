@@ -38,7 +38,7 @@ def load_all_cubes(cube_dirs):
                 cubes = JsonSlicer(fp, (None,))
                 for cube in tqdm(cubes, leave=False, dynamic_ncols=True, unit='cube', unit_scale=1,
                                   smoothing=0.001, initial=num_cubes):
-                    if len(cube['cards']) >= 120 and all(isinstance(x, int) for x in cube['cards']):
+                    if MAX_CUBE_SIZE >= len(cube['cards']) >= 120 and all(isinstance(x, int) for x in cube['cards']):
                         num_cubes += 1
                         rand_val = random.randint(0, 9)
                         dest = DESTS[rand_val]
@@ -52,14 +52,14 @@ def load_all_cubes2(cube_dirs):
         for cubes_file in tqdm(glob.glob(f'{cube_dir}/*.json'), leave=False, dynamic_ncols=True,
                                 unit='file', unit_scale=1):
             with open(cubes_file, 'rb') as fp:
-                cubes = JsonSlicer(fp, (None,))
+                cubes = JsonSlicer(fp, (None, 'cards'))
                 for cube in tqdm(cubes, leave=False, dynamic_ncols=True, unit='cube', unit_scale=1,
                                   smoothing=0.001, initial=num_cubes):
-                    if len(cube['cards']) >= 120 and all(x in name_to_int for x in cube['cards']):
+                    if MAX_CUBE_SIZE >= len(cube) >= 120 and all(x in name_to_int for x in cube):
                         num_cubes += 1
                         rand_val = random.randint(0, 9)
                         dest = DESTS[rand_val]
-                        yield (dest, tuple(name_to_int[x] + 1 for x in cube['cards']))
+                        yield (dest, tuple(name_to_int[x] + 1 for x in cube))
     print(f'Total cubes {num_cubes:n}')
 
 

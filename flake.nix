@@ -26,7 +26,8 @@
               pkgs.cudaPackages.cutensor
               pkgs.cudaPackages.cudnn
               pkgs.linuxPackages.nvidia_x11
-              pkgs.python39Packages.python
+              pkgs.python310Packages.python
+              pkgs.python310Packages.poetry
               pkgs.cmake
               pkgs.ninja
               pkgs.pkg-config
@@ -40,35 +41,30 @@
               export LIBCLANG_PATH="${pkgs.llvmPackages_12.libclang}/lib";
               export CUDATOOLKIT=${pkgs.cudaPackages.cudatoolkit}
               export CUDATOOLKIT_LIB=${pkgs.cudaPackages.cudatoolkit.lib}
+              export CUDA_DIR=$CUDATOOLKIT_LIB
               export CUDNN=${pkgs.cudaPackages.cudnn}
               export CUTENSOR=${pkgs.cudaPackages.cutensor}
+              export CUBLAS=${pkgs.cudaPackages.libcublas}
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit}/lib:${pkgs.cudaPackages.cudatoolkit.lib}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudnn}/lib:${pkgs.cudaPackages.cutensor}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.linuxPackages.nvidia_x11}/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit}/nvvm/libdevice:$LD_LIBRARY_PATH
-              export LD_LIBRARY_PATH=${pkgs.zlib.out}/lib:$LD_LIBRARY_PATH
+              export LD_LIBRARY_PATH=${pkgs.cudaPackages.libcublas}/lib:$LD_LIBRARY_PATH
               SOURCE_DATE_EPOCH=$(date +%s)
               export TF_GPU_ALLOCATOR=cuda_malloc_async
               export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${pkgs.cudaPackages.cudatoolkit}"
               export TF_XLA_FLAGS="--tf_xla_cpu_global_jit --tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
               # export TF_XLA_FLAGS="$TF_XLA_FLAGS --tf_mlir_enable_mlir_bridge --tf_mlir_enable_merge_control_flow_pass"
               export TF_GPU_THREAD_MODE=gpu_private
-
-              if [ ! -d "${venvDir}" ]; then
-                echo "Creating new venv environment in path: '${venvDir}'"
-                ${pkgs.python39Packages.python.interpreter} -m venv "${venvDir}"
-                source "${venvDir}/bin/activate"
-                pip install --upgrade wheel setuptools pip
-                pip install -r requirements.txt
+              export VENV_DIR=$(poetry env info --path)
+              if [ ! -d "$VENV_DIR" ]; then
+                poetry env use 3.10
+                poetry install
+                export VENV_DIR=$(poetry env info --path)
+                source $VENV_DIR/bin/activate
               else
-                source "${venvDir}/bin/activate"
+                source $VENV_DIR/bin/activate
               fi
-
-              # Under some circumstances it might be necessary to add your virtual
-              # environment to PYTHONPATH, which you can do here too;
-              # export PYTHONPATH=$PWD/${venvDir}/${pkgs.python38Packages.python.sitePackages}/:$PYTHONPATH
-
-              unset SOURCE_DATE_EPOCH
             '';
           };
         }

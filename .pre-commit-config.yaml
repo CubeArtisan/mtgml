@@ -1,0 +1,68 @@
+repos:
+- repo: local
+  hooks:
+  - id: poetry-install
+    name: Poetry Install
+    stages:
+    - post-checkout
+    - post-commit
+    language: system
+    entry: poetry install -q
+    pass_filenames: false
+    files: ^poetry.lock$
+
+  - id: poetry-check
+    name: Check Poetry Config
+    description: run poetry check to validate config
+    stages: [commit]
+    entry: poetry check
+    language: python
+    language_version: python3
+    pass_filenames: false
+    files: ^pyproject.toml$
+
+  - id: poetry-lock
+    name: Make sure poetry dependencies are locked correctly
+    description: run poetry lock to update lock file
+    stages: [commit]
+    entry: poetry lock --no-update
+    language: python
+    language_version: python3
+    files: ^pyproject.toml$
+    pass_filenames: false
+
+  - id: poetry-export
+    name: Export Poetry Packages
+    description: run poetry export to sync lock file with requirements.txt
+    stages: [commit]
+    entry: poetry export
+    language: python
+    language_version: python3
+    pass_filenames: false
+    files: ^poetry.lock$
+    args: [-f, requirements.txt, -o, requirements.txt]
+
+  - id: dvc-fetch
+    name: dvc-fetch
+    description: Fetch latest data from dvc
+    stages:
+      - post-checkout
+    language: system
+    entry: dvc fetch
+    pass_filenames: false
+    always_run: true
+
+- repo: https://github.com/iterative/dvc
+  rev: 2.19.0
+  hooks:
+  - id: dvc-post-checkout
+    language_version: python3
+    stages:
+    - post-checkout
+    always_run: true
+
+default_install_hook_types:
+- pre-commit
+- commit-msg
+- post-checkout
+- post-commit

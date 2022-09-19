@@ -1,5 +1,5 @@
-data/
-data
+data/*
+!data/*.dvc
 output/
 .DS_Store/
 __pycache__/
@@ -8,7 +8,8 @@ __pycache__/
 .direnv/
 logs/
 .idea/
-ml_files/
+ml_files/*/*
+!ml_files/latest/*.dvc
 .python-version
 .vs/
 _skbuild/

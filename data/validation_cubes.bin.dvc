@@ -1,0 +1,4 @@
+outs:
+- md5: eb5e47d25b8d0e5dd0ea855d818a3c41
+  size: 6467040
+  path: validation_cubes.bin
