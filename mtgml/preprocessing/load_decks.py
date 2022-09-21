@@ -1,6 +1,7 @@
 import glob
 import json
 import locale
+import logging
 import random
 import struct
 import sys
@@ -36,17 +37,20 @@ def load_all_decks(deck_dirs):
     for deck_dir in deck_dirs.split(';'):
         for decks_file in tqdm(glob.glob(f'{deck_dir}/*.json'), leave=False, dynamic_ncols=True,
                                unit='file', unit_scale=1):
-            with open(decks_file, 'rb') as fp:
-                decks = JsonSlicer(fp, (None,))
-                for deck in tqdm(decks, leave=False, dynamic_ncols=True, unit='deck', unit_scale=1,
-                                 smoothing=0.001, initial=num_decks):
-                    if MAX_DECK_SIZE >= len(deck['main']) >= 20 and all(isinstance(x, int) for x in deck['main']) \
-                       and MAX_SIDEBOARD_SIZE >= len(deck['side']) > 0 and all(isinstance(x, int) for x in deck['side']):
-                        num_decks += 1
-                        rand_val = random.randint(0, 9)
-                        dest = DESTS[rand_val]
-                        yield (dest, (tuple(x + 1 for x in deck['main'][:MAX_DECK_SIZE]),
-                                      tuple(x + 1 for x in deck['side'][:MAX_SIDEBOARD_SIZE])))
+            try:
+                with open(decks_file, 'rb') as fp:
+                    decks = JsonSlicer(fp, (None,))
+                    for deck in tqdm(decks, leave=False, dynamic_ncols=True, unit='deck', unit_scale=1,
+                                     smoothing=0.001, initial=num_decks):
+                        if MAX_DECK_SIZE >= len(deck['main']) >= 20 and all(isinstance(x, int) for x in deck['main']) \
+                           and MAX_SIDEBOARD_SIZE >= len(deck['side']) > 0 and all(isinstance(x, int) for x in deck['side']):
+                            num_decks += 1
+                            rand_val = random.randint(0, 9)
+                            dest = DESTS[rand_val]
+                            yield (dest, (tuple(x + 1 for x in deck['main'][:MAX_DECK_SIZE]),
+                                          tuple(x + 1 for x in deck['side'][:MAX_SIDEBOARD_SIZE])))
+            except:
+                logging.exception(f'Error in file {decks_file}')
     print(f'Total decks {num_decks:n}')
 
 

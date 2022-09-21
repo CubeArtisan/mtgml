@@ -2,8 +2,8 @@
 
 rm -rf ml_files/train_prod
 mkdir -p ml_files/train_prod
-cp examples/prod.yaml ml_files/train_prod
-python -m mtgml.training.train_combined --name train_prod --epochs 1000 --seed 268459 --time 360
+cp examples/prod.yaml ml_files/train_prod/hyper_config.yaml
+python -m mtgml.training.train_combined --name train_prod --epochs 1000 --seed 268459 --time 180 --deterministic
 
 rm -rf ml_files/latest
 mkdir ml_files/latest

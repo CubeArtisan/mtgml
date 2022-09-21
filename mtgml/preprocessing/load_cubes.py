@@ -1,6 +1,7 @@
 import glob
 import json
 import locale
+import logging
 import random
 import struct
 import sys
@@ -16,6 +17,7 @@ locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 with open('data/maps/int_to_card.json') as fp:
     int_to_card = json.load(fp)
 name_to_int = {card['name_lower']: i for i, card in enumerate(int_to_card)}
+
 
 def pad(arr, desired_length, value=0):
     if isinstance(arr, tuple):
@@ -34,15 +36,18 @@ def load_all_cubes(cube_dirs):
     for cube_dir in cube_dirs.split(';'):
         for cubes_file in tqdm(glob.glob(f'{cube_dir}/*.json'), leave=False, dynamic_ncols=True,
                                 unit='file', unit_scale=1):
-            with open(cubes_file, 'rb') as fp:
-                cubes = JsonSlicer(fp, (None,))
-                for cube in tqdm(cubes, leave=False, dynamic_ncols=True, unit='cube', unit_scale=1,
-                                  smoothing=0.001, initial=num_cubes):
-                    if MAX_CUBE_SIZE >= len(cube['cards']) >= 120 and all(isinstance(x, int) for x in cube['cards']):
-                        num_cubes += 1
-                        rand_val = random.randint(0, 9)
-                        dest = DESTS[rand_val]
-                        yield (dest, tuple(x + 1 for x in cube['cards']))
+            try:
+                with open(cubes_file, 'rb') as fp:
+                    cubes = JsonSlicer(fp, (None,))
+                    for cube in tqdm(cubes, leave=False, dynamic_ncols=True, unit='cube', unit_scale=1,
+                                      smoothing=0.001, initial=num_cubes):
+                        if MAX_CUBE_SIZE >= len(cube['cards']) >= 120 and all(isinstance(x, int) for x in cube['cards']):
+                            num_cubes += 1
+                            rand_val = random.randint(0, 9)
+                            dest = DESTS[rand_val]
+                            yield (dest, tuple(x + 1 for x in cube['cards']))
+            except:
+                logging.exception(f'Error in file {cubes_file}')
     print(f'Total cubes {num_cubes:n}')
 
 

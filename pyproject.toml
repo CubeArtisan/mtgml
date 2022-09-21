@@ -14,8 +14,6 @@ name = "mtgml"
 authors = [{name = "Devon Richards (ruler501)", email = "admin@cubeartisan.net"}]
 readme = "README.md"
 dynamic = ["version", "description"]
-python_requires = "==3.10"
-entry_points = []
 classifiers=[
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
@@ -91,3 +89,5 @@ dvc = {extras = ["gs"], version = "^2.24.0"}
 pre-commit = "^2.20.0"
 numpy = "^1.23.2"
 tqdm = "^4.64.0"
+tensorboard = "^2.10.0"
+black = "^22.8.0"

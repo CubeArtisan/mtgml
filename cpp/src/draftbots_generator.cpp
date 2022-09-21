@@ -38,7 +38,7 @@ private:
     moodycamel::ConsumerToken processed_consumer;
     std::jthread worker_thread;
 
-    static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 20;
+    static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 18;
 
 public:
     DraftbotGenerator(std::string filename, std::size_t batch_size, std::size_t seed)

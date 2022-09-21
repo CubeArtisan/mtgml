@@ -1,6 +1,7 @@
 import glob
 import json
 import locale
+import logging
 import multiprocessing.pool
 import random
 import struct
@@ -55,11 +56,11 @@ def picks_from_draft(draft):
             seen_coord_weights = []
             for pick in draft['picks']:
                 picked_idx = pick.get('pickedIdx', pick.get('trashedIdx', None))
-                if not (all(isinstance(x, int) for x in pick['cardsInPack']) and
-                        all(isinstance(x, int) for x in pick['picked']) and
-                        len(seen) < MAX_SEEN_PACKS and 
-                        picked_idx is not None and 0 <= picked_idx < len(pick['cardsInPack']) and
-                        len(pick['picked']) <= MAX_PICKED): return
+                if not (all(isinstance(x, int) for x in pick['cardsInPack'])
+                        and all(isinstance(x, int) for x in pick['picked'])
+                        and len(seen) < MAX_SEEN_PACKS
+                        and picked_idx is not None and 0 <= picked_idx < len(pick['cardsInPack'])
+                        and len(pick['picked']) <= MAX_PICKED): return
                 if len(pick['cardsInPack']) <= 1: continue
                 cards_in_pack = [x + 1 for x in pick['cardsInPack']]
                 coords, coord_weights = interpolate(pick['pickNum'], pick['numPicks'],
@@ -109,12 +110,16 @@ DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
 def load_all_drafts(pool, *args):
     for drafts_dir, picks_gen in zip(args, (picks_from_draft, picks_from_draft2)):
         def load_drafts_file(drafts_file):
-            with open(drafts_file, 'rb') as fp:
-                drafts = JsonSlicer(fp, (None,))
-                def gen():
-                    for draft in drafts:
-                        yield from picks_gen(draft)
-                return list(gen())
+            try:
+                with open(drafts_file, 'rb') as fp:
+                    drafts = JsonSlicer(fp, (None,))
+                    def gen():
+                        for draft in drafts:
+                            yield from picks_gen(draft)
+                    return list(gen())
+            except:
+                logging.exception(f'Error in file {drafts_file}')
+                return []
         for draft_dir in drafts_dir.split(';'):
             files = glob.glob(f'{draft_dir}/*.json')
             yield from tqdm(pool.imap_unordered(func=load_drafts_file, iterable=files, chunksize=1),

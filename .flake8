@@ -1,0 +1,11 @@
+[flake8]
+ignore =
+  E203, # Leading whitespace before slice operator
+  U101, # Unused argument that starts with underscore
+  W503, # Newline before binary operator
+max-line-length = 120
+max-complexity = 8
+inline-quotes = double
+known-modules = :[mtgml]
+application-names = mtgml
+max-expression-complexity = 10

@@ -107,7 +107,7 @@ def get_model():
             sys.exit(1)
         MODEL.compile()
         latest = tf.train.latest_checkpoint(MODEL_PATH)
-        MODEL.load_weights(latest).expect_partial()
+        MODEL.load_weights(MODEL_PATH / 'model').expect_partial()
         MODEL.build(())
     return MODEL
 
@@ -115,7 +115,6 @@ def get_model():
 # This is a POST request since it needs to take in a cube object
 @app.route("/cube", methods=['POST'])
 def cube_recommendations():
-    logger.info('Starting cube recommendations')
     num_recs = int(request.args.get("num_recs", 100))
     json_data = request.get_json()
     if json_data is None or "cube" not in json_data:

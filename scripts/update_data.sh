@@ -9,7 +9,7 @@ if aws s3 ls s3://cubecobra/ > /dev/null; then
   aws s3 sync s3://cubecobra/draft_picks CubeCobra/drafts
   aws s3 sync s3://cubecobra/deck_exports CubeCobra/decks
   aws s3 sync s3://cubecobra/cube_exports CubeCobra/cubes
-  parallel sed "'s/[b$#]:\"/\":\"/g'" -i {} ::: CubeCobra/{decks,drafts}/*.json
+  parallel sed "'s/[$#]:\"/\":\"/g'" -i {} ::: CubeCobra/{decks,drafts}/*.json
   parallel sed "'s/\`/\"/g'" -i {} ::: CubeCobra/{decks,drafts}/*.json
 else
   echo "You don't have access to the CubeCobra aws bucket. Talk to Dekkaru to get access." 1>2

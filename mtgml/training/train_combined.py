@@ -263,8 +263,8 @@ if __name__ == "__main__":
         # model.deck_adj_mtx_reconstructor.temperature.assign(1)
         model.fit(
             train_generator,
-            # validation_data=validation_generator,
-            # validation_freq=epochs_for_completion,
+            validation_data=validation_generator,
+            validation_freq=max(epochs_for_completion // 10, 1),
             epochs=args.epochs,
             callbacks=callbacks,
             verbose=0,

@@ -1,14 +1,12 @@
-import math
-
-import numpy as np
 import tensorflow as tf
 
-from mtgml.constants import LARGE_INT, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
+from mtgml.constants import LARGE_INT, MAX_CARDS_IN_PACK
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AttentiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
+from mtgml.utils.masked import reduce_variance_masked
 
 POOL_ORACLE_METADATA = {
     'title': 'Pool Synergy',
@@ -69,10 +67,16 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                    help='Translates embeddings into linear ratings.')
                          if item_ratings else None,
             'log_loss_weight': hyper_config.get_float('log_loss_weight', min=0, max=1, step=0.01,
-                                                      default=0.5, help='The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight - rating_stddev_weight'),
-            'rating_stddev_weight': hyper_config.get_float('rating_stddev_weight', min=0, max=1,
-                                                      default=1e-02, help='The weight given to the stddev of the card ratings. Triplet loss weight is 1 - log_loss_weight - rating_stddev_weight')
+                                                      default=0.5, help='The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight'),
+            'rating_variance_weight': hyper_config.get_float('rating_variance_weight', min=0, max=1,
+                                                      default=0, help='The weight given to the variance of the card ratings.')
                                     if item_ratings else 0,
+            'seen_variance_weight': hyper_config.get_float('seen_variance_weight', min=0, max=1,
+                                                      default=1e-02, help='The weight given to the variance of the seen contextual ratings.')
+                                    if seen_context_ratings else 0,
+            'pool_variance_weight': hyper_config.get_float('pool_variance_weight', min=0, max=1,
+                                                      default=4e-03, help='The weight given to the variance of the pool contextual ratings.')
+                                    if pool_context_ratings else 0,
             'margin': hyper_config.get_float('margin', min=0, max=10, step=0.01, default=2.5,
                                              help='The margin by which we want the correct choice to beat the incorrect choices.'),
             'sublayer_weights': hyper_config.get_sublayer('SubLayerWeights', sub_layer_type=TimeVaryingEmbedding,
@@ -104,7 +108,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training)
             pack_embeds = tf.reshape(flat_pack_embeds, (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]))
             position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
-            pack_embeds =  pack_embeds + position_embeds
+            pack_embeds = pack_embeds + position_embeds
             pack_embeds._keras_mask = tf.math.reduce_any(seen_packs > 0, axis=-1)
             sublayer_scores.append(self.rate_off_seen((card_choice_embeds, pack_embeds), training=training))
         if self.rate_card:
@@ -143,17 +147,28 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             triplet_losses = tf.math.reduce_sum(clipped_diffs) / num_in_packs
             tf.summary.scalar('triplet_loss', tf.reduce_mean(triplet_losses))
             triplet_loss_weighted = tf.math.multiply(triplet_losses,
-                                           tf.constant(1 - self.log_loss_weight - self.rating_stddev_weight, dtype=loss_dtype, name='triplet_loss_weight'),
-                                           name='triplet_loss_weighted')
+                                                     tf.constant(1 - self.log_loss_weight, dtype=loss_dtype,
+                                                                 name='triplet_loss_weight'),
+                                                     name='triplet_loss_weighted')
             self.add_metric(triplet_losses, 'triplet_loss')
             max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
-            # max_scores = tf.reduce_max(scores - tf.constant(LARGE_INT), axis=-1)
             min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
-            min_scores = min_scores + tf.stop_gradient(tf.reduce_min(scores + (1 - 2 * mask) * LARGE_INT, axis=-1) - min_scores)
+            min_scores = min_scores + tf.stop_gradient(tf.reduce_min(scores + (1 - 2 * mask) * LARGE_INT, axis=-1)
+                                                       - min_scores)
             tf.summary.histogram('max_diff_scores', max_scores - min_scores)
             if self.rate_card:
                 card_ratings = self.rate_card(card_embeddings[1:], training=training)
+            # Loss to increase the influence of ratings relative for cards like moxen
+            variances = reduce_variance_masked(sublayer_scores * tf.expand_dims(sublayer_weights, 1),
+                                               mask=tf.expand_dims(mask, -1), axis=-2, name='oracle_pack_variances')
+            score_variance = reduce_variance_masked(scores, mask=mask, axis=-1,
+                                                    name='score_variances')
+            pool_variance = variances[:, 0]
+            seen_variance = variances[:, 1]
+            rating_variance = variances[:, 2]
+            self.add_loss(tf.reduce_mean(pool_variance * self.pool_variance_weight + seen_variance * self.seen_variance_weight
+                                         + rating_variance * self.rating_variance_weight))
             chosen_idx = tf.zeros_like(y_idx)
             scores = tf.cast(scores, dtype=tf.float32)
             top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
@@ -162,11 +177,15 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             self.add_metric(top_1_accuracy, 'accuracy')
             scores = tf.cast(scores, dtype=self.compute_dtype)
             mask = tf.cast(mask, dtype=self.compute_dtype)
-            #Logging for Tensorboard
+            # Logging for Tensorboard
             tf.summary.scalar('accuracy_top_1', tf.reduce_mean(top_1_accuracy))
             tf.summary.scalar('accuracy_top_2', tf.reduce_mean(top_2_accuracy))
             tf.summary.scalar('accuracy_top_3', tf.reduce_mean(top_3_accuracy))
             tf.summary.scalar('prob_correct', tf.reduce_mean(prob_chosen))
+            tf.summary.histogram('score_variance', score_variance)
+            tf.summary.histogram('pool_variance', pool_variance)
+            tf.summary.histogram('seen_variance', seen_variance)
+            tf.summary.histogram('rating_variance', rating_variance)
             tf.summary.histogram('scores', (scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)
             tf.summary.histogram('scores_0', ((scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)[:, :1])
             tf.summary.histogram('score_diffs', score_diffs)

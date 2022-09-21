@@ -317,3 +317,6 @@ TSWLatexianTemp*
 # option is specified. Footnotes are the stored in a file with suffix Notes.bib.
 # Uncomment the next line to have this generated file ignored.
 #*Notes.bib
+.ccls-cache/
+mtgml.egg-info/ mtgml_native_generators.egg-info/
+mtgml.egg-info/

@@ -56,7 +56,6 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         transformed_card_embeddings = card_embeddings[1:]
         embed_single_card = self.transform_single_card(tf.gather(card_embeddings, single_card), training=training)
         embed_single_card_exp = tf.expand_dims(embed_single_card, -2)
-        print('single_card', embed_single_card.shape)
         transformed_card_embeddings_exp = tf.expand_dims(transformed_card_embeddings, -3)
         similarities = -tf.keras.losses.cosine_similarity(embed_single_card_exp, transformed_card_embeddings_exp, axis=-1)
         pred_adj_row = tf.nn.softmax(similarities * self.temperature, axis=-1)
@@ -77,4 +76,3 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         #     metric.update_state(adj_row, pred_adj_row)
         #     tf.summary.scalar(name, metric.result())
         return loss
-

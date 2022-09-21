@@ -4,6 +4,7 @@ import numpy.ma as ma
 from mtgml.constants import MAX_BASICS, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS
 from mtgml.utils.grid import interpolate
 
+
 def get_draft_scores(drafter_state, model, card_to_int, tracer):
     cards_in_pack = np.zeros((1, MAX_CARDS_IN_PACK), dtype=np.int32)
     original_cards_idx = []
