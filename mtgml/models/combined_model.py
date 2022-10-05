@@ -59,7 +59,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
         with tf.experimental.async_scope():
             loss = 0
             if self.draftbots_weight > 0:
-                if len(inputs[0]) > 9:
+                if len(inputs[0]) > 6:
                     draftbot_loss = self.draftbots((*inputs[0][0:-2], self.embed_cards.embeddings, *inputs[0][-2:]), training=training)
                     loss += self.draftbots_weight * draftbot_loss
                 else:
@@ -73,7 +73,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
             if self.cube_adj_mtx_weight > 0:
                 cube_adj_mtx_loss = self.cube_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
                 loss += self.cube_adj_mtx_weight * cube_adj_mtx_loss
-            if len(inputs[0]) > 9:
+            if len(inputs[0]) > 6:
                 self.add_loss(loss)
                 tf.summary.scalar('loss', loss)
         return loss

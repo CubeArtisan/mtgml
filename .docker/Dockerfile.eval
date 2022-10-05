@@ -1,12 +1,14 @@
-FROM python:3.9
+FROM python:3.10
 
 RUN mkdir -p /mtgml
 WORKDIR /mtgml
+RUN apt-get clean && apt-get update && apt-get install -y libyajl-dev cmake && curl -sSL https://install.python-poetry.org | python3 - && python -m pip install --upgrade pip
 
-COPY requirements.txt requirements.txt
-RUN apt-get clean && apt-get update && apt-get install -y libyajl-dev && pip install --no-cache-dir --upgrade pip &&  pip install -r requirements.txt --no-cache-dir
+COPY pyproject.toml pyproject.toml
+COPY poetry.lock poetry.lock
+RUN ~/.local/bin/poetry install --sync
 
 COPY mtgml/ mtgml/
 COPY ml_files/latest/ ml_files/latest/
 
-ENTRYPOINT gunicorn -w 1 --access-logfile - -b 0.0.0.0:8000 mtgml.server:app
+ENTRYPOINT ~/.local/bin/poetry run gunicorn -w 3 --access-logfile - -b 0.0.0.0:8000 --preload --worker-class gevent mtgml.server:app

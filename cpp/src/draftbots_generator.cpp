@@ -17,11 +17,10 @@
 namespace py = pybind11;
 
 struct DraftbotGenerator {
-    using ProcessedValue = std::unique_ptr<std::vector<Pick>>;
+    using ProcessedValue = std::unique_ptr<std::vector<Draft>>;
     using Result = std::tuple<
-        py::array_t<std::int16_t>, py::array_t<std::int16_t>, py::array_t<std::int16_t>,
+        py::array_t<std::int16_t>, py::array_t<std::int16_t>,
         py::array_t<std::int16_t>, py::array_t<std::int8_t>, py::array_t<float>,
-        py::array_t<std::int8_t>, py::array_t<float>,
         py::array_t<std::int8_t>, py::array_t<float>
     >;
 
@@ -38,13 +37,15 @@ private:
     moodycamel::ConsumerToken processed_consumer;
     std::jthread worker_thread;
 
-    static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 18;
+    static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 9;
 
 public:
     DraftbotGenerator(std::string filename, std::size_t batch_size, std::size_t seed)
-            : mmap(filename), batch_size{batch_size}, seed{seed}, num_picks{mmap.size() / sizeof(Pick)},
+            : mmap(filename), batch_size{batch_size}, seed{seed}, num_picks{mmap.size() / sizeof(Draft)},
               main_rng{seed, 1}, chunk_producer{chunk_queue}, processed_consumer{processed_queue}
-    { }
+    {
+        std::cout << "Sizeof Draft " << sizeof(Draft) << std::endl;
+    }
 
     DraftbotGenerator& enter() & {
         py::gil_scoped_release gil_release;
@@ -73,7 +74,7 @@ public:
     }
 
     Result next() & {
-        std::vector<Pick>* batched;
+        std::vector<Draft>* batched;
         {
             py::gil_scoped_release gil_release;
             ProcessedValue processed_value;
@@ -86,19 +87,16 @@ public:
             }
             batched = processed_value.release();
         }
-        py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<Pick>*>(ptr); }};
-        Pick& first_pick = batched->front();
+        py::capsule free_when_done{batched,  [](void* ptr) { delete reinterpret_cast<std::vector<Draft>*>(ptr); }};
+        Draft& first_pick = batched->front();
         return {
-            py::array_t<std::int16_t>{cards_in_pack_shape(), cards_in_pack_strides, first_pick.cards_in_pack.data(), free_when_done},
             py::array_t<std::int16_t>{basics_shape(), basics_strides, first_pick.basics.data(), free_when_done},
             py::array_t<std::int16_t>{pool_shape(), pool_strides, first_pick.pool.data(), free_when_done},
             py::array_t<std::int16_t>{seen_packs_shape(), seen_packs_strides, first_pick.seen_packs[0].data(), free_when_done},
             py::array_t<std::int8_t>{seen_coords_shape(), seen_coords_strides, first_pick.seen_coords[0][0].data(), free_when_done},
             py::array_t<float>{seen_coord_weights_shape(), seen_coord_weights_strides, first_pick.seen_coord_weights[0].data(), free_when_done},
-            py::array_t<std::int8_t>{coords_shape(), coords_strides, first_pick.coords[0].data(), free_when_done},
-            py::array_t<float>{coord_weights_shape(), coord_weights_strides, first_pick.coord_weights.data(), free_when_done},
-            py::array_t<std::int8_t>{is_trashed_shape(), is_trashed_strides, &first_pick.is_trashed, free_when_done},
-            py::array_t<float>{riskiness_shape(), riskiness_strides, first_pick.riskiness.data(), free_when_done},
+            py::array_t<std::int8_t>{is_trashed_shape(), is_trashed_strides, first_pick.is_trashed.data(), free_when_done},
+            py::array_t<float>{riskiness_shape(), riskiness_strides, first_pick.riskiness[0].data(), free_when_done},
         };
     }
 
@@ -107,35 +105,31 @@ public:
     }
 
 private:
-    static constexpr std::array<std::size_t, 2> basics_strides{sizeof(Pick), sizeof(std::int16_t)};
-    static constexpr std::array<std::size_t, 2> cards_in_pack_strides{sizeof(Pick), sizeof(std::int16_t)};
-    static constexpr std::array<std::size_t, 2> pack_strides{sizeof(Pick), sizeof(std::int16_t)};
-    static constexpr std::array<std::size_t, 2> pool_strides{sizeof(Pick), sizeof(std::int16_t)};
-    static constexpr std::array<std::size_t, 3> seen_packs_strides{sizeof(Pick), sizeof(Pack), sizeof(std::int16_t)};
-    static constexpr std::array<std::size_t, 4> seen_coords_strides{sizeof(Pick), sizeof(Coords), sizeof(CoordPair), sizeof(std::int8_t)};
-    static constexpr std::array<std::size_t, 3> seen_coord_weights_strides{sizeof(Pick), sizeof(CoordWeights), sizeof(float)};
-    static constexpr std::array<std::size_t, 3> coords_strides{sizeof(Pick), sizeof(CoordPair), sizeof(std::int8_t)};
-    static constexpr std::array<std::size_t, 2> coord_weights_strides{sizeof(Pick), sizeof(float)};
-    static constexpr std::array<std::size_t, 1> is_trashed_strides{sizeof(Pick)};
-    static constexpr std::array<std::size_t, 2> riskiness_strides{sizeof(Pick), sizeof(float)};
+    static constexpr std::array<std::size_t, 2> basics_strides{sizeof(Draft), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 2> pack_strides{sizeof(Draft), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 2> pool_strides{sizeof(Draft), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 3> seen_packs_strides{sizeof(Draft), sizeof(Pack), sizeof(std::int16_t)};
+    static constexpr std::array<std::size_t, 4> seen_coords_strides{sizeof(Draft), sizeof(Coords), sizeof(CoordPair), sizeof(std::int8_t)};
+    static constexpr std::array<std::size_t, 3> seen_coord_weights_strides{sizeof(Draft), sizeof(CoordWeights), sizeof(float)};
+    static constexpr std::array<std::size_t, 3> coords_strides{sizeof(Draft), sizeof(CoordPair), sizeof(std::int8_t)};
+    static constexpr std::array<std::size_t, 2> coord_weights_strides{sizeof(Draft), sizeof(float)};
+    static constexpr std::array<std::size_t, 2> is_trashed_strides{sizeof(Draft), sizeof(std::int8_t)};
+    static constexpr std::array<std::size_t, 3> riskiness_strides{sizeof(Draft), sizeof(std::array<float, MAX_CARDS_IN_PACK>), sizeof(float)};
 
-    constexpr std::array<std::size_t, 2> cards_in_pack_shape() const noexcept { return { batch_size, MAX_CARDS_IN_PACK }; }
     constexpr std::array<std::size_t, 2> basics_shape() const noexcept { return { batch_size, MAX_BASICS }; }
     constexpr std::array<std::size_t, 2> pool_shape() const noexcept { return { batch_size, MAX_PICKED }; }
     constexpr std::array<std::size_t, 3> seen_packs_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK }; }
     constexpr std::array<std::size_t, 4> seen_coords_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, 4, 2 }; }
     constexpr std::array<std::size_t, 3> seen_coord_weights_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, 4 }; }
-    constexpr std::array<std::size_t, 3> coords_shape() const noexcept { return { batch_size, 4, 2 }; }
-    constexpr std::array<std::size_t, 2> coord_weights_shape() const noexcept { return { batch_size, 4 }; }
-    constexpr std::array<std::size_t, 1> is_trashed_shape() const noexcept { return { batch_size }; }
-    constexpr std::array<std::size_t, 2> riskiness_shape() const noexcept { return { batch_size, MAX_CARDS_IN_PACK }; }
+    constexpr std::array<std::size_t, 2> is_trashed_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS }; }
+    constexpr std::array<std::size_t, 3> riskiness_shape() const noexcept { return { batch_size, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK }; }
 
     void worker_func(std::stop_token st, pcg32 rng) {
         using namespace std::chrono_literals;
         std::uniform_int_distribution<std::size_t> index_selector(0, SHUFFLE_BUFFER_SIZE - 1);
-        auto current_batch = std::make_unique<std::vector<Pick>>(batch_size);
+        auto current_batch = std::make_unique<std::vector<Draft>>(batch_size);
         std::size_t current_batch_idx = 0;
-        std::vector<Pick> shuffle_buffer;
+        std::vector<Draft> shuffle_buffer;
         shuffle_buffer.reserve(SHUFFLE_BUFFER_SIZE);
         moodycamel::ConsumerToken chunk_consumer{chunk_queue};
         moodycamel::ProducerToken processed_producer{processed_queue};
@@ -149,27 +143,25 @@ private:
             for (std::size_t read_idx : read_indices) {
                 if (shuffle_buffer.size() < SHUFFLE_BUFFER_SIZE) {
                     for (std::size_t i=0; i < READ_SIZE; i++) {
-                        const Pick* read_start = reinterpret_cast<const Pick*>(mmap.data() + sizeof(Pick) * READ_SIZE * read_idx);
-                        if (read_start[i].cards_in_pack[0] == 0) continue;
+                        const Draft* read_start = reinterpret_cast<const Draft*>(mmap.data() + sizeof(Draft) * READ_SIZE * read_idx);
                         shuffle_buffer.push_back(read_start[i]);
                     }
                 } else {
                     if (current_batch_idx >= batch_size) {
-                        if (processed_queue.size_approx() >= SHUFFLE_BUFFER_SIZE / batch_size) {
-                            while (processed_queue.size_approx() >= 9 * SHUFFLE_BUFFER_SIZE / batch_size / 10 && !st.stop_requested()) {
+                        if (processed_queue.size_approx() >= 4 * SHUFFLE_BUFFER_SIZE / batch_size) {
+                            while (processed_queue.size_approx() >= 2 * SHUFFLE_BUFFER_SIZE / batch_size && !st.stop_requested()) {
                                 std::this_thread::sleep_for(100ms);
                             }
                         }
                         processed_queue.enqueue(processed_producer, std::move(current_batch));
-                        current_batch = std::make_unique<std::vector<Pick>>(batch_size);
+                        current_batch = std::make_unique<std::vector<Draft>>(batch_size);
                         current_batch_idx = 0;
                     }
                     std::size_t read_amount = std::min(current_batch->size() - current_batch_idx, READ_SIZE);
                     std::memcpy(current_batch->data() + current_batch_idx,
-                                reinterpret_cast<const Pick*>(mmap.data() + sizeof(Pick) * READ_SIZE *  read_idx),
-                                sizeof(Pick) * read_amount);
+                                reinterpret_cast<const Draft*>(mmap.data() + sizeof(Draft) * READ_SIZE *  read_idx),
+                                sizeof(Draft) * read_amount);
                     for (std::size_t i=0; i < read_amount; i++) {
-                        if (current_batch->at(current_batch_idx).cards_in_pack[0] == 0) continue;
                         std::swap(current_batch->at(current_batch_idx++), shuffle_buffer[index_selector(rng)]);
                     }
                 }

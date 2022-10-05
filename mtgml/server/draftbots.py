@@ -6,14 +6,6 @@ from mtgml.utils.grid import interpolate
 
 
 def get_draft_scores(drafter_state, model, card_to_int, tracer):
-    cards_in_pack = np.zeros((1, MAX_CARDS_IN_PACK), dtype=np.int32)
-    original_cards_idx = []
-    idx = 0
-    for i, card_id in enumerate(drafter_state['cardsInPack']):
-        if card_id in card_to_int and idx < MAX_CARDS_IN_PACK:
-            cards_in_pack[0][idx] = card_to_int[card_id] + 1
-            original_cards_idx.append(i)
-            idx += 1
     basics = np.zeros((1, MAX_BASICS), dtype=np.int32)
     idx = 0
     for card_id in drafter_state['basics']:
@@ -22,37 +14,37 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer):
             idx += 1
     picked = np.zeros((1, MAX_PICKED), dtype=np.int32)
     idx = 0
-    for card_id in drafter_state['picked']:
-        if card_id in card_to_int and idx < MAX_PICKED:
+    for card_id in drafter_state['picked'][-MAX_SEEN_PACKS:]:
+        if card_id in card_to_int:
             picked[0][idx] = card_to_int[card_id] + 1
             idx += 1
     seen_packs = np.zeros((1, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK), dtype=np.int32)
     seen_coords = np.zeros((1, MAX_SEEN_PACKS, 4, 2), dtype=np.int32)
     seen_weights = np.zeros((1, MAX_SEEN_PACKS, 4), dtype=np.float32)
     idx_pack = 0
-    for pack in drafter_state['seen']:
-        if idx_pack >= MAX_SEEN_PACKS: break
+    original_cards_idx = []
+    for pack in drafter_state['seen'][-MAX_SEEN_PACKS:]:
+        original_cards_idx = []
         idx = 0
         seen_coords[0][idx_pack], seen_weights[0][idx_pack] = interpolate(pack['pickNum'], pack['numPicks'],
                                                                           pack['packNum'], drafter_state['numPacks'])
-        for card_id in pack['pack']:
+        for i, card_id in enumerate(pack['pack']):
             if card_id in card_to_int and idx < MAX_CARDS_IN_PACK:
                 seen_packs[0][idx_pack][idx] = card_to_int[card_id] + 1
+                original_cards_idx.append(i)
                 idx += 1
         idx_pack += 1
-    coords, weights = interpolate(drafter_state['pickNum'], drafter_state['numPicks'], drafter_state['packNum'],
-                                  drafter_state['numPacks'])
     with tracer.start_as_current_span('call_draftbots'):
-        oracle_scores, oracle_weights = model.draftbots((cards_in_pack, basics, picked, seen_packs, seen_coords, seen_weights,
-                                                                [coords], [weights], model.embed_cards.embeddings), training=False)
-    oracle_scores = oracle_scores.numpy()[0]
-    oracle_scores = ma.masked_array(oracle_scores, mask=np.broadcast_to(np.expand_dims(cards_in_pack[0] == 0, -1), oracle_scores.shape))
+        oracle_scores, oracle_weights = model.draftbots((basics, picked, seen_packs, seen_coords, seen_weights,
+                                                         model.embed_cards.embeddings), training=False)
+    oracle_scores = oracle_scores.numpy()[0][idx_pack - 1]
+    oracle_scores = ma.masked_array(oracle_scores, mask=np.broadcast_to(np.expand_dims(seen_packs[0][idx_pack - 1] == 0, -1), oracle_scores.shape))
     oracle_scores_min = np.amin(oracle_scores, axis=0)
     oracle_scores = oracle_scores - oracle_scores_min
     oracle_max_scores = np.max(oracle_scores, axis=0) / 10
     oracle_max_scores = np.where(oracle_max_scores > 0, oracle_max_scores, np.ones_like(oracle_max_scores))
     oracle_scores = oracle_scores / oracle_max_scores
-    oracle_weights = oracle_weights.numpy()[0] * oracle_max_scores
+    oracle_weights = oracle_weights.numpy()[0][idx_pack-1] * oracle_max_scores
     oracle_weights = oracle_weights / oracle_weights.sum()
     scores = (oracle_weights * oracle_scores).sum(axis=1)
     oracles = [[dict(metadata) | { 'weight': float(weight), 'score': float(score) }

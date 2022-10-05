@@ -57,8 +57,10 @@ tracer = trace.get_tracer(__name__)
 
 app = Flask(__name__)
 
+
 def stdout_log_filter(record):
     return record.levelno < logging.WARNING
+
 
 stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.setLevel(logging.INFO)
@@ -87,6 +89,20 @@ with open(MODEL_PATH / 'int_to_card.json', 'rb') as map_file:
     int_to_card = json.load(map_file)
 CARD_TO_INT = {v['oracle_id']: k for k, v in enumerate(int_to_card)}
 INT_TO_CARD = {int(k): v for k, v in enumerate(int_to_card)}
+AUTH_TOKENS = os.environ.get('MTGML_AUTH_TOKENS', 'testing').split(';')
+AUTH_ENABLED = os.environ.get('MTGML_AUTH_ENABLED', 'False') == 'True'
+
+
+@app.before_request
+def verify_request():
+    if not AUTH_ENABLED:
+        return None
+    else:
+        token = request.args.get("auth_token", None)
+        if token is None or token not in AUTH_TOKENS:
+            return {"success": False, "error": "Not authorized"}, 401
+        else:
+            return None
 
 
 def get_model():
@@ -94,19 +110,17 @@ def get_model():
     if MODEL is None:
         tf.keras.utils.set_random_seed(1)
         tf.config.experimental.enable_op_determinism()
-        with open(MODEL_PATH/'hyper_config.yaml', 'r') as config_file:
+        with open(MODEL_PATH / 'hyper_config.yaml', 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
         hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
             'num_cards': len(INT_TO_CARD) + 1,
-            'DraftBots': { 'card_weights': np.ones((len(INT_TO_CARD) + 1,)) },
+            'DraftBots': {'card_weights': np.ones((len(INT_TO_CARD) + 1,))},
         })
-        # tf.config.optimizer.set_jit(bool(hyper_config.get_bool('use_xla', default=False, help='Whether to use xla to speed up calculations.')))
         MODEL = hyper_config.build(name='CombinedModel', dynamic=False)
         if MODEL is None:
             app.logger.error('Failed to load model')
             sys.exit(1)
         MODEL.compile()
-        latest = tf.train.latest_checkpoint(MODEL_PATH)
         MODEL.load_weights(MODEL_PATH / 'model').expect_partial()
         MODEL.build(())
     return MODEL
@@ -120,38 +134,45 @@ def cube_recommendations():
     if json_data is None or "cube" not in json_data:
         error = "Must have a valid cube at the cube key in the json body."
         app.logger.error(error)
-        return { "success": False, "error": error }, 400
+        return {"success": False, "error": error}, 400
     cube = json_data.get("cube")
     model = get_model()
-    results = get_cube_recomendations(cube=cube, model=model, card_to_int=CARD_TO_INT, int_to_card=INT_TO_CARD, tracer=tracer, num_recs=num_recs)
+    results = get_cube_recomendations(cube=cube, model=model, card_to_int=CARD_TO_INT, int_to_card=INT_TO_CARD,
+                                      tracer=tracer, num_recs=num_recs)
     return results, 200
 
 
-# This is a POST request since it needs to take in a cube object
+# This is a POST request since it needs to take in a drafter state object
 @app.route("/draft", methods=['POST'])
 def draft_recommendations():
+    token = request.args.get("auth_token", None)
+    if token is None or token not in AUTH_TOKENS:
+        return {"success": False, "error": "Not authorized"}, 401
     json_data = request.get_json()
     if json_data is None or "drafterState" not in json_data:
         error = "Must have a valid drafter state at the drafterState key in the json body."
         app.logger.error(error)
-        return { "success": False, "error": error }, 400
+        return {"success": False, "error": error}, 400
     drafter_state = json_data.get("drafterState")
     model = get_model()
     results = get_draft_scores(drafter_state, model=model, card_to_int=CARD_TO_INT, tracer=tracer)
     return results, 200
 
+
 @app.route('/version', methods=['GET'])
 def get_version():
-    return { 'version': os.environ.get('MTGML_VERSION', 'alpha'), 'success': True }, 200
+    return {'version': os.environ.get('MTGML_VERSION', 'alpha'), 'success': True}, 200
+
 
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin',  "*")
+    response.headers.add('Access-Control-Allow-Origin', "*")
     response.headers.add('Access-Control-Allow-Headers', "*")
     response.headers.add('Access-Control-Allow-Methods', "*")
     return response
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, threaded=True)
 
 get_model()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, threaded=True)

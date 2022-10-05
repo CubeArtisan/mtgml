@@ -15,6 +15,7 @@ class MLP(ConfigurableLayer):
                         for i in range(num_hidden)),
             'final': hyper_config.get_sublayer('Final', sub_layer_type=WDense, seed_mod=19,
                                                help='The last dense layer in the MLP.'),
+            'supports_masking': True,
         }
         if num_hidden > 0:
             props['dropout'] = hyper_config.get_sublayer(f'Dropout', sub_layer_type=WDropout, seed_mod=11,
@@ -22,11 +23,8 @@ class MLP(ConfigurableLayer):
                                                          help='The dropout applied after each hidden layer.')
         return props
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, mask=None):
         for hidden in self.hiddens:
             inputs = hidden(inputs, training=training)
             inputs = self.dropout(inputs, training=training)
         return self.final(inputs, training=training)
-
-
-

@@ -2,9 +2,9 @@ import tensorflow as tf
 
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.constants import ACTIVATION_CHOICES, LARGE_INT
+from mtgml.layers.bert import BERT
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
-from mtgml.layers.set_embedding import AdditiveSetEmbedding, AttentiveSetEmbedding, SET_EMBEDDING_CHOICES
 from mtgml.layers.zero_masked import ZeroMasked
 
 
@@ -20,49 +20,40 @@ class ContextualRating(ConfigurableLayer):
                                                fixed={'Final': {'dims': measure_dims,
                                                                 'activation': final_activation}},
                                                help='Transforms the card embeddings to the embedding used to calculate distances.')
-        set_embed_type = hyper_config.get_choice('set_embed_type', choices=SET_EMBEDDING_CHOICES,
-                                                 default='attentive', help='The kind of set embedding to use to get the context embedding for distance calculation.')
-        if set_embed_type == 'additive':
-            embed_context = hyper_config.get_sublayer('EmbedContext', sub_layer_type=AdditiveSetEmbedding,
-                                                      fixed={'Decoder':
-                                                             {'Final': {'dims': measure_dims,
-                                                                        'activation': final_activation}}},
-                                                      help="The Additive set embedding layer to use if set_embed_type is 'additive'")
-        elif set_embed_type == 'attentive':
-            embed_context = hyper_config.get_sublayer('EmbedContext', sub_layer_type=AttentiveSetEmbedding,
-                                                      fixed={'Decoder':
-                                                             {'Final': {'dims': measure_dims,
-                                                                        'activation': final_activation}}},
-                                                      help="The Attentive set embedding layer to use if set_embed_type is 'attentive'")
-        else:
-            raise NotImplementedError('This form of set_embed_type is not supported for this layer')
+        embed_context = hyper_config.get_sublayer('EmbedContext', sub_layer_type=BERT,
+                                                  fixed={'use_causal_mask': True,
+                                                         'use_shifted_causal_mask': hyper_config.get_bool('use_shifted_causal_mask', default=False,
+                                                                                                          help="Don't allow items to attend to themselves")},
+                                                  help="The Attentive set embedding layer to use if set_embed_type is 'attentive'")
         return {
             'embed_item': embed_item,
             'embed_context': embed_context,
             'bounded_distance': hyper_config.get_bool('bounded_distance', default=False,
                                                       help='Transform the distance to be in the range (0, 1)'),
-            'zero_masked': ZeroMasked(HyperConfig(seed=hyper_config.seed * 47)),
+            'supports_masking': True,
         }
 
     def call(self, inputs, training=False, mask=None):
         items, context = inputs
-        item_embeds = self.embed_item(items, training=training)
-        context_embed = self.embed_context(context, training=training)
-        embed_diffs = tf.math.subtract(item_embeds, tf.expand_dims(context_embed, 1, name='expanded_context_embeds'),
-                                       name='embed_diffs')
-        distances = tf.reduce_sum(tf.math.square(embed_diffs, name='squared_embed_diffs'), -1, name='distances')
+        if mask is not None:
+            items_mask, context_mask = mask
+        else:
+            items_mask = None
+            context_mask = None
+        item_embeds = self.embed_item(items, mask=items_mask, training=training)
+        context_embeds = self.embed_context(context, training=training, mask=context_mask)
+        distances = tf.reduce_sum(tf.math.squared_difference(item_embeds, tf.expand_dims(context_embeds, -2), name='squared_embed_diffs'),
+                                  -1, name='squared_distances')
         large = tf.constant(LARGE_INT, dtype=self.compute_dtype)
         if self.bounded_distance:
             one = tf.constant(1, dtype=self.compute_dtype)
             nonlinear_distances = tf.math.divide(large, tf.math.add(one, distances,
-                                                                  name='distances_incremented'),
+                                                                    name='distances_incremented'),
                                                  name='nonlinear_distances')
         else:
-            nonlinear_distances = tf.math.negative(distances, name='negative_distances')
-        # nonlinear_distances = self.zero_masked(nonlinear_distances, mask=mask[0])
+            nonlinear_distances = tf.math.negative(distances, name='reversed_distances')
         # Logging for tensorboard
         tf.summary.histogram('distances', distances)
         if self.bounded_distance:
             tf.summary.histogram('nonlinear_distances', nonlinear_distances)
         return nonlinear_distances
-

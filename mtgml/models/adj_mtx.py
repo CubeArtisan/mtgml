@@ -61,7 +61,7 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         pred_adj_row = tf.nn.softmax(similarities * self.temperature, axis=-1)
         # Normalize to bits not nats.
         adj_mtx_losses = tf.keras.losses.kl_divergence(adj_row, pred_adj_row) / tf.math.log(2.0)
-        loss = tf.math.reduce_mean(adj_mtx_losses) + self.temperature * self.temperature * self.temperature_reg_weight
+        loss = tf.math.reduce_mean(adj_mtx_losses) + tf.square(self.temperature) * self.temperature_reg_weight
         self.add_metric(adj_mtx_losses, f'{self.name}_loss')
         self.add_metric(self.temperature, f'{self.name}_temperature')
         pred_row_entropy = tf.reduce_sum(pred_adj_row * -tf.math.log(pred_adj_row), axis=-1)

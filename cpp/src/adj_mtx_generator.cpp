@@ -34,9 +34,8 @@ constexpr auto& get_cards(const Deck& deck) {
 }
 
 constexpr Pool empty_pool{0};
-constexpr auto& get_cards(const Pick& pick) {
-    if (pick.pool[1] > 0) return pick.pool;
-    else return empty_pool;
+constexpr auto& get_cards(const Draft& pick) {
+    return pick.pool;
 }
 
 constexpr void populate_adj_mtx(std::vector<float>& adj_mtx, const auto& range, std::size_t num_cards) {
@@ -241,7 +240,7 @@ private:
 
 using CubeAdjMtxGenerator = AdjMtxGenerator<CubeCards>;
 using DeckAdjMtxGenerator = AdjMtxGenerator<Deck>;
-using PickAdjMtxGenerator = AdjMtxGenerator<Pick>;
+using PickAdjMtxGenerator = AdjMtxGenerator<Draft>;
 
 PYBIND11_MODULE(adj_mtx_generator, m) {
     using namespace pybind11::literals;

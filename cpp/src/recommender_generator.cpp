@@ -181,8 +181,8 @@ public:
 
     CubeData process_cube(const std::size_t index, pcg32& rng) {
         std::valarray<float> x1(0.0, num_cards);
-        float noise = std::ranges::clamp(noise_dist(rng), 0.2f, 0.9f);
-        for (auto& x : x1) x = 0.0;
+        std::valarray<float> x1_inverse(1.0, num_cards);
+        float noise = std::ranges::clamp(noise_dist(rng), 0.1f, 0.9f);
         const auto& row = reinterpret_cast<const CubeCards*>(cube_mmap.data())[index];
         for (const auto idx : row) {
             if (idx == 0) break;
@@ -190,14 +190,15 @@ public:
                 std::cout << "Cube " << index << " has invalid index: " << idx << std::endl;
                 continue;
             }
-            x1[idx - 1] += 1.f;
+            x1[idx - 1] = 1.f;
+            x1_inverse[idx - 1] = 0.f;
         }
         std::size_t count = static_cast<std::size_t>(x1.sum());
         std::size_t to_flip = std::ranges::clamp(noise * count, 1.0f, count - 1.0f);
 
         std::valarray<float> y1 = x1;
         auto to_exclude = sample_no_replacement(to_flip, x1, true_indices, rng);
-        auto to_include = sample_no_replacement(to_flip, neg_sampler * x1, true_indices, rng);
+        auto to_include = sample_no_replacement(to_flip, neg_sampler * x1_inverse, true_indices, rng);
         std::valarray<float> to_exclude_sampler(0.0, num_cards);
         to_exclude_sampler[to_exclude] = neg_sampler[to_exclude];
         auto y_to_exclude = sample_no_replacement(to_flip / 5, to_exclude_sampler, true_indices, rng);

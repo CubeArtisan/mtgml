@@ -79,6 +79,10 @@ def write_cube(cards, output_file):
     output_file.write(prefix)
 
 
+def load_cubes(input_stream):
+    return PREFIX.iter_unpack(input_stream)
+
+
 if __name__ == '__main__':
     train_filename = Path('data/train_cubes.bin')
     validation_filename = Path('data/validation_cubes.bin')

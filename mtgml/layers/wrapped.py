@@ -46,6 +46,7 @@ class WDense(WrappedLayer):
             'activation': hyper_config.get_choice('activation', choices=ACTIVATION_CHOICES, default='selu',
                                                   help='The activation function on the output of the layer.'),
             'use_bias': hyper_config.get_bool('use_bias', default=True, help='Whether to use bias on the output.'),
+            'supports_masking': True,
         }
 
     def build(self, input_shapes):
@@ -63,6 +64,7 @@ class WDropout(WrappedLayer):
                                            help='The percent of values that get replaced with zero.'),
             'noise_shape': hyper_config.get_list('noise_shape', default=None,
                                                   help='The shape of the generated noise which will be broadcast as needed.'),
+            'supports_masking': True,
         }
 
     def build(self, input_shapes):

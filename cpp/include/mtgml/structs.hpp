@@ -42,4 +42,14 @@ struct Pick {
     std::array<float, MAX_CARDS_IN_PACK> riskiness;
     std::int8_t is_trashed{0};
 };
+
+struct Draft {
+    Basics basics{0};
+    Pool pool{0};
+    SeenPacks seen_packs{0};
+    SeenPackCoords seen_coords{0};
+    SeenPackCoordWeights seen_coord_weights{0};
+    std::array<std::array<float, MAX_CARDS_IN_PACK>, MAX_SEEN_PACKS> riskiness;
+    std::array<std::int8_t, MAX_SEEN_PACKS> is_trashed{0};
+};
 #endif

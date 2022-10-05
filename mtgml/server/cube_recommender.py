@@ -7,7 +7,7 @@ def get_cube_recomendations(cube: list[str], model, card_to_int: dict[str, int],
     cube_idxs = [card_to_int[card] + 1 for card in cube if card in card_to_int]
     cube_ids = np.array([cube_idxs[:MAX_CUBE_SIZE] + [0 for _ in range(MAX_CUBE_SIZE - len(cube_idxs))]], dtype=np.int32)
     with tracer.start_as_current_span('call_cube_recommender'):
-        results = model.cube_recommender((cube_ids, model.embed_cards.embeddings), training=False).numpy()[0]
+        results = model.cube_recommender((cube_ids, model.embed_cards.embeddings), training=False)[0].numpy()[0]
     sorted_indices = results.argsort()
     adds = []
     idx = 1

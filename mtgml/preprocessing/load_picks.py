@@ -32,9 +32,9 @@ default_basic_ids = [
     "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
     "a3fb7228-e76b-4e96-a40e-20b5fed75685",
 ]
-default_basics = [card_to_int[c] for c in default_basic_ids]
+default_basics = tuple(card_to_int[c] for c in default_basic_ids)
 
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 1024 // 64
 
 
 def pad(arr, desired_length, value=0):
@@ -50,18 +50,20 @@ def picks_from_draft(draft):
     if isinstance(draft, dict):
         basics = [x + 1 for x in draft.get('basics', default_basics)][:MAX_BASICS]
         if 'picks' in draft:
-            BUFFER = np.zeros((len(int_to_card) + 1,), dtype=np.int16)
             seen = []
             seen_coords = []
             seen_coord_weights = []
+            trashed = []
+            value = None
             for pick in draft['picks']:
                 picked_idx = pick.get('pickedIdx', pick.get('trashedIdx', None))
                 if not (all(isinstance(x, int) for x in pick['cardsInPack'])
                         and all(isinstance(x, int) for x in pick['picked'])
                         and len(seen) < MAX_SEEN_PACKS
                         and picked_idx is not None and 0 <= picked_idx < len(pick['cardsInPack'])
-                        and len(pick['picked']) <= MAX_PICKED): return
-                if len(pick['cardsInPack']) <= 1: continue
+                        and len(pick['picked']) <= MAX_PICKED):
+                    break
+                # if len(pick['cardsInPack']) <= 1: continue
                 cards_in_pack = [x + 1 for x in pick['cardsInPack']]
                 coords, coord_weights = interpolate(pick['pickNum'], pick['numPicks'],
                                                     pick['packNum'], pick['numPacks'])
@@ -70,11 +72,13 @@ def picks_from_draft(draft):
                 seen.append(cards_in_pack)
                 seen_coords.append(coords)
                 seen_coord_weights.append(coord_weights)
-                picked = tuple(x + 1 for x in pick['picked'])[:MAX_PICKED]
-                trashed = 0 if 'pickedIdx' in pick else 1
-                yield (cards_in_pack, basics, picked, tuple(seen),
-                       tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights,
-                       trashed)
+                trashed.append(0 if 'pickedIdx' in pick else 1)
+                value = tuple(x + 1 for x in pick['picked'])
+            if value is not None:
+                yield (basics, value, seen, seen_coords, seen_coord_weights, trashed)
+
+
+ALL_PICKS = tuple(0 for _ in range(MAX_SEEN_PACKS))
 
 
 def picks_from_draft2(draft):
@@ -83,29 +87,33 @@ def picks_from_draft2(draft):
         seen = []
         seen_coords = []
         seen_coord_weights = []
+        trashed = ALL_PICKS
+        value = None
         for pick in draft['picks']:
-            if not (all(isinstance(x, int) for x in pick['cardsInPack']) and
-                    all(isinstance(x, int) for x in pick['picked']) and
-                    len(seen) < MAX_SEEN_PACKS and
-                    len(pick['picked']) <= MAX_PICKED): return
+            if not (all(isinstance(x, int) for x in pick['cardsInPack'])
+                    and all(isinstance(x, int) for x in pick['picked'])
+                    and len(seen) < MAX_SEEN_PACKS
+                    and len(pick['picked']) <= MAX_PICKED):
+                return
             cards_in_pack = [old_int_to_new_int[x] + 1 for x in pick['cardsInPack']]
             coords, coord_weights = interpolate(pick['pick'], pick['packSize'], pick['pack'],
                                                 pick['packs'])
             chosen_card = old_int_to_new_int[pick['chosenCard']] + 1
             picked_idx = cards_in_pack.index(chosen_card)
-            if picked_idx < 0: return
+            if picked_idx < 0:
+                return
             cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
             cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
             seen.append(cards_in_pack[:MAX_CARDS_IN_PACK])
             seen_coords.append(coords)
             seen_coord_weights.append(coord_weights)
-            picked = [old_int_to_new_int[x] + 1 for x in pick['picked']][:MAX_PICKED]
-            if len(picked) <= MAX_PICKED and len(cards_in_pack) > 1:
-                yield (cards_in_pack, default_basics, picked, tuple(seen),
-                       tuple(seen_coords), tuple(seen_coord_weights), coords, coord_weights, 0)
+            value = tuple(old_int_to_new_int[x] + 1 for x in pick['picked'])
+        if value is not None:
+            yield (default_basics, value, seen, seen_coords, seen_coord_weights, ALL_PICKS)
 
 
 DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
+
 
 def load_all_drafts(pool, *args):
     for drafts_dir, picks_gen in zip(args, (picks_from_draft, picks_from_draft2)):
@@ -113,8 +121,10 @@ def load_all_drafts(pool, *args):
             try:
                 with open(drafts_file, 'rb') as fp:
                     drafts = JsonSlicer(fp, (None,))
+
                     def gen():
-                        for draft in drafts:
+                        for draft in tqdm(drafts, leave=False, dynamic_ncols=True, unit='draft', unit_scale=1,
+                                          smoothing=0.001):
                             yield from picks_gen(draft)
                     return list(gen())
             except:
@@ -122,10 +132,11 @@ def load_all_drafts(pool, *args):
                 return []
         for draft_dir in drafts_dir.split(';'):
             files = glob.glob(f'{draft_dir}/*.json')
-            yield from tqdm(pool.imap_unordered(func=load_drafts_file, iterable=files, chunksize=1),
+            yield from tqdm((load_drafts_file(file) for file in files),
                             leave=False, dynamic_ncols=True, unit='file', unit_scale=1, total=len(files))
 
-COLORS = { 'W': 0, 'w': 0, 'U': 1, 'u': 1, 'B': 2, 'b': 2, 'R': 3, 'r': 3, 'G': 4, 'g': 4 }
+
+COLORS = {'W': 0, 'w': 0, 'U': 1, 'u': 1, 'B': 2, 'b': 2, 'R': 3, 'r': 3, 'G': 4, 'g': 4}
 
 
 def colors_to_mask(colors):
@@ -142,7 +153,8 @@ def calculate_devotion(cost, cmc, color_identity, type_line):
             final_cost[COLORS[color]] = 1 / len(color_identity)
         return final_cost
     for symbol in cost:
-        if '2' in symbol or 'p' in symbol: continue
+        if '2' in symbol or 'p' in symbol:
+            continue
         add = np.zeros((5,), dtype=np.float32)
         for c in symbol:
             if c in COLORS:
@@ -150,46 +162,55 @@ def calculate_devotion(cost, cmc, color_identity, type_line):
         final_cost += add / max(add.sum(), 1)
     return final_cost * final_cost.sum() / max(cmc, 1)
 
+
 DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc'], c['color_identity'], c['type']) for c in int_to_card])
 COLOR_IDENTITY = np.array([np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in int_to_card])
 DEVOTION_AND_IDENTITY = DEVOTION + COLOR_IDENTITY
 
 
 def calculate_riskiness(pack, pool):
-    total_devotions = DEVOTION[pool].sum(axis=-2, keepdims=True)
+    # total_devotions is BUFFER_SIZE, MAX_PICKED, 5
+    total_devotions = np.cumsum(DEVOTION[pool], axis=-2)
     total_devotion = np.sum(total_devotions, axis=-1, keepdims=True)
+    # pack_colors is BUFFER_SIZE, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK, 5
     pack_colors = DEVOTION_AND_IDENTITY[pack]
-    pack_used_colors = np.where((total_devotions > total_devotion / 5) | (np.take(pack_colors, [0], axis=-2) > 0),
+    pack_used_colors = np.where((total_devotions > total_devotion / 5)[:, :, None] | (np.take(pack_colors, [0], axis=-2) > 0),
                                 pack_colors, np.zeros_like(pack_colors))
     extra_colors = pack_colors.sum(axis=-1) - pack_used_colors.sum(axis=-1)
-    pack_unused_colors = np.where(np.squeeze(total_devotion, -1) > 5, extra_colors, np.zeros_like(extra_colors))
+    pack_unused_colors = np.where((total_devotion + np.zeros_like(extra_colors)) > 5, extra_colors, np.zeros_like(extra_colors))
     return pack_unused_colors * 4 + 1
 
-PREFIX = struct.Struct(f'{MAX_CARDS_IN_PACK}H{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f8B4f16fB3x')
 
-
+PREFIX = struct.Struct(f'{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}f{MAX_SEEN_PACKS}B')
 POOL_ARRAY = np.zeros((BUFFER_SIZE, MAX_PICKED), dtype=np.int32)
-PACK_ARRAY = np.zeros((BUFFER_SIZE, MAX_CARDS_IN_PACK), dtype=np.int32)
+PACK_ARRAY = np.zeros((BUFFER_SIZE, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK), dtype=np.int32)
+print(PREFIX.size)
+sys.exit(0)
+
+
 def write_picks(picks, output_file):
     for i, pick in enumerate(picks):
-        POOL_ARRAY[i, :len(pick[2])] = pick[2]
-        POOL_ARRAY[i, len(pick[2]):] = 0
-        PACK_ARRAY[i, :len(pick[0])] = pick[0]
-        PACK_ARRAY[i, len(pick[0]):] = 0
-    riskinesses = calculate_riskiness(PACK_ARRAY, POOL_ARRAY).tolist()
-    for pick, riskiness in zip(picks, riskinesses):
+        POOL_ARRAY[i, :len(pick[1])] = pick[1]
+        POOL_ARRAY[i, len(pick[1]):] = 0
+        for j, pack in enumerate(pick[2]):
+            PACK_ARRAY[i, j, :len(pack)] = pack
+            PACK_ARRAY[i, j, len(pack):] = 0
+        PACK_ARRAY[i, len(pick[2]):] = 0
+    riskinesses = calculate_riskiness(PACK_ARRAY, POOL_ARRAY).astype(np.float32)
+    for pick, riskiness in zip(picks, riskinesses.tolist()):
         write_pick(pick, riskiness, output_file)
 
 
 def write_pick(pick, riskiness, output_file):
-    cards_in_pack, basics, picked, seen, seen_coords, seen_coord_weights, coords, coord_weights, trashed = pick
+    basics, picked, seen, seen_coords, seen_coord_weights, trashed = pick
     seen = pad([x for pack in seen for x in pad(pack, MAX_CARDS_IN_PACK)], MAX_CARDS_IN_PACK * MAX_SEEN_PACKS)
     seen_coords = pad([y for pack in seen_coords for x in pack for y in x], MAX_SEEN_PACKS * 4 * 2)
-    seen_coord_weights = pad([x for pack in seen_coord_weights for x in pack], MAX_SEEN_PACKS * 4)
-    coords = [x for coord in coords for x in coord]
-    prefix = PREFIX.pack(*pad(cards_in_pack, MAX_CARDS_IN_PACK), *pad(basics, MAX_BASICS),
-                         *pad(picked, MAX_PICKED), *seen, *seen_coords, *seen_coord_weights, *coords,
-                         *coord_weights, *riskiness, trashed)
+    seen_coord_weights = pad([x for pack in seen_coord_weights for x in pack], MAX_SEEN_PACKS * 4, value=0.0)
+    riskiness = [x for xs in riskiness for x in xs]
+    args = []
+
+    prefix = PREFIX.pack(*pad(basics, MAX_BASICS), *pad(picked, MAX_PICKED), *seen, *seen_coords, *seen_coord_weights,
+                         *riskiness, *pad(trashed, MAX_PICKED))
     output_file.write(prefix)
 
 

@@ -64,7 +64,11 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                                                   help='The percent of values to dropout from the result of dense layers in the decoding step.')
         return {
             'encoder': hyper_config.get_sublayer('Encoder', sub_layer_type=BERT, seed_mod=39,
-                                                   help='The layers to model interactions between items.'),
+                                                 fixed={
+                                                     'use_causal_mask': hyper_config.get_bool('use_causal_mask', default=False,
+                                                                                              help='Ensure items only attend to items that came before them.'),
+                                                 },
+                                                 help='The layers to model interactions between items.'),
             'pooling': hyper_config.get_sublayer('Pooling', sub_layer_type=PoolingByMultiHeadAttention, seed_mod=53,
                                                  fixed={'out_set_size': 1},
                                                  help='The layer to collapse down to one embedding.'),
@@ -76,6 +80,7 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                                                       seed_mod=53, fixed={'all_last_dim': True, 'return_mask': True,
                                                                           'blank_last_dim': False, 'noise_shape': None},
                                                       help='Drops out entire items from the set.'),
+            'supports_masking': True,
         }
 
     def build(self, input_shapes):
@@ -88,8 +93,3 @@ class AttentiveSetEmbedding(ConfigurableLayer):
         encoded_items = self.encoder(dropped, mask=dropout_mask, training=training)
         encoded_items = self.pooling(encoded_items, training=training, mask=dropout_mask)
         return self.decoder(encoded_items, training=training)
-
-    def compute_mask(self, inputs, mask=None):
-        if mask is None:
-            return None
-        return tf.math.reduce_any(mask, axis=-1)

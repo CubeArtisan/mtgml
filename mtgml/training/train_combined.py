@@ -71,6 +71,7 @@ if __name__ == "__main__":
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
+    print('PICK BATCH SIZE', pick_batch_size)
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
     draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 4 * pick_batch_size, args.seed)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
@@ -252,8 +253,7 @@ if __name__ == "__main__":
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
         pick_train_example, cube_train_example, *rest = validation_generator[0][0]
-        print(pick_train_example[-1])
-        pick_train_example = pick_train_example[:8]
+        pick_train_example = pick_train_example[:5]
         cube_train_example = cube_train_example[:1]
         # Make sure it compiles the correct setup for evaluation
         model((pick_train_example, cube_train_example, *rest), training=False)

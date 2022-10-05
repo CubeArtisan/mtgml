@@ -90,5 +90,4 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                 metric.update_state(true_cube, decoded_noisy_cube)
                 tf.summary.scalar(name, metric.result())
             return loss
-        return decoded_noisy_cube
-
+        return decoded_noisy_cube, encoded_noisy_cube
