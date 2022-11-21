@@ -96,7 +96,7 @@ tensorboard==2.8.0
 tensorboard-data-server==0.6.1
 tensorboard-plugin-profile==2.5.0
 tensorboard-plugin-wit==1.8.0
-tensorflow==2.8.0
+tensorflow==2.9.3
 tensorflow-addons==0.16.1
 tensorflow-io-gcs-filesystem==0.23.1
 termcolor==1.1.0
