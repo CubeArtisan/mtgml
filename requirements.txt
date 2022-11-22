@@ -66,7 +66,7 @@ opt-einsum==3.3.0
 outcome==1.1.0
 packaging==21.3
 paramiko==2.10.3
-Pillow==9.0.0
+Pillow==9.3.0
 pip==22.1
 proto-plus==1.20.3
 protobuf==3.19.1
