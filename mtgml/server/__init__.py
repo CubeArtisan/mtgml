@@ -6,7 +6,7 @@ from pathlib import Path
 
 import flask
 import numpy as np
-import tensorflow as tf
+import tflite_runtime.interpreter as tflite
 import yaml
 from opentelemetry import trace
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
@@ -24,8 +24,6 @@ from opentelemetry.sdk.trace.export import (
 )
 from opentelemetry.resourcedetector.gcp_resource_detector import GoogleCloudResourceDetector
 
-from mtgml.config.hyper_config import HyperConfig
-from mtgml.models.combined_model import CombinedModel
 from mtgml.server.cube_recommender import get_cube_recomendations
 from mtgml.server.draftbots import get_draft_scores
 
@@ -49,7 +47,7 @@ try:
     )
 except Exception:
     tracer_provider = TracerProvider()
-    tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    # tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
     logging.error('Failed to initialize cloud tracing')
 
 trace.set_tracer_provider(tracer_provider)
@@ -83,7 +81,7 @@ try:
 except Exception:
     logger.error('Failed to attach instrumenter to flask app.')
 
-MODEL_PATH = Path('ml_files/latest')
+MODEL_PATH = Path('ml_files/testing_tflite')
 MODEL = None
 with open(MODEL_PATH / 'int_to_card.json', 'rb') as map_file:
     int_to_card = json.load(map_file)
@@ -98,6 +96,7 @@ def verify_request():
     if not AUTH_ENABLED:
         return None
     else:
+        logger.warn(os.environ.get('MTGML_AUTH_ENABLED'))
         token = request.args.get("auth_token", None)
         if token is None or token not in AUTH_TOKENS:
             return {"success": False, "error": "Not authorized"}, 401
@@ -108,21 +107,8 @@ def verify_request():
 def get_model():
     global MODEL
     if MODEL is None:
-        tf.keras.utils.set_random_seed(1)
-        tf.config.experimental.enable_op_determinism()
-        with open(MODEL_PATH / 'hyper_config.yaml', 'r') as config_file:
-            data = yaml.load(config_file, yaml.Loader)
-        hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
-            'num_cards': len(INT_TO_CARD) + 1,
-            'DraftBots': {'card_weights': np.ones((len(INT_TO_CARD) + 1,))},
-        })
-        MODEL = hyper_config.build(name='CombinedModel', dynamic=False)
-        if MODEL is None:
-            app.logger.error('Failed to load model')
-            sys.exit(1)
-        MODEL.compile()
-        MODEL.load_weights(MODEL_PATH / 'model').expect_partial()
-        MODEL.build(())
+        MODEL = tflite.Interpreter(model_path='ml_files/testing_tflite/combined_model.tflite')
+        MODEL.allocate_tensors()
     return MODEL
 
 
@@ -145,9 +131,6 @@ def cube_recommendations():
 # This is a POST request since it needs to take in a drafter state object
 @app.route("/draft", methods=['POST'])
 def draft_recommendations():
-    token = request.args.get("auth_token", None)
-    if token is None or token not in AUTH_TOKENS:
-        return {"success": False, "error": "Not authorized"}, 401
     json_data = request.get_json()
     if json_data is None or "drafterState" not in json_data:
         error = "Must have a valid drafter state at the drafterState key in the json body."

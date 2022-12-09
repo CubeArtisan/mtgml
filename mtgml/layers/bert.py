@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 from mtgml.constants import ACTIVATION_CHOICES
@@ -87,7 +88,13 @@ class BERT(ConfigurableLayer):
         embeddings = tf.expand_dims(tf.cast(mask, dtype=self.compute_dtype), -1) * token_embeds
         attention_mask = tf.logical_and(tf.expand_dims(mask, -1), tf.expand_dims(mask, -2), name='attention_mask')
         if self.use_causal_mask:
-            causal_mask = tf.cast(tf.linalg.band_part(tf.ones(tf.shape(attention_mask), dtype=tf.int32), -1, 0), tf.bool)
+            num_timepoints = attention_mask.shape[-1]
+            if num_timepoints is None:
+                num_timepoints = tf.shape(attention_mask)[-1]
+                causal_mask = tf.linalg.band_part(tf.ones((num_timepoints, num_timepoints), dtype=tf.bool), -1, 0)
+            else:
+                causal_mask_np = np.tri(num_timepoints)
+                causal_mask = tf.constant(causal_mask_np, shape=(1, num_timepoints, num_timepoints), dtype=tf.bool)
             attention_mask = attention_mask & causal_mask
         for layer in self.layers:
             embeddings = layer((embeddings, attention_mask), training=training, mask=mask)

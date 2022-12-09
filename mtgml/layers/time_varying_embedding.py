@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+from mtgml.constants import is_debug
 from mtgml.layers.configurable_layer import ConfigurableLayer
 
 class TimeVaryingEmbedding(ConfigurableLayer):
@@ -27,7 +28,8 @@ class TimeVaryingEmbedding(ConfigurableLayer):
             component_embedding_values = tf.gather_nd(self.embeddings, coords, name='component_embedding_values')
             result = tf.einsum('...xe,...x->...e', component_embedding_values, coord_weights,
                                name='embedding_values')
-            result = tf.ensure_shape(result, (None, *coords.shape[1:-2], self.dims))
+            if is_debug():
+                result = tf.ensure_shape(result, (None, *coords.shape[1:-2], self.dims))
             return result
         else:
             return tf.gather_nd(self.embeddings, inputs, name='embedding_values')

@@ -17,6 +17,7 @@ import yaml
 from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator, PickAdjMtxGenerator
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
+from mtgml.constants import set_debug
 from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
@@ -30,6 +31,7 @@ ACTIVATION_CHOICES = ('relu', 'selu', 'swish', 'tanh', 'sigmoid', 'linear', 'gel
 OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb', 'adadelta',
                      'nadam', 'rmsprop')
 if __name__ == "__main__":
+    set_debug(False)
     locale.setlocale(locale.LC_ALL, '')
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
@@ -60,7 +62,8 @@ if __name__ == "__main__":
     })
     tf.config.threading.set_intra_op_parallelism_threads(32)
     tf.config.threading.set_inter_op_parallelism_threads(32)
-    strategy = tf.distribute.MirroredStrategy()
+    # strategy = tf.distribute.MirroredStrategy()
+    strategy = tf.distribute.experimental.CentralStorageStrategy()
     cube_batch_size = hyper_config.get_int('cube_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
                                            help='The number of cube samples to evaluate at a time') * strategy.num_replicas_in_sync
     pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
@@ -71,9 +74,8 @@ if __name__ == "__main__":
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
-    print('PICK BATCH SIZE', pick_batch_size)
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
-    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 4 * pick_batch_size, args.seed)
+    draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 2 * pick_batch_size, args.seed)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
                                                        cube_batch_size, args.seed, noise_mean, noise_std)
     recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
@@ -82,13 +84,14 @@ if __name__ == "__main__":
     # deck_adj_mtx_generator.on_epoch_end()
     deck_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     deck_adj_mtx_generator.on_epoch_end()
-    cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(cards_json), adj_mtx_batch_size, args.seed * 7 + 3)
+    cube_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', len(cards_json), 2 * adj_mtx_batch_size, args.seed * 7 + 3)
     cube_adj_mtx_generator.on_epoch_end()
     print(f'There are {len(draftbot_train_generator)} training pick batches')
     print(f'There are {len(draftbot_validation_generator)} validation pick batches')
     print(f'There are {len(recommender_train_generator)} training recommender batches')
     print(f'There are {len(recommender_validation_generator)} validation recommender batches')
     print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
+    print(f'There are {len(cube_adj_mtx_generator)} validation adjacency matrix batches')
     logging.info(f"There are {len(cards_json):n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
@@ -132,6 +135,7 @@ if __name__ == "__main__":
             'pin_to_host_optimization': True,
             'implementation_selector': True,
             'disable_meta_optimizer': True,
+            'auto_mixed_precision': False,
             'min_graph_nodes': 1,
         })
     else:
@@ -149,9 +153,14 @@ if __name__ == "__main__":
             'scoped_allocator_optimization': True,
             'pin_to_host_optimization': True,
             'implementation_selector': True,
+            'auto_mixed_precision': False,
             'disable_meta_optimizer': False,
             'min_graph_nodes': 1,
         })
+        if bool(hyper_config.get_bool('use_async_execution', default=False, help='Whether to enable experimental asynchronous execution.')):
+            tf.config.experimental.set_synchronous_execution(False)
+    print('Synchronous execution:', tf.config.experimental.get_synchronous_execution())
+    print('Tensor float 32 execution:', tf.config.experimental.tensor_float_32_execution_enabled())
 
     color_name = {'W': 'White', 'U': 'Blue', 'B': 'Black', 'R': "Red", 'G': 'Green'}
     metadata = os.path.join(log_dir, 'metadata.tsv')
@@ -168,7 +177,7 @@ if __name__ == "__main__":
         model = hyper_config.build(name='CombinedModel', dynamic=False)
         if model is None:
             sys.exit(1)
-        optimizer = hyper_config.get_choice('optimizer', choices=('adam', 'adamax', 'adadelta', 'nadam', 'sgd', 'lazyadam', 'rectadam', 'novograd'),
+        optimizer = hyper_config.get_choice('optimizer', choices=OPTIMIZER_CHOICES,
                                             default='adam', help='The optimizer type to use for optimization')
         learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
                                                default=1e-03, help=f'The learning rate to use for {optimizer}') * math.sqrt(strategy.num_replicas_in_sync)
@@ -211,13 +220,13 @@ if __name__ == "__main__":
         model.load_weights(latest)
 
     logging.info('Starting training')
-    with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator, strategy.scope():
+    with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
         epochs_for_completion = hyper_config.get_int('epochs_for_completion', min=1, default=32,
                                                      help='The number of epochs it should take to go through the entire dataset.')
         train_generator = \
             SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator,
                                              cube_adj_mtx_generator, deck_adj_mtx_generator), epochs_for_completion)
-        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, deck_adj_mtx_generator), 1)
+        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, cube_adj_mtx_generator), 1)
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
         with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
@@ -244,7 +253,7 @@ if __name__ == "__main__":
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
         tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
-                                     update_freq=256, embeddings_freq=None,
+                                     update_freq=128, embeddings_freq=None,
                                      profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"
         tqdm_callback = TQDMProgressBar(smoothing=0.001, epoch_bar_format=BAR_FORMAT)
@@ -256,17 +265,15 @@ if __name__ == "__main__":
         pick_train_example = pick_train_example[:5]
         cube_train_example = cube_train_example[:1]
         # Make sure it compiles the correct setup for evaluation
-        model((pick_train_example, cube_train_example, *rest), training=False)
-        print(model.summary())
-        # model.cube_recommender.temperature.assign(1)
-        # model.cube_adj_mtx_reconstructor.temperature.assign(1)
-        # model.deck_adj_mtx_reconstructor.temperature.assign(1)
-        model.fit(
-            train_generator,
-            validation_data=validation_generator,
-            validation_freq=max(epochs_for_completion // 10, 1),
-            epochs=args.epochs,
-            callbacks=callbacks,
-            verbose=0,
-            max_queue_size=2**10,
-        )
+        with strategy.scope():
+            model((pick_train_example, cube_train_example, *rest), training=False)
+            print(model.summary())
+            model.fit(
+                train_generator,
+                validation_data=validation_generator,
+                validation_freq=max(epochs_for_completion // 10, 1),
+                epochs=args.epochs,
+                callbacks=callbacks,
+                verbose=0,
+                max_queue_size=2**10,
+            )

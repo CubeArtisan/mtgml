@@ -16,3 +16,14 @@ MAX_SIDEBOARD_SIZE = 48
 RISKINESS_CONSTANT = 8
 
 EPSILON = 1e-05
+
+_debug = True
+
+
+def is_debug():
+    return _debug
+
+
+def set_debug(enable):
+    global _debug
+    _debug = enable

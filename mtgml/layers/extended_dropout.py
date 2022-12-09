@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+from mtgml.constants import is_debug
 from mtgml.layers.configurable_layer import ConfigurableLayer
 
 
@@ -36,10 +37,8 @@ class ExtendedDropout(ConfigurableLayer):
         if self.noise_shape is None:
           return None
         concrete_inputs_shape = tf.shape(inputs)
-        noise_shape = []
-        for i, value in enumerate(self.noise_shape):
-          noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-        return tf.convert_to_tensor(noise_shape)
+        noise_shape = [concrete_inputs_shape[i] if value is None else value for i, value in enumerate(self.noise_shape)]
+        return tf.convert_to_tensor(noise_shape, name='noise_shape')
 
     def call(self, inputs, training=False, mask=None):
         if self.rate <= 0 or not training:
@@ -53,15 +52,18 @@ class ExtendedDropout(ConfigurableLayer):
             noise = tf.random.uniform(noise_shape, minval=0, maxval=1, dtype=self.compute_dtype,
                                       seed=self.seed, name='noise')
             noise_mask = noise >= self.rate
-            result = tf.where(noise_mask, inputs,
-                                  tf.zeros_like(inputs), name='noise_mult')
-        result = tf.ensure_shape(result, self.input_shapes)
+            result = tf.cast(noise_mask, dtype=inputs.dtype) * inputs
+            # result = tf.where(noise_mask, inputs,
+            #                       tf.zeros_like(inputs), name='noise_mult')
+        if is_debug():
+            result = tf.ensure_shape(result, self.input_shapes)
         if self.return_mask:
             if mask is not None:
                 if tf.rank(mask) < tf.rank(noise_mask):
                     mask = tf.expand_dims(mask, -1)
                 noise_mask = tf.math.logical_and(noise_mask, mask, name='combined_mask')
-            noise_mask = tf.ensure_shape(noise_mask, self.mask_shape)
+            if is_debug():
+                noise_mask = tf.ensure_shape(noise_mask, self.mask_shape)
             return result, noise_mask
         else:
             return result

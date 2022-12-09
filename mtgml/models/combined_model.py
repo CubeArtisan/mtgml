@@ -46,7 +46,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
         if result['cube_adj_mtx_weight'] > 0:
             result.update({
                 'cube_adj_mtx_reconstructor': hyper_config.get_sublayer('CubeAdjMtxReconstructor', sub_layer_type=AdjMtxReconstructor,
-                                                                        fixed={'num_cards': num_cards}, seed_mod=23,
+                                                                        fixed={'num_cards': num_cards}, seed_mod=29,
                                                                         help='The model to reconstruct the cube adjacency matrix'),
             })
         return result
@@ -56,24 +56,54 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
         self.embed_cards.build(input_shapes=(None, None))
 
     def call(self, inputs, training=False):
+        if not isinstance(inputs[0], tuple):
+            inputs = (tuple(inputs[:5]), (inputs[5],), tuple(inputs[6:8]), tuple(inputs[8:10]))
+        draftbot_loss = tf.constant(0, dtype=tf.float32)
+        recommender_loss = tf.constant(0, dtype=tf.float32)
+        deck_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
+        cube_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
         with tf.experimental.async_scope():
             loss = 0
             if self.draftbots_weight > 0:
                 if len(inputs[0]) > 6:
-                    draftbot_loss = self.draftbots((*inputs[0][0:-2], self.embed_cards.embeddings, *inputs[0][-2:]), training=training)
-                    loss += self.draftbots_weight * draftbot_loss
+                    draftbot_loss = self.draftbots_weight * self.draftbots((*inputs[0][0:-2], self.embed_cards.embeddings, *inputs[0][-2:]), training=training)
                 else:
                     draftbot_loss = self.draftbots((*inputs[0], self.embed_cards.embeddings), training=training)
             if self.recommender_weight:
-                recommender_loss = self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
-                loss += self.recommender_weight * recommender_loss
+                if len(inputs[1]) > 1:
+                    recommender_loss = self.recommender_weight * self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
+                else:
+                    recommender_loss = self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
             if self.deck_adj_mtx_weight > 0:
-                deck_adj_mtx_loss = self.deck_adj_mtx_reconstructor((*inputs[3], self.embed_cards.embeddings), training=training)
-                loss += self.deck_adj_mtx_weight * deck_adj_mtx_loss
+                deck_adj_mtx_loss = self.deck_adj_mtx_weight * self.deck_adj_mtx_reconstructor((*inputs[3], self.embed_cards.embeddings), training=training)
             if self.cube_adj_mtx_weight > 0:
-                cube_adj_mtx_loss = self.cube_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
-                loss += self.cube_adj_mtx_weight * cube_adj_mtx_loss
-            if len(inputs[0]) > 6:
-                self.add_loss(loss)
-                tf.summary.scalar('loss', loss)
+                cube_adj_mtx_loss = self.cube_adj_mtx_weight * self.cube_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
+        if len(inputs[0]) > 6:
+            loss = draftbot_loss + recommender_loss + deck_adj_mtx_loss + cube_adj_mtx_loss
+            self.add_loss(loss)
+            tf.summary.scalar('loss', loss)
+        else:
+            loss = tf.constant(0, dtype=tf.float32)
         return loss
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[1, 16], dtype=tf.int16),
+        tf.TensorSpec(shape=[1, 48], dtype=tf.int16),
+        tf.TensorSpec(shape=[1, 48, 16], dtype=tf.int16),
+        tf.TensorSpec(shape=[1, 48, 4, 2], dtype=tf.int8),
+        tf.TensorSpec(shape=[1, 48, 4], dtype=tf.float32),
+    ])
+    def call_draftbots(self, basics, pool, seen, seen_coords, seen_coord_weights):
+        sublayer_scores, sublayer_weights = self.draftbots((basics, pool, seen, seen_coords, seen_coord_weights, self.embed_cards.embeddings), training=False)
+        return {
+            'sublayer_scores': tf.identity(sublayer_scores, 'sublayer_scores'),
+            'sublayer_weights': tf.identity(sublayer_weights, 'sublayer_weights'),
+        }
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[1, 1080], dtype=tf.int16)])
+    def call_recommender(self, cube):
+        decoded_noisy_cube, encoded_noisy_cube = self.cube_recommender((cube, self.embed_cards.embeddings), training=False)
+        return {
+            'decoded_noisy_cube': tf.identity(decoded_noisy_cube, 'decoded_noisy_cube'),
+            'encoded_noisy_cube': tf.identity(encoded_noisy_cube, 'encoded_noisy_cube'),
+        }

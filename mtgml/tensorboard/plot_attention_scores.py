@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
+from mtgml.constants import is_debug
+
 WIDTH = 10
 DPI = 100
 CHANNELS = 3
@@ -45,7 +47,8 @@ def plot_attention_head_scores(scores, mask, name=''):
         plt.text(j, i, labels[i, j], horizontalalignment="center", color=color, fontsize=6)
     plt.tight_layout()
     image = plot_to_image(figure)
-    image = tf.ensure_shape(image, (WIDTH * DPI, WIDTH * DPI, CHANNELS))
+    if is_debug():
+        image = tf.ensure_shape(image, (WIDTH * DPI, WIDTH * DPI, CHANNELS))
     return image
 
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
+set -e
+
 mkdir -p data/CubeCobra/drafts data/CubeCobra/decks data/CubeCobra/cubes data/maps
 cd data
-rm -r maps/int_to_card.json maps/card_to_int.json
+rm -rf maps/int_to_card.json maps/card_to_int.json
 
 if aws s3 ls s3://cubecobra/ > /dev/null; then
   mkdir -p CubeCobra
@@ -26,7 +28,7 @@ export DATE=`gsutil ls -lh $GS_PATH\
     | cut -d '.' -f 1`
 
 gsutil cp $GS_PATH$DATE.tar.xz $DATE.tar.xz
-rm -r $DATE
+rm -rf $DATE
 tar xJf $DATE.tar.xz
 rm $DATE.tar.xz
 cp $DATE/int_to_card.json maps/int_to_card.json

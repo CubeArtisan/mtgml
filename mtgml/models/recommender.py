@@ -1,4 +1,5 @@
 import tensorflow as tf
+from mtgml.constants import is_debug
 
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.set_embedding import AttentiveSetEmbedding
@@ -67,12 +68,12 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         else:
             card_embeddings = tf.cast(inputs[1], dtype=self.compute_dtype, name='card_embeddings')
         embed_noisy_cube = tf.gather(card_embeddings, noisy_cube, name='embed_noisy_cube')
-        encoded_noisy_cube = self.embed_cube(embed_noisy_cube, training=training)
+        encoded_noisy_cube = tf.identity(self.embed_cube(embed_noisy_cube, training=training), name='encoded_noisy_cube')
         transformed_cards = self.transform_cards(card_embeddings[1:], training=training)
         encoded_noisy_cube_exp = tf.expand_dims(encoded_noisy_cube, -2)
         transformed_cards_exp = tf.expand_dims(transformed_cards, -3)
         similarities = -tf.keras.losses.cosine_similarity(encoded_noisy_cube_exp, transformed_cards_exp, axis=-1)
-        decoded_noisy_cube = tf.nn.sigmoid((similarities - 0.5) * self.temperature)
+        decoded_noisy_cube = tf.nn.sigmoid((similarities - 0.5) * self.temperature, name='decoded_noisy_cube')
         if len(inputs) == 3:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name='true_cube_arr')
             true_cube = tf.reduce_max(tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype), axis=-2)[:,1:]
@@ -85,7 +86,8 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
             self.add_metric(cube_losses, 'cube_loss')
             self.add_metric(self.temperature, 'cube_temperature')
             tf.summary.scalar('cube_loss', tf.reduce_mean(cube_losses))
-            tf.summary.histogram('similarities', similarities)
+            if is_debug():
+                tf.summary.histogram('similarities', similarities)
             for name, metric in self.cube_metrics.items():
                 metric.update_state(true_cube, decoded_noisy_cube)
                 tf.summary.scalar(name, metric.result())

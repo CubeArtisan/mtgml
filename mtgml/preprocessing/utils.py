@@ -3,6 +3,10 @@ import json
 import numpy as np
 
 
+def always_true(_):
+    return True
+
+
 def get_card_maps(map_file):
     with open(map_file, 'rb') as mf:
         names = json.load(mf)
@@ -22,7 +26,7 @@ def get_card_maps(map_file):
         int_to_card
     )
 
-def get_num_objs(cube_folder, validation_func=lambda _: True):
+def get_num_objs(cube_folder, validation_func=always_true):
     num_objs = 0
     for filename in cube_folder.iterdir():
         with open(filename, 'rb') as obj_file:
@@ -32,7 +36,7 @@ def get_num_objs(cube_folder, validation_func=lambda _: True):
 
 
 def build_cubes(cube_folder, num_cubes, num_cards, card_to_int,
-                validation_func=lambda _: True):
+                validation_func=always_true):
     cubes = np.zeros((num_cubes, num_cards))
     counter = 0
     for filename in cube_folder.iterdir():
@@ -52,7 +56,7 @@ def build_cubes(cube_folder, num_cubes, num_cards, card_to_int,
 
 
 def build_decks(cube_folder, num_decks, num_cards,
-                card_to_int, validation_func=lambda _: True,
+                card_to_int, validation_func=always_true,
                 soft_validation=0):
     decks = np.zeros((num_decks, num_cards), dtype=np.uint8)
     counter = 0
@@ -76,7 +80,7 @@ def build_decks(cube_folder, num_decks, num_cards,
 
 
 def build_mtx(deck_folder, num_cards,
-              card_to_int, validation_func=lambda _: True,
+              card_to_int, validation_func=always_true,
               soft_validation=0):
     adj_mtx = np.zeros((num_cards, num_cards), dtype=np.uint32)
     for filename in deck_folder.iterdir():

@@ -184,8 +184,6 @@ def calculate_riskiness(pack, pool):
 PREFIX = struct.Struct(f'{MAX_BASICS}H{MAX_PICKED}H{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}H{MAX_SEEN_PACKS * 4 * 2}B{MAX_SEEN_PACKS * 4}f{MAX_SEEN_PACKS * MAX_CARDS_IN_PACK}f{MAX_SEEN_PACKS}B')
 POOL_ARRAY = np.zeros((BUFFER_SIZE, MAX_PICKED), dtype=np.int32)
 PACK_ARRAY = np.zeros((BUFFER_SIZE, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK), dtype=np.int32)
-print(PREFIX.size)
-sys.exit(0)
 
 
 def write_picks(picks, output_file):

@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 
@@ -21,4 +22,4 @@ class CombinedGenerator(tf.keras.utils.Sequence):
                 gen.on_epoch_end()
             calculated_index = index % len(gen)
             result.append(gen[calculated_index])
-        return (result,)
+        return (result,np.zeros_like(result[0][0]))

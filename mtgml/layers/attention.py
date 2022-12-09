@@ -34,8 +34,11 @@ def combine_kv_chunks(chunk_values, sum_exp_scores, max_scores):
         return result
 
 def process_q_chunk(query, key_chunks, value_chunks, kv_partitions):
+    def pass_along_query(kv):
+        return process_kv_chunk(query, kv[0], kv[1])
+
     with tf.name_scope('ProccessQChunk'):
-        chunk_results = tf.map_fn(lambda kv: process_kv_chunk(query, kv[0], kv[1]),
+        chunk_results = tf.map_fn(pass_along_query,
                                   (key_chunks, value_chunks), swap_memory=True, parallel_iterations=kv_partitions,
                                   infer_shape=False, fn_output_signature=(tf.TensorSpec((*query.shape[:-1], value_chunks.shape[-1]), dtype=query.dtype),
                                                                           tf.TensorSpec(query.shape[:-1], dtype=query.dtype),
@@ -59,7 +62,11 @@ def calculate_attention(query, key, value, query_chunk_size, kv_chunk_size, name
         query_chunks = tf.stack(tf.split(query, q_partitions, axis=-3, name='query_chunks'), axis=0)
         key_chunks = tf.stack(tf.split(key, kv_partitions, axis=-3, name='key_chunks'), axis=0)
         value_chunks = tf.stack(tf.split(value, kv_partitions, axis=-3, name='value_chunks'), axis=0)
-        chunk_results = tf.map_fn(lambda q: process_q_chunk(q, key_chunks, value_chunks, len(kv_partitions)),
+
+        def pass_along_chunks(q):
+            return process_q_chunk(q, key_chunks, value_chunks, len(kv_partitions))
+
+        chunk_results = tf.map_fn(pass_along_chunks,
                                   query_chunks, swap_memory=True, parallel_iterations=len(q_partitions))
         chunk_results = tf.stack(chunk_results, axis=0, name='chunk_results_stacked')
         chunk_results = tf.reshape(chunk_results, (-1, *query.shape[1:-1], value.shape[-1]), name=scope)
@@ -223,4 +230,3 @@ class PoolingByMultiHeadAttention(ConfigurableLayer):
             return tf.squeeze(pooled, axis=-2)
         else:
             return pooled
-

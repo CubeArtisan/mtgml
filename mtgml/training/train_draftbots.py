@@ -18,6 +18,11 @@ from mtgml.schedules.warmup_piecewise_constant_decay import PiecewiseConstantDec
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.tqdm_callback import TQDMProgressBar
 
+
+def loss_0(y_true, y_pred):
+    return 0.0
+
+
 BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
 EMBED_DIMS_CHOICES = tuple(2 ** i + j for i in range(0, 10) for j in range(2))
 ACTIVATION_CHOICES = ('relu', 'selu', 'swish', 'tanh', 'sigmoid', 'linear', 'gelu', 'elu')
@@ -181,7 +186,7 @@ if __name__ == "__main__":
         weight_decay = hyper_config.get_float('novograd_weight_decay', min=1e-08, max=1e-01, default=1e-06, logdist=True,
                                               help='The weight decay for novograd optimization per batch.')
         opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
-    draftbots.compile(optimizer=opt, loss=lambda y_true, y_pred: 0.0)
+    draftbots.compile(optimizer=opt, loss=loss_0)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
         logging.info('Loading Checkpoint.')

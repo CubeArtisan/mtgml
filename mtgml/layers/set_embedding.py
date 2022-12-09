@@ -5,7 +5,6 @@ from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
 from mtgml.layers.wrapped import WDropout, WMultiHeadAttention
-from mtgml.layers.attention import InducedSetAttentionBlockStack, PoolingByMultiHeadAttention
 from mtgml.layers.zero_masked import ZeroMasked
 from mtgml.layers.bert import BERT
 
@@ -69,9 +68,6 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                                                                                               help='Ensure items only attend to items that came before them.'),
                                                  },
                                                  help='The layers to model interactions between items.'),
-            'pooling': hyper_config.get_sublayer('Pooling', sub_layer_type=PoolingByMultiHeadAttention, seed_mod=53,
-                                                 fixed={'out_set_size': 1},
-                                                 help='The layer to collapse down to one embedding.'),
             'decoder': hyper_config.get_sublayer('Decoder', sub_layer_type=MLP, seed_mod=17,
                                                  fixed={"Dropout": {'rate': decoding_dropout}},
                                                  help='The mapping from the added item embeddings to the embeddings to return.'),
@@ -80,16 +76,23 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                                                       seed_mod=53, fixed={'all_last_dim': True, 'return_mask': True,
                                                                           'blank_last_dim': False, 'noise_shape': None},
                                                       help='Drops out entire items from the set.'),
+            'pooling_attention': hyper_config.get_sublayer('PoolingAttention', sub_layer_type=WMultiHeadAttention, seed_mod=37,
+                                                           help='The attention layer that combines the set elements.'),
             'supports_masking': True,
         }
 
     def build(self, input_shapes):
         super(AttentiveSetEmbedding, self).build(input_shapes)
+        self.seed_vector = self.add_weight('seed_vector', shape=(1, input_shapes[-1]), trainable=True)
 
     def call(self, inputs, training=False, mask=None):
         dropped, dropout_mask = self.item_dropout(inputs, training=training, mask=mask)
         dropout_mask = tf.cast(dropout_mask, tf.bool)
         dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
-        encoded_items = self.encoder(dropped, mask=dropout_mask, training=training)
-        encoded_items = self.pooling(encoded_items, training=training, mask=dropout_mask)
+        encoded_item_set = self.encoder(dropped, mask=dropout_mask, training=training)
+        shape = tf.concat([tf.shape(inputs)[:-2], tf.shape(self.seed_vector)[-2:]], axis=0)
+        encoded_items = tf.squeeze(self.pooling_attention(self.seed_vector + tf.zeros(shape, dtype=inputs.dtype),
+                                                          encoded_item_set,
+                                                          attention_mask=tf.expand_dims(dropout_mask, -2),
+                                                          training=training), -2)
         return self.decoder(encoded_items, training=training)
