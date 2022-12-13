@@ -50,7 +50,7 @@ def load_all_cubes(cube_dirs):
                                       smoothing=0.001, initial=num_cubes):
                         if MAX_CUBE_SIZE >= len(cube['cards']) >= 120 and all(isinstance(x, int) for x in cube['cards']):
                             cards = tuple(original_to_new_index[x + 1] for x in cube['cards'])
-                            if not any(x <= 0 or x > max_index for x in cards):
+                            if all(max_index >= x > 0 for x in cards):
                                 num_cubes += 1
                                 rand_val = random.randint(0, 9)
                                 dest = DESTS[rand_val]
@@ -71,7 +71,7 @@ def load_all_cubes2(cube_dirs):
                                   smoothing=0.001, initial=num_cubes):
                     if MAX_CUBE_SIZE >= len(cube) >= 120 and all(x in name_to_int for x in cube):
                         cards = tuple(original_to_new_index[name_to_int[x] + 1] for x in cube)
-                        if not any(x <= 0 or x > max_index for x in cards):
+                        if all(max_index >= x > 0 for x in cards):
                             num_cubes += 1
                             rand_val = random.randint(0, 9)
                             dest = DESTS[rand_val]

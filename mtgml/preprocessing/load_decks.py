@@ -50,12 +50,12 @@ def load_all_decks(deck_dirs):
                                      smoothing=0.001, initial=num_decks):
                         if MAX_DECK_SIZE >= len(deck['main']) >= 20 and all(isinstance(x, int) for x in deck['main']) \
                            and MAX_SIDEBOARD_SIZE >= len(deck['side']) > 0 and all(isinstance(x, int) for x in deck['side']):
-                            num_decks += 1
                             rand_val = random.randint(0, 9)
                             dest = DESTS[rand_val]
                             main = tuple(original_to_new_index[x + 1] for x in deck['main'][:MAX_DECK_SIZE])
                             side = tuple(original_to_new_index[x + 1] for x in deck['side'][:MAX_SIDEBOARD_SIZE])
                             if all(x > 0 for x in main) and all(x > 0 for x in side):
+                                num_decks += 1
                                 yield (dest, (main, side))
             except:
                 logging.exception(f'Error in file {decks_file}')
@@ -74,12 +74,12 @@ def load_all_old_decks(deck_dirs):
                                      smoothing=0.001, initial=num_decks):
                         if not isinstance(deck, str) and MAX_DECK_SIZE >= len(deck['main']) >= 20 and all(x in id_to_oracle for x in deck['main']) and all(id_to_oracle[x] in card_to_int for x in deck['main']) \
                                 and MAX_SIDEBOARD_SIZE >= len(deck['side']) > 0 and all(x in id_to_oracle for x in deck['side']) and all(id_to_oracle[x] in card_to_int for x in deck['side']):
-                            num_decks += 1
                             rand_val = random.randint(0, 9)
                             dest = DESTS[rand_val]
                             main = tuple(original_to_new_index[card_to_int[id_to_oracle[x]] + 1] for x in deck['main'][:MAX_DECK_SIZE])
                             side = tuple(original_to_new_index[card_to_int[id_to_oracle[x]] + 1] for x in deck['side'][:MAX_SIDEBOARD_SIZE])
                             if all(x > 0 for x in main) and all(x > 0 for x in side):
+                                num_decks += 1
                                 yield (dest, (main, side))
             except:
                 logging.exception(f'Error in file {decks_file}')
