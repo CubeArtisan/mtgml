@@ -18,6 +18,12 @@ with open('data/maps/card_to_int.json') as fp:
     card_to_int = json.load(fp)
 with open('data/maps/id_to_oracle.json') as fp:
     id_to_oracle = json.load(fp)
+original_to_new_path = Path('data/maps/original_to_new_index.json')
+if original_to_new_path.exists():
+    with original_to_new_path.open('r') as fp:
+        original_to_new_index = json.load(fp)
+else:
+    original_to_new_index = tuple(range(len(card_to_int) + 1))
 
 
 def pad(arr, desired_length, value=0):
@@ -47,8 +53,10 @@ def load_all_decks(deck_dirs):
                             num_decks += 1
                             rand_val = random.randint(0, 9)
                             dest = DESTS[rand_val]
-                            yield (dest, (tuple(x + 1 for x in deck['main'][:MAX_DECK_SIZE]),
-                                          tuple(x + 1 for x in deck['side'][:MAX_SIDEBOARD_SIZE])))
+                            main = tuple(original_to_new_index[x + 1] for x in deck['main'][:MAX_DECK_SIZE])
+                            side = tuple(original_to_new_index[x + 1] for x in deck['side'][:MAX_SIDEBOARD_SIZE])
+                            if all(x > 0 for x in main) and all(x > 0 for x in side):
+                                yield (dest, (main, side))
             except:
                 logging.exception(f'Error in file {decks_file}')
     print(f'Total decks {num_decks:n}')
@@ -59,17 +67,22 @@ def load_all_old_decks(deck_dirs):
     for deck_dir in deck_dirs.split(';'):
         for decks_file in tqdm(glob.glob(f'{deck_dir}/*.json'), leave=False, dynamic_ncols=True,
                                 unit='file', unit_scale=1):
-            with open(decks_file, 'rb') as fp:
-                decks = JsonSlicer(fp, (None,))
-                for deck in tqdm(decks, leave=False, dynamic_ncols=True, unit='deck', unit_scale=1,
-                                 smoothing=0.001, initial=num_decks):
-                    if not isinstance(deck, str) and MAX_DECK_SIZE >= len(deck['main']) >= 20 and all(x in id_to_oracle for x in deck['main']) and all(id_to_oracle[x] in card_to_int for x in deck['main']) \
-                            and MAX_SIDEBOARD_SIZE >= len(deck['side']) > 0 and all(x in id_to_oracle for x in deck['side']) and all(id_to_oracle[x] in card_to_int for x in deck['side']):
-                        num_decks += 1
-                        rand_val = random.randint(0, 9)
-                        dest = DESTS[rand_val]
-                        yield (dest, (tuple(card_to_int[id_to_oracle[x]] + 1 for x in deck['main'][:MAX_DECK_SIZE]),
-                                      tuple(card_to_int[id_to_oracle[x]] + 1 for x in deck['side'][:MAX_SIDEBOARD_SIZE])))
+            try:
+                with open(decks_file, 'rb') as fp:
+                    decks = JsonSlicer(fp, (None,))
+                    for deck in tqdm(decks, leave=False, dynamic_ncols=True, unit='deck', unit_scale=1,
+                                     smoothing=0.001, initial=num_decks):
+                        if not isinstance(deck, str) and MAX_DECK_SIZE >= len(deck['main']) >= 20 and all(x in id_to_oracle for x in deck['main']) and all(id_to_oracle[x] in card_to_int for x in deck['main']) \
+                                and MAX_SIDEBOARD_SIZE >= len(deck['side']) > 0 and all(x in id_to_oracle for x in deck['side']) and all(id_to_oracle[x] in card_to_int for x in deck['side']):
+                            num_decks += 1
+                            rand_val = random.randint(0, 9)
+                            dest = DESTS[rand_val]
+                            main = tuple(original_to_new_index[card_to_int[id_to_oracle[x]] + 1] for x in deck['main'][:MAX_DECK_SIZE])
+                            side = tuple(original_to_new_index[card_to_int[id_to_oracle[x]] + 1] for x in deck['side'][:MAX_SIDEBOARD_SIZE])
+                            if all(x > 0 for x in main) and all(x > 0 for x in side):
+                                yield (dest, (main, side))
+            except:
+                logging.exception(f'Error in file {decks_file}')
     print(f'Total decks {num_decks:n}')
 
 

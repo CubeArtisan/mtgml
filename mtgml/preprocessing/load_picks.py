@@ -25,6 +25,13 @@ with open('data/maps/int_to_card.json') as fp:
 with open('data/maps/old_int_to_card.json') as fp:
     old_int_to_card = json.load(fp)
 old_int_to_new_int = [card_to_int[c["oracle_id"]] if c['oracle_id'] in card_to_int else -1 for c in old_int_to_card]
+original_to_new_path = Path('data/maps/original_to_new_index.json')
+if original_to_new_path.exists():
+    with original_to_new_path.open('r') as fp:
+        original_to_new_index = json.load(fp)
+else:
+    original_to_new_index = tuple(range(len(int_to_card) + 1))
+max_index = max(original_to_new_index)
 default_basic_ids = [
     "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
     "b2c6aa39-2d2a-459c-a555-fb48ba993373",
@@ -32,7 +39,7 @@ default_basic_ids = [
     "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
     "a3fb7228-e76b-4e96-a40e-20b5fed75685",
 ]
-default_basics = tuple(card_to_int[c] for c in default_basic_ids)
+default_basics = tuple(original_to_new_index[card_to_int[c] + 1] for c in default_basic_ids)
 
 BUFFER_SIZE = 1024 // 64
 
@@ -48,7 +55,7 @@ def pad(arr, desired_length, value=0):
 
 def picks_from_draft(draft):
     if isinstance(draft, dict):
-        basics = [x + 1 for x in draft.get('basics', default_basics)][:MAX_BASICS]
+        basics = [original_to_new_index[x + 1] for x in draft.get('basics', default_basics)][:MAX_BASICS]
         if 'picks' in draft:
             seen = []
             seen_coords = []
@@ -64,16 +71,19 @@ def picks_from_draft(draft):
                         and len(pick['picked']) <= MAX_PICKED):
                     break
                 # if len(pick['cardsInPack']) <= 1: continue
-                cards_in_pack = [x + 1 for x in pick['cardsInPack']]
+                cards_in_pack = [original_to_new_index[x + 1] for x in pick['cardsInPack']]
                 coords, coord_weights = interpolate(pick['pickNum'], pick['numPicks'],
                                                     pick['packNum'], pick['numPacks'])
                 cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
                 cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
+                new_value = tuple(original_to_new_index[x + 1] for x in pick['picked'])
+                if any(x <= 0 or x > max_index for x in cards_in_pack) or any(x <= 0 or x > max_index for x in new_value):
+                    break
                 seen.append(cards_in_pack)
                 seen_coords.append(coords)
                 seen_coord_weights.append(coord_weights)
                 trashed.append(0 if 'pickedIdx' in pick else 1)
-                value = tuple(x + 1 for x in pick['picked'])
+                value = new_value
             if value is not None:
                 yield (basics, value, seen, seen_coords, seen_coord_weights, trashed)
 
@@ -83,31 +93,32 @@ ALL_PICKS = tuple(0 for _ in range(MAX_SEEN_PACKS))
 
 def picks_from_draft2(draft):
     if 'picks' in draft:
-        BUFFER = np.zeros((len(int_to_card) + 1,), dtype=np.int16)
         seen = []
         seen_coords = []
         seen_coord_weights = []
-        trashed = ALL_PICKS
         value = None
         for pick in draft['picks']:
             if not (all(isinstance(x, int) for x in pick['cardsInPack'])
                     and all(isinstance(x, int) for x in pick['picked'])
                     and len(seen) < MAX_SEEN_PACKS
                     and len(pick['picked']) <= MAX_PICKED):
-                return
-            cards_in_pack = [old_int_to_new_int[x] + 1 for x in pick['cardsInPack']]
+                break
+            cards_in_pack = [original_to_new_index[old_int_to_new_int[x] + 1] for x in pick['cardsInPack']]
             coords, coord_weights = interpolate(pick['pick'], pick['packSize'], pick['pack'],
                                                 pick['packs'])
-            chosen_card = old_int_to_new_int[pick['chosenCard']] + 1
+            chosen_card = original_to_new_index[old_int_to_new_int[pick['chosenCard']] + 1]
             picked_idx = cards_in_pack.index(chosen_card)
             if picked_idx < 0:
-                return
+                break
             cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
             cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
-            seen.append(cards_in_pack[:MAX_CARDS_IN_PACK])
+            new_value = tuple(original_to_new_index[old_int_to_new_int[x] + 1] for x in pick['picked'])
+            if any(x <= 0 or x > max_index for x in cards_in_pack) or any(x <= 0 or x > max_index for x in new_value):
+                break
+            seen.append(cards_in_pack)
             seen_coords.append(coords)
             seen_coord_weights.append(coord_weights)
-            value = tuple(old_int_to_new_int[x] + 1 for x in pick['picked'])
+            value = new_value
         if value is not None:
             yield (default_basics, value, seen, seen_coords, seen_coord_weights, ALL_PICKS)
 

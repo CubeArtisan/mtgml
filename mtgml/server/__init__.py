@@ -83,10 +83,16 @@ except Exception:
 
 MODEL_PATH = Path('ml_files/testing_tflite')
 MODEL = None
-with open(MODEL_PATH / 'int_to_card.json', 'rb') as map_file:
+with open(MODEL_PATH / 'int_to_oracle_id.json', 'r') as map_file:
     int_to_card = json.load(map_file)
-CARD_TO_INT = {v['oracle_id']: k for k, v in enumerate(int_to_card)}
-INT_TO_CARD = {int(k): v for k, v in enumerate(int_to_card)}
+original_to_new_path = MODEL_PATH / 'original_to_new_index.json'
+if original_to_new_path.exists():
+    with original_to_new_path.open('r') as fp:
+        original_to_new_index = json.load(fp)
+else:
+    original_to_new_index = tuple(range(len(int_to_card) + 1))
+CARD_TO_INT = {v: k for k, v in enumerate(int_to_card)}
+INT_TO_CARD = int_to_card
 AUTH_TOKENS = os.environ.get('MTGML_AUTH_TOKENS', 'testing').split(';')
 AUTH_ENABLED = os.environ.get('MTGML_AUTH_ENABLED', 'False') == 'True'
 
@@ -107,7 +113,7 @@ def verify_request():
 def get_model():
     global MODEL
     if MODEL is None:
-        MODEL = tflite.Interpreter(model_path='ml_files/testing_tflite/combined_model.tflite')
+        MODEL = tflite.Interpreter(model_path=str(MODEL_PATH / 'combined_model.tflite'))
         MODEL.allocate_tensors()
     return MODEL
 
@@ -124,7 +130,7 @@ def cube_recommendations():
     cube = json_data.get("cube")
     model = get_model()
     results = get_cube_recomendations(cube=cube, model=model, card_to_int=CARD_TO_INT, int_to_card=INT_TO_CARD,
-                                      tracer=tracer, num_recs=num_recs)
+                                      tracer=tracer, num_recs=num_recs, original_to_new_index=original_to_new_index)
     return results, 200
 
 
@@ -138,7 +144,8 @@ def draft_recommendations():
         return {"success": False, "error": error}, 400
     drafter_state = json_data.get("drafterState")
     model = get_model()
-    results = get_draft_scores(drafter_state, model=model, card_to_int=CARD_TO_INT, tracer=tracer)
+    results = get_draft_scores(drafter_state, model=model, card_to_int=CARD_TO_INT, tracer=tracer,
+                               original_to_new_index=original_to_new_index)
     return results, 200
 
 

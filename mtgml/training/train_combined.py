@@ -14,7 +14,6 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 
-from mtgml_native.generators.adj_mtx_generator import CubeAdjMtxGenerator, DeckAdjMtxGenerator, PickAdjMtxGenerator
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from mtgml.constants import set_debug
@@ -22,6 +21,8 @@ from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.models.combined_model import CombinedModel
+from mtgml.schedules.rsqrt import RsqrtSchedule
+from mtgml.schedules.warmup import LinearWarmupSchedule
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.tqdm_callback import TQDMProgressBar
 
@@ -29,7 +30,7 @@ BATCH_CHOICES = tuple(2 ** i for i in range(4, 18))
 EMBED_DIMS_CHOICES = tuple(2 ** i + j for i in range(0, 10) for j in range(2))
 ACTIVATION_CHOICES = ('relu', 'selu', 'swish', 'tanh', 'sigmoid', 'linear', 'gelu', 'elu')
 OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb', 'adadelta',
-                     'nadam', 'rmsprop')
+                     'nadam', 'rmsprop', 'adafactor')
 if __name__ == "__main__":
     set_debug(False)
     locale.setlocale(locale.LC_ALL, '')
@@ -50,6 +51,13 @@ if __name__ == "__main__":
     logging.info('Loading card data for seeding weights.')
     with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
+    original_to_new_path = Path('data/maps/original_to_new_index.json')
+    if original_to_new_path.exists():
+        with original_to_new_path.open('r') as fp:
+            original_to_new_index = json.load(fp)
+    else:
+        original_to_new_index = tuple(range(len(cards_json) + 1))
+    num_cards = max(original_to_new_index) + 1
 
     config_path = Path('ml_files')/args.name/'hyper_config.yaml'
     data = {}
@@ -58,7 +66,7 @@ if __name__ == "__main__":
             data = yaml.load(config_file, yaml.Loader)
     print('Initializing Generators')
     hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
-        'num_cards': len(cards_json) + 1,
+        'num_cards': num_cards,
     })
     tf.config.threading.set_intra_op_parallelism_threads(32)
     tf.config.threading.set_inter_op_parallelism_threads(32)
@@ -76,23 +84,23 @@ if __name__ == "__main__":
                                        help='The median of the noise distribution for cubes.')
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
     draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 2 * pick_batch_size, args.seed)
-    recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(cards_json),
+    recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', num_cards - 1,
                                                        cube_batch_size, args.seed, noise_mean, noise_std)
-    recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', len(cards_json),
+    recommender_validation_generator = RecommenderGenerator('data/validation_cubes.bin', num_cards - 1,
                                                             cube_batch_size, args.seed, 0, 0)
     # deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     # deck_adj_mtx_generator.on_epoch_end()
-    deck_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
-    deck_adj_mtx_generator.on_epoch_end()
-    cube_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', len(cards_json), 2 * adj_mtx_batch_size, args.seed * 7 + 3)
-    cube_adj_mtx_generator.on_epoch_end()
+    # deck_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', num_cards - 1, adj_mtx_batch_size, args.seed)
+    # deck_adj_mtx_generator.on_epoch_end()
+    # cube_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', num_cards - 1, 2 * adj_mtx_batch_size, args.seed * 7 + 3)
+    # cube_adj_mtx_generator.on_epoch_end()
     print(f'There are {len(draftbot_train_generator)} training pick batches')
     print(f'There are {len(draftbot_validation_generator)} validation pick batches')
     print(f'There are {len(recommender_train_generator)} training recommender batches')
     print(f'There are {len(recommender_validation_generator)} validation recommender batches')
-    print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
-    print(f'There are {len(cube_adj_mtx_generator)} validation adjacency matrix batches')
-    logging.info(f"There are {len(cards_json):n} cards being trained on.")
+    # print(f'There are {len(deck_adj_mtx_generator)} adjacency matrix batches')
+    # print(f'There are {len(cube_adj_mtx_generator)} validation adjacency matrix batches')
+    logging.info(f"There are {num_cards:n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
         log_dir = "logs/debug/"
@@ -118,7 +126,8 @@ if __name__ == "__main__":
         dtype = 'float64'
     tf.keras.mixed_precision.set_global_policy(dtype)
 
-    tf.config.optimizer.set_jit(bool(hyper_config.get_bool('use_xla', default=False, help='Whether to use xla to speed up calculations.')))
+    use_xla = bool(hyper_config.get_bool('use_xla', default=False, help='Whether to use xla to speed up calculations.'))
+    tf.config.optimizer.set_jit(use_xla)
     if args.debug:
         tf.config.optimizer.set_experimental_options=({
             'layout_optimizer': True,
@@ -173,14 +182,22 @@ if __name__ == "__main__":
     logging.info('Loading Combined model.')
     output_dir = f'././ml_files/{args.name}/'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+    epochs_for_completion = hyper_config.get_int('epochs_for_completion', min=1, default=32,
+                                                 help='The number of epochs it should take to go through the entire dataset.')
+    train_generator = \
+        SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator), epochs_for_completion)
+    validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator), 1)
+    optimizer = hyper_config.get_choice('optimizer', choices=OPTIMIZER_CHOICES,
+                                        default='adam', help='The optimizer type to use for optimization')
+    learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
+                                           default=1e-03, help=f'The learning rate to use for {optimizer}') * math.sqrt(strategy.num_replicas_in_sync)
     with strategy.scope():
+        # learning_rate = LinearWarmupSchedule(warmup_steps=len(train_generator),
+        #                                      warmed_up_lr=)
+        # learning_rate = RsqrtSchedule(learning_rate, multiplier=math.sqrt(len(train_generator) * 3) * learning_rate)
         model = hyper_config.build(name='CombinedModel', dynamic=False)
         if model is None:
             sys.exit(1)
-        optimizer = hyper_config.get_choice('optimizer', choices=OPTIMIZER_CHOICES,
-                                            default='adam', help='The optimizer type to use for optimization')
-        learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-04, max=1e-02, logdist=True,
-                                               default=1e-03, help=f'The learning rate to use for {optimizer}') * math.sqrt(strategy.num_replicas_in_sync)
         # if hyper_config.get_bool('linear_warmup', default=False,
         #                          help='Whether to linearly ramp up the learning rate from zero for the first epoch.'):
         #     learning_rate = PiecewiseConstantDecayWithLinearWarmup(0, len(pick_generator_train), [0], [learning_rate, learning_rate])
@@ -211,6 +228,17 @@ if __name__ == "__main__":
             weight_decay = hyper_config.get_float('lamb_weight_decay', min=1e-10, max=1e-01, default=1e-06, logdist=True,
                                                   help='The weight decay for lamb optimization per batch.')
             opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
+        elif optimizer == 'adafactor':
+            weight_decay = hyper_config.get_float('adafactor_weight_decay', min=1e-10, max=1e-01, default=1e-06, logdist=True,
+                                                  help='The weight decay for adafactor optimization per batch.')
+            ema_frequency = hyper_config.get_int('adafactor_ema_overwrite_frequency', default=0, min=0, max=2**16,
+                                                 help='How often to overwrie weights with their moving averages. Set to 0 to disable.') or 0
+            relative_step = bool(hyper_config.get_bool('adafactor_relative_step', default=True,
+                                                       help='Whether to use the learning rate schedule builtin to adafactor. It makes learning rate the min of lr and 1/sqrt(iterations + 1).'))
+            opt = tf.keras.optimizers.experimental.Adafactor(learning_rate=learning_rate, weight_decay=weight_decay,
+                                                             use_ema=ema_frequency > 0, relative_step=relative_step,
+                                                             ema_overwrite_frequency=ema_frequency,
+                                                             jit_compile=use_xla, name='Adafactor')
         else:
             raise Exception('Need to specify a valid optimizer type')
         model.compile(optimizer=opt)
@@ -221,12 +249,6 @@ if __name__ == "__main__":
 
     logging.info('Starting training')
     with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
-        epochs_for_completion = hyper_config.get_int('epochs_for_completion', min=1, default=32,
-                                                     help='The number of epochs it should take to go through the entire dataset.')
-        train_generator = \
-            SplitGenerator(CombinedGenerator(draftbot_train_generator, recommender_train_generator,
-                                             cube_adj_mtx_generator, deck_adj_mtx_generator), epochs_for_completion)
-        validation_generator = SplitGenerator(CombinedGenerator(draftbot_validation_generator, recommender_validation_generator, cube_adj_mtx_generator, cube_adj_mtx_generator), 1)
         with open(config_path, 'w') as config_file:
             yaml.dump(hyper_config.get_config(), config_file)
         with open(log_dir + '/hyper_config.yaml', 'w') as config_file:
@@ -252,7 +274,7 @@ if __name__ == "__main__":
         num_batches = len(train_generator)
         es_callback = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy_top_1', patience=8, min_delta=2**-8,
                                                        mode='max', restore_best_weights=True, verbose=True)
-        tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=1, write_graph=True,
+        tb_callback = TensorBoardFix(log_dir=log_dir, histogram_freq=0, write_graph=True,
                                      update_freq=128, embeddings_freq=None,
                                      profile_batch=0 if args.debug or not args.profile else (128, 135))
         BAR_FORMAT = "{n_fmt}/{total_fmt}|{bar}|{elapsed}/{remaining}s - {rate_fmt} - {desc}"

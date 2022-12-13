@@ -41,29 +41,27 @@ class ExtendedDropout(ConfigurableLayer):
         return tf.convert_to_tensor(noise_shape, name='noise_shape')
 
     def call(self, inputs, training=False, mask=None):
+        noise_shape = self._get_noise_shape(inputs)
         if self.rate <= 0 or not training:
             result = inputs
-            noise_mask = tf.cast(tf.ones_like(inputs), tf.bool)
+            noise_mask = tf.ones(noise_shape, dtype=tf.bool)
         elif self.rate >= 1:
             result = tf.zeros_like(inputs)
-            noise_mask = tf.cast(tf.zeros_like(inputs), tf.bool)
+            noise_mask = tf.zeros(noise_shape, dtype=tf.bool)
         else:
-            noise_shape = self._get_noise_shape(inputs)
             noise = tf.random.uniform(noise_shape, minval=0, maxval=1, dtype=self.compute_dtype,
                                       seed=self.seed, name='noise')
             noise_mask = noise >= self.rate
             result = tf.cast(noise_mask, dtype=inputs.dtype) * inputs
-            # result = tf.where(noise_mask, inputs,
-            #                       tf.zeros_like(inputs), name='noise_mult')
-        if is_debug():
-            result = tf.ensure_shape(result, self.input_shapes)
+        result = tf.ensure_shape(result, self.input_shapes)
         if self.return_mask:
+            if self.blank_last_dim:
+                noise_mask = tf.squeeze(noise_mask, -1)
             if mask is not None:
                 if tf.rank(mask) < tf.rank(noise_mask):
                     mask = tf.expand_dims(mask, -1)
                 noise_mask = tf.math.logical_and(noise_mask, mask, name='combined_mask')
-            if is_debug():
-                noise_mask = tf.ensure_shape(noise_mask, self.mask_shape)
+            noise_mask = tf.ensure_shape(noise_mask, self.mask_shape)
             return result, noise_mask
         else:
             return result

@@ -61,7 +61,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                              seed_mod=23, help='The embedding for the position in the draft')
                                   if seen_context_ratings else None,
             'rate_off_seen': hyper_config.get_sublayer('RatingFromSeen', sub_layer_type=ContextualRating,
-                                                       fixed={'use_causal_mask': True},
+                                                       fixed={'use_causal_mask': True, 'token_stream_dims': seen_pack_dims},
                                                        seed_mod=31, help='The layer that rates based on the embeddings of the packs that have been seen.')
                              if seen_context_ratings else None,
             'rate_card': hyper_config.get_sublayer('CardRating', sub_layer_type=MLP, seed_mod=13,
@@ -70,13 +70,16 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                          if item_ratings else None,
             'log_loss_weight': hyper_config.get_float('log_loss_weight', min=0, max=1, step=0.01,
                                                       default=0.5, help='The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight'),
-            'rating_variance_weight': hyper_config.get_float('rating_variance_weight', min=0, max=1,
+            'score_variance_weight': hyper_config.get_float('score_variance_weight', min=-1, max=1,
+                                                      default=1e-03, help='The weight given to the variance of the combined scores.')
+                                    if item_ratings else 0,
+            'rating_variance_weight': hyper_config.get_float('rating_variance_weight', min=-1, max=1,
                                                       default=1e-03, help='The weight given to the variance of the card ratings.')
                                     if item_ratings else 0,
-            'seen_variance_weight': hyper_config.get_float('seen_variance_weight', min=0, max=1,
+            'seen_variance_weight': hyper_config.get_float('seen_variance_weight', min=-1, max=1,
                                                       default=1e-02, help='The weight given to the variance of the seen contextual ratings.')
                                     if seen_context_ratings else 0,
-            'pool_variance_weight': hyper_config.get_float('pool_variance_weight', min=0, max=1,
+            'pool_variance_weight': hyper_config.get_float('pool_variance_weight', min=-1, max=1,
                                                       default=1e-02, help='The weight given to the variance of the pool contextual ratings.')
                                     if pool_context_ratings else 0,
             'margin': hyper_config.get_float('margin', min=0, max=10, step=0.1, default=2,
@@ -109,20 +112,22 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         loss_dtype = tf.float32
         sublayer_scores = []
         mask = tf.cast(seen_packs > 0, dtype=self.compute_dtype, name='pack_mask')
+        # Shift pool right by 1
         pool = tf.concat([tf.zeros((tf.shape(pool)[0], 1), dtype=pool.dtype), pool[:, :-1]], axis=1)
-        pool_embeds = tf.gather(card_embeddings, pool)
-        seen_pack_embeds = tf.gather(card_embeddings, seen_packs)
+        pool_embeds = tf.gather(card_embeddings, pool, name='pool_embeds')
+        seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name='seen_pack_embeds')
         if self.rate_off_pool or self.rate_off_seen:
-            flat_seen_pack_embeds = tf.reshape(seen_pack_embeds, (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1]))
-            flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training)
-            pack_embeds = tf.reshape(flat_pack_embeds, (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]))
-            position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
-            pack_embeds = pack_embeds + position_embeds
-            pack_embeds._keras_mask = tf.math.reduce_any(seen_packs > 0, axis=-1)
-            mask_pair = (tf.cast(mask, tf.bool), tf.reduce_any(tf.cast(mask, tf.bool), -1))
             if self.rate_off_pool:
+                mask_pair = (tf.cast(mask, tf.bool), pool > 0)
                 sublayer_scores.append(self.rate_off_pool((seen_pack_embeds, pool_embeds), training=training, mask=mask_pair))
             if self.rate_off_seen:
+                mask_pair = (tf.cast(mask, tf.bool), tf.reduce_any(tf.cast(mask, tf.bool), -1))
+                flat_seen_pack_embeds = tf.reshape(seen_pack_embeds, (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1]))
+                flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training)
+                pack_embeds = tf.reshape(flat_pack_embeds, (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]))
+                position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
+                pack_embeds = pack_embeds + position_embeds
+                pack_embeds._keras_mask = tf.math.reduce_any(seen_packs > 0, axis=-1)
                 sublayer_scores.append(self.rate_off_seen((seen_pack_embeds, pack_embeds), training=training, mask=mask_pair))
         if self.rate_card:
             card_ratings = tf.squeeze(self.rate_card(seen_pack_embeds, training=training), axis=-1) * mask
@@ -168,14 +173,39 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                                  name='triplet_loss_weight'),
                                                      name='triplet_loss_weighted')
             self.add_metric(triplet_losses, 'triplet_loss')
+            mask = tf.cast(mask, dtype=self.compute_dtype)
+            variances = reduce_variance_masked(sublayer_scores * tf.expand_dims(sublayer_weights, -2),
+                                               mask=tf.expand_dims(mask, -1), axis=-2, name='oracle_pack_variances')
+            score_variance = reduce_variance_masked(scores, mask=mask, axis=-1,
+                                                    name='score_variances')
+            pool_variance = variances[:, :, 0]
+            seen_variance = variances[:, :, 1]
+            rating_variance = variances[:, :, 2]
+            score_variance_loss = tf.reduce_mean(score_variance, name='score_variance_loss')
+            score_variance_loss_weighted = tf.math.multiply(score_variance_loss, tf.constant(self.score_variance_weight, dtype=loss_dtype, name='score_variance_weight'),
+                                                           name='score_variance_loss_weighted')
+            self.add_metric(score_variance_loss, 'score_variance_loss')
+            tf.summary.scalar('score_variance_loss', score_variance_loss)
+            pool_variance_loss = tf.reduce_mean(pool_variance, name='pool_variance_loss')
+            pool_variance_loss_weighted = tf.math.multiply(pool_variance_loss, tf.constant(self.pool_variance_weight, dtype=loss_dtype, name='pool_variance_weight'),
+                                                           name='pool_variance_loss_weighted')
+            self.add_metric(pool_variance_loss, 'pool_variance_loss')
+            tf.summary.scalar('pool_variance_loss', pool_variance_loss)
+            seen_variance_loss = tf.reduce_mean(seen_variance, name='seen_variance_loss')
+            seen_variance_loss_weighted = tf.math.multiply(seen_variance_loss, tf.constant(self.seen_variance_weight, dtype=loss_dtype, name='seen_variance_weight'),
+                                                           name='seen_variance_loss_weighted')
+            self.add_metric(seen_variance_loss, 'seen_variance_loss')
+            tf.summary.scalar('seen_variance_loss', seen_variance_loss)
+            rating_variance_loss = tf.reduce_mean(rating_variance, name='rating_variance_loss')
+            rating_variance_loss_weighted = tf.math.multiply(rating_variance_loss, tf.constant(self.rating_variance_weight, dtype=loss_dtype, name='rating_variance_weight'),
+                                                           name='rating_variance_loss_weighted')
+            self.add_metric(rating_variance_loss, 'rating_variance_loss')
+            tf.summary.scalar('rating_variance_loss', rating_variance_loss)
             max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
             min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             min_scores = min_scores + tf.stop_gradient(tf.reduce_min(scores + (1 - 2 * mask) * LARGE_INT, axis=-1)
                                                        - min_scores)
-            # if self.rate_card:
-            #     card_ratings = self.rate_card(card_embeddings[1:], training=training)
-            # Loss to increase the influence of ratings relative for cards like moxen
             chosen_idx = tf.zeros_like(y_idx)
             scores = tf.cast(scores, dtype=tf.float32)
             chosen_idx = tf.reshape(chosen_idx, (-1,))
@@ -185,14 +215,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             top_3_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3)
             self.add_metric(top_1_accuracy, 'accuracy')
             scores = tf.cast(scores, dtype=self.compute_dtype)
-            mask = tf.cast(mask, dtype=self.compute_dtype)
-            variances = reduce_variance_masked(sublayer_scores * tf.expand_dims(sublayer_weights, -2),
-                                               mask=tf.expand_dims(mask, -1), axis=-2, name='oracle_pack_variances')
-            score_variance = reduce_variance_masked(scores, mask=mask, axis=-1,
-                                                    name='score_variances')
-            pool_variance = variances[:, :, 0]
-            seen_variance = variances[:, :, 1]
-            rating_variance = variances[:, :, 2]
             # Logging for Tensorboard
             tf.summary.scalar('accuracy_top_1', tf.reduce_mean(top_1_accuracy))
             tf.summary.scalar('accuracy_top_2', tf.reduce_mean(top_2_accuracy))
@@ -200,10 +222,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             tf.summary.scalar('prob_correct', tf.reduce_mean(probs_correct))
             if is_debug():
                 tf.summary.histogram('max_diff_scores', max_scores - min_scores)
-                tf.summary.histogram('score_variance', score_variance)
-                tf.summary.histogram('pool_variance', pool_variance)
-                tf.summary.histogram('seen_variance', seen_variance)
-                tf.summary.histogram('rating_variance', rating_variance)
                 mask = tf.reshape(mask, (-1, tf.shape(mask)[-1]))
                 tf.summary.histogram('scores', (scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)
                 tf.summary.histogram('scores_0', ((scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)[:, :1])
@@ -211,8 +229,13 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 tf.summary.histogram('probs', probs)
                 tf.summary.histogram('log_losses', log_losses)
                 tf.summary.histogram('triplet_losses', clipped_diffs)
+            # tf.summary.histogram('score_variance', score_variance)
+            # tf.summary.histogram('pool_variance', pool_variance)
+            # tf.summary.histogram('seen_variance', seen_variance)
+            # tf.summary.histogram('rating_variance', rating_variance)
             # tf.summary.histogram('prob_chosen', probs_correct)
-            loss = tf.reduce_mean(tf.cast(triplet_loss_weighted + log_loss_weighted + tf.reduce_mean(pool_variance * self.pool_variance_weight + seen_variance * self.seen_variance_weight
-                                 + rating_variance * self.rating_variance_weight), dtype=self.compute_dtype))
+            loss = tf.cast(triplet_loss_weighted + log_loss_weighted + pool_variance_loss_weighted
+                           + seen_variance_loss_weighted + rating_variance_loss_weighted
+                           + score_variance_loss_weighted, dtype=self.compute_dtype)
             return loss
         return sublayer_scores, sublayer_weights

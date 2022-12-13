@@ -7,7 +7,7 @@ from typing import Any
 import tensorflow as tf
 import numpy as np
 import yaml
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm, trange
 
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.constants import set_debug
@@ -129,7 +129,14 @@ MODEL = None
 with open(MODEL_PATH / 'int_to_card.json', 'rb') as map_file:
     int_to_card = json.load(map_file)
 CARD_TO_INT = {v['oracle_id']: k for k, v in enumerate(int_to_card)}
-INT_TO_CARD = {int(k): v for k, v in enumerate(int_to_card)}
+INT_TO_CARD = {int(k): v['oracle_id'] for k, v in enumerate(int_to_card)}
+INT_TO_CARD = [INT_TO_CARD[i] for i in range(len(int_to_card))]
+original_to_new_path = MODEL_PATH / 'original_to_new_index.json'
+if original_to_new_path.exists():
+    with original_to_new_path.open('r') as fp:
+        original_to_new_index = json.load(fp)
+else:
+    original_to_new_index = tuple(range(len(int_to_card) + 1))
 
 
 no_no_names = frozenset(('non_trainable_variables', 'variables', 'trainable_variables', 'submodules',
@@ -163,30 +170,6 @@ def call_interpreter(interpreter, **kwargs):
     return {p['name']: interpreter.get_tensor(p['index']) for p in interpreter.get_output_details()}
 
 
-pick_batch_size = 1
-seed = 31
-cube_batch_size = 1
-adj_mtx_batch_size = 1
-noise_mean = 0.5
-noise_std = 0.2
-draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, seed)
-recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', len(int_to_card),
-                                                   cube_batch_size, seed, noise_mean, noise_std)
-# deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(int_to_card), adj_mtx_batch_size, seed)
-# deck_adj_mtx_generator.on_epoch_end()
-deck_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', len(int_to_card), adj_mtx_batch_size, seed)
-deck_adj_mtx_generator.on_epoch_end()
-cube_adj_mtx_generator = CubeAdjMtxGenerator('data/train_cubes.bin', len(int_to_card), adj_mtx_batch_size, seed * 7 + 3)
-cube_adj_mtx_generator.on_epoch_end()
-with draftbot_train_generator, recommender_train_generator:
-    generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator,
-                                                 cube_adj_mtx_generator, deck_adj_mtx_generator)
-    pick_train_example, cube_train_example, *rest = generator[0][0]
-    pick_train_example = pick_train_example[:5]
-    cube_train_example = cube_train_example[:1]
-example = (*pick_train_example, *cube_train_example, *rest[0], *rest[1])
-
-
 def get_model():
     global MODEL
     if MODEL is None:
@@ -196,8 +179,7 @@ def get_model():
         with open(MODEL_PATH / 'hyper_config.yaml', 'r') as config_file:
             data = yaml.load(config_file, yaml.Loader)
         hyper_config = HyperConfig(layer_type=CombinedModel, data=data, fixed={
-            'num_cards': len(INT_TO_CARD) + 1,
-            'DraftBots': {'card_weights': np.ones((len(INT_TO_CARD) + 1,))},
+            'num_cards': max(original_to_new_index) + 1,
         })
         MODEL = hyper_config.build(name='CombinedModel', dynamic=False)
         if MODEL is None:
@@ -209,101 +191,75 @@ def get_model():
     return MODEL
 
 
-model = get_model()
-model = replace_variables_with_constants(model)
-model(example, training=False)
-model.call_draftbots(*pick_train_example)
-model.call_recommender(cube_train_example[0].astype(np.int16))
-print(model.summary())
-
-tf.saved_model.save(
-    tf.keras.Model(),
-    'data/draftbots_tflite_full',
-    signatures={
-        'call_draftbots': model.call_draftbots.get_concrete_function(),
-        'call_recommender': model.call_recommender.get_concrete_function(),
-    },
-)
 
 
-def draftbot_gen():
-    for i in range(256):
-        example = generator[i][0]
-        basics, pool, seen, seen_coords, seen_coord_weights = example[0][:5]
-        yield dict(basics=basics, pool=pool, seen=seen, seen_coords=seen_coords, seen_coord_weights=seen_coord_weights)
+if __name__ == '__main__':
+    pick_batch_size = 1
+    seed = 31
+    cube_batch_size = 1
+    adj_mtx_batch_size = 1
+    noise_mean = 0.5
+    noise_std = 0.2
+    tflite_dir = Path('ml_files/testing_tflite')
+    draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, seed)
+    recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', max(original_to_new_index),
+                                                       cube_batch_size, seed, noise_mean, noise_std)
+    with draftbot_train_generator, recommender_train_generator:
+        generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator)
+                                                     # cube_adj_mtx_generator, deck_adj_mtx_generator)
+        pick_train_example, cube_train_example, *rest = generator[0][0]
+        pick_train_example = pick_train_example[:5]
+        cube_train_example = cube_train_example[:1]
+    example = (*pick_train_example, *cube_train_example)
+    model = get_model()
+    model = replace_variables_with_constants(model)
+    model(example, training=False)
+    model.call_draftbots(*pick_train_example)
+    model.call_recommender(cube_train_example[0].astype(np.int16))
+    print(model.summary())
+
+    tf.saved_model.save(
+        tf.keras.Model(),
+        'data/draftbots_tflite_full',
+        signatures={
+            'call_draftbots': model.call_draftbots.get_concrete_function(),
+            'call_recommender': model.call_recommender.get_concrete_function(),
+        },
+    )
 
 
-def recommender_gen():
-    for i in range(256):
-        example = generator[i][0]
-        yield { 'cube': example[1][0].astype(np.int16) }
+    def combined_gen():
+        for i in trange(32):
+            example = generator[i][0]
+            basics, pool, seen, seen_coords, seen_coord_weights = example[0][:5]
+            yield ('call_draftbots', dict(basics=basics, pool=pool, seen=seen, seen_coords=seen_coords,
+                                          seen_coord_weights=seen_coord_weights))
+            yield ('call_recommender', {'cube': example[1][0].astype(np.int16)})
 
 
-def combined_gen():
-    for _, draftbot_example, recommender_example in zip(range(128), draftbot_gen(), recommender_gen()):
-        yield ('call_draftbots', draftbot_example)
-        yield ('call_recommder', recommender_example)
+    converter = tf.lite.TFLiteConverter.from_saved_model('data/draftbots_tflite_full')
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+    ]
+    converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
+    # converter.representative_dataset = combined_gen
+    with draftbot_train_generator, recommender_train_generator:
+        tflite_model = converter.convert()
+        tflite_dir.mkdir(exist_ok=True, parents=True)
+        with (tflite_dir / 'combined_model.tflite').open('wb') as fp:
+            fp.write(tflite_model)
+        with (tflite_dir / 'int_to_oracle_id.json').open('w') as fp:
+            json.dump(INT_TO_CARD, fp)
+        with (tflite_dir / 'original_to_new_index.json').open('w') as fp:
+            json.dump(original_to_new_index, fp)
+        # tf.lite.experimental.Analyzer.analyze(model_content=tflite_model)
 
-
-converter = tf.lite.TFLiteConverter.from_saved_model('data/draftbots_tflite_full')
-converter.target_spec.supported_ops = [
-    tf.lite.OpsSet.TFLITE_BUILTINS,
-]
-converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
-# converter.representative_dataset = combined_gen
-tflite_model = converter.convert()
-Path('ml_files/testing_tflite').mkdir(exist_ok=True, parents=True)
-with open('ml_files/testing_tflite/combined_model.tflite', 'wb') as f:
-    f.write(tflite_model)
-# tf.lite.experimental.Analyzer.analyze(model_content=tflite_model)
-
-interpreter = tf.lite.Interpreter(model_path='ml_files/testing_tflite/combined_model.tflite')
-interpreter.allocate_tensors()
-call_draftbots = interpreter.get_signature_runner('call_draftbots')
-basics, pool, seen, seen_coords, seen_coord_weights = pick_train_example
-draftbot_result = call_draftbots(basics=basics, pool=pool, seen=seen, seen_coords=seen_coords,
-                                 seen_coord_weights=seen_coord_weights)
-call_recommender = interpreter.get_signature_runner('call_recommender')
-cube = cube_train_example[0]
-recommender_result = call_recommender(cube=cube.astype(np.int16))
-
-# converter = tf.lite.TFLiteConverter.from_concrete_functions(
-#     [model.call_draftbots.get_concrete_function()], None
-# )
-# converter.target_spec.supported_ops = [
-#     tf.lite.OpsSet.TFLITE_BUILTINS,
-# ]
-# converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
-# # converter.representative_dataset = draftbot_gen
-# tflite_model = converter.convert()
-# with open('ml_files/testing_tflite/draftbot_model.tflite', 'wb') as f:
-#     f.write(tflite_model)
-# tf.lite.experimental.Analyzer.analyze(model_content=tflite_model)
-
-# converter = tf.lite.TFLiteConverter.from_concrete_functions(
-#     [model.call_recommender.get_concrete_function()], model
-# )
-# converter.target_spec.supported_ops = [
-#     tf.lite.OpsSet.TFLITE_BUILTINS,
-# ]
-# converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
-# # converter.representative_dataset = recommender_gen
-# tflite_model = converter.convert()
-# with open('ml_files/testing_tflite/recommender_model.tflite', 'wb') as f:
-#     f.write(tflite_model)
-# tf.lite.experimental.Analyzer.analyze(model_content=tflite_model)
-
-# draftbots_interpreter = tf.lite.Interpreter(model_path='ml_files/testing_tflite/draftbot_model.tflite')
-# draftbots_interpreter.allocate_tensors()
-# basics, pool, seen, seen_coords, seen_coord_weights = pick_train_example
-# draftbot_result = call_interpreter(draftbots_interpreter, basics=basics, pool=pool, seen=seen, seen_coords=seen_coords,
-#                                    seen_coord_weights=seen_coord_weights)
-
-# recommender_interpreter = tf.lite.Interpreter(model_path='ml_files/testing_tflite/recommender_model.tflite')
-# recommender_interpreter.allocate_tensors()
-# cube = cube_train_example[0]
-# recommender_result = call_interpreter(recommender_interpreter, cube=cube.astype(np.int16))
-
-print(draftbot_result)
-print()
-print(recommender_result)
+        interpreter = tf.lite.Interpreter(model_path='ml_files/testing_tflite/combined_model.tflite')
+        interpreter.allocate_tensors()
+        call_draftbots = interpreter.get_signature_runner('call_draftbots')
+        basics, pool, seen, seen_coords, seen_coord_weights = pick_train_example
+        draftbot_result = call_draftbots(basics=basics, pool=pool, seen=seen, seen_coords=seen_coords,
+                                         seen_coord_weights=seen_coord_weights)
+        call_recommender = interpreter.get_signature_runner('call_recommender')
+        cube = cube_train_example[0]
+        recommender_result = call_recommender(cube=cube.astype(np.int16))

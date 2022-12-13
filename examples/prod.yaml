@@ -1,74 +1,3 @@
-CubeAdjMtxReconstructor: !hcv
-  help: The model to reconstruct the cube adjacency matrix
-  value: !hc
-    TransformSingleCard: !hcv
-      help: The MLP layer that tries to reconstruct the adjacency matrix row for the
-        single card cube
-      value: !hc
-        Dropout_0: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
-        Dropout_1: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
-        Final: !hcv
-          help: The last dense layer in the MLP.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: &id001 !!python/tuple
-              - elu
-              - selu
-              - relu
-              - tanh
-              - sigmoid
-              - linear
-              - swish
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 256
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_1: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: !!python/tuple
-              - elu
-              - selu
-              - relu
-              - tanh
-              - sigmoid
-              - linear
-              - swish
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 512
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        num_hidden: !hcv
-          help: The number of hidden layers in the MLP.
-          value: 2
-    temperature_reg_weight: !hcv
-      help: The amount to scale the squared temperature by for loss.
-      value: 0.01
 CubeRecommender: !hcv
   help: The model for the draftbots
   value: !hc
@@ -94,12 +23,19 @@ CubeRecommender: !hcv
               help: The 1st hidden layer.
               value: !hc
                 activation: !hcv
-                  choices: *id001
+                  choices: &id001 !!python/tuple
+                  - elu
+                  - selu
+                  - relu
+                  - tanh
+                  - sigmoid
+                  - linear
+                  - swish
                   help: The activation function on the output of the layer.
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 1024
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -109,151 +45,62 @@ CubeRecommender: !hcv
         Encoder: !hcv
           help: The layers to model interactions between items.
           value: !hc
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
+            InitialDropout: !hcv
+              help: The dropout to apply to the tokens before any other operations.
               value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_1: !hcv
-              help: The 1th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_2: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_3: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_4: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_5: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
+                blank_last_dim: !hcv
+                  help: Apply dropout to the entire last dimension vs choosing for
+                    each element of the last dimension.
+                  value: false
+                rate: !hcv
+                  help: The percent of values that get replaced with zero.
+                  value: 0.1
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.1
+            dense_activation: !hcv
+              choices: *id001
+              help: The activation function on the output of the layer.
+              value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 8
+              value: 16
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 5
+              value: 7
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 256
+            token_stream_dims: !hcv
+              help: The size of the token embeddings passed between layers.
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 16
-        ItemDropout: !hcv
-          help: Drops out entire items from the set.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.0
+              value: 32
         PoolingAttention: !hcv
           help: The attention layer that combines the set elements.
           value: !hc
             dropout: !hcv
               help: The percent of values to get dropped out
-              value: 0.1
+              value: 0
             key_dims: !hcv
               help: Size of the attention head for query and key.
               value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 8
+              value: 16
             output_dims: !hcv
               help: The number of output dimensions from this layer.
               value: 256
@@ -278,13 +125,7 @@ CubeRecommender: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.1
-        Dropout_1: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.1
+              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -300,93 +141,23 @@ CubeRecommender: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 256
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_1: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
               value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 2
+          value: 1
     embed_dims: !hcv
       help: The number of dimensions for similarity comparisons
       value: 256
     scale_relevant_cards: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
-      value: 5
+      value: 8
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
-      value: 0.01
-DeckAdjMtxReconstructor: !hcv
-  help: The model to reconstruct the deck adjacency matrix
-  value: !hc
-    TransformSingleCard: !hcv
-      help: The MLP layer that tries to reconstruct the adjacency matrix row for the
-        single card cube
-      value: !hc
-        Dropout_0: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
-        Dropout_1: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
-        Final: !hcv
-          help: The last dense layer in the MLP.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 256
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_1: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 512
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        num_hidden: !hcv
-          help: The number of hidden layers in the MLP.
-          value: 2
-    temperature_reg_weight: !hcv
-      help: The amount to scale the squared temperature by for loss.
-      value: 0.04
+      value: 0.001
 DraftBots: !hcv
   help: The model for the draftbots
   value: !hc
@@ -398,7 +169,7 @@ DraftBots: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.15
+              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -411,7 +182,7 @@ DraftBots: !hcv
             activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
-              value: tanh
+              value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
               value: 8
@@ -432,7 +203,7 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.4
+                  value: 0.65
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
@@ -462,64 +233,26 @@ DraftBots: !hcv
         Encoder: !hcv
           help: The layers to model interactions between items.
           value: !hc
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
+            InitialDropout: !hcv
+              help: The dropout to apply to the tokens before any other operations.
               value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_1: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_2: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            activation: !hcv
+                blank_last_dim: !hcv
+                  help: Apply dropout to the entire last dimension vs choosing for
+                    each element of the last dimension.
+                  value: false
+                rate: !hcv
+                  help: The percent of values that get replaced with zero.
+                  value: 0.5
+            attention dropout_rate: !hcv
+              help: The dropout rate for the attention layers of the transformer blocks.
+              value: 0.25
+            dense dropout_rate: !hcv
+              help: The dropout rate for the dense layers of the transformer blocks.
+              value: 0.65
+            dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
               value: selu
-            attention dropout_rate: !hcv
-              help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.4
-            dense dropout_rate: !hcv
-              help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.6
             key_dims: !hcv
               help: Size of the attention head for query and key.
               value: 16
@@ -531,9 +264,12 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 2
+              value: 3
             output_dims: !hcv
               help: The number of output dimensions from this layer.
+              value: 64
+            token_stream_dims: !hcv
+              help: The size of the token embeddings passed between layers.
               value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
@@ -546,22 +282,22 @@ DraftBots: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.25
+              value: 0.5
         PoolingAttention: !hcv
           help: The attention layer that combines the set elements.
           value: !hc
             dropout: !hcv
               help: The percent of values to get dropped out
-              value: 0.25
+              value: 0
             key_dims: !hcv
               help: Size of the attention head for query and key.
               value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 8
+              value: 16
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -571,87 +307,33 @@ DraftBots: !hcv
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
-          value: 0.5
+          value: 0.65
     RatingFromPool: !hcv
       help: The layer that rates based on the other cards that have been picked.
       value: !hc
         EmbedContext: !hcv
           help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
           value: !hc
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
+            InitialDropout: !hcv
+              help: The dropout to apply to the tokens before any other operations.
               value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_1: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_2: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_3: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            activation: !hcv
+                blank_last_dim: !hcv
+                  help: Apply dropout to the entire last dimension vs choosing for
+                    each element of the last dimension.
+                  value: true
+                rate: !hcv
+                  help: The percent of values that get replaced with zero.
+                  value: 0.2
+            attention dropout_rate: !hcv
+              help: The dropout rate for the attention layers of the transformer blocks.
+              value: 0.2
+            dense dropout_rate: !hcv
+              help: The dropout rate for the dense layers of the transformer blocks.
+              value: 0.4
+            dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
               value: selu
-            attention dropout_rate: !hcv
-              help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.1
-            dense dropout_rate: !hcv
-              help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.25
             key_dims: !hcv
               help: Size of the attention head for query and key.
               value: 16
@@ -663,9 +345,12 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 3
+              value: 5
             output_dims: !hcv
               help: The number of output dimensions from this layer.
+              value: 128
+            token_stream_dims: !hcv
+              help: The size of the token embeddings passed between layers.
               value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
@@ -682,13 +367,7 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.1
-            Dropout_1: !hcv
-              help: The dropout applied after the 1st hidden layer.
-              value: !hc
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.15
+                  value: 0.0
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
@@ -704,26 +383,13 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 256
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            Hidden_1: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
                   value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
             num_hidden: !hcv
               help: The number of hidden layers in the MLP.
-              value: 2
+              value: 1
         ProjectContext: !hcv
           help: Project the context embeddings to the space for measuring distance.
           value: !hc
@@ -750,70 +416,32 @@ DraftBots: !hcv
         EmbedContext: !hcv
           help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
           value: !hc
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
+            InitialDropout: !hcv
+              help: The dropout to apply to the tokens before any other operations.
               value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_1: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            Transformer_2: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc
-                    Final: !hcv
-                      help: The last dense layer in the MLP.
-                      value: !hc
-                        activation: !hcv
-                          choices: *id001
-                          help: The activation function on the output of the layer.
-                          value: selu
-                        use_bias: !hcv
-                          help: Whether to use bias on the output.
-                          value: true
-            activation: !hcv
+                blank_last_dim: !hcv
+                  help: Apply dropout to the entire last dimension vs choosing for
+                    each element of the last dimension.
+                  value: false
+                rate: !hcv
+                  help: The percent of values that get replaced with zero.
+                  value: 0.6
+            attention dropout_rate: !hcv
+              help: The dropout rate for the attention layers of the transformer blocks.
+              value: 0.25
+            dense dropout_rate: !hcv
+              help: The dropout rate for the dense layers of the transformer blocks.
+              value: 0.6
+            dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
               value: selu
-            attention dropout_rate: !hcv
-              help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.2
-            dense dropout_rate: !hcv
-              help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.4
             key_dims: !hcv
               help: Size of the attention head for query and key.
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 4
+              value: 8
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
@@ -822,7 +450,7 @@ DraftBots: !hcv
               value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 32
+              value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -838,7 +466,7 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.15
+                  value: 0
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
@@ -854,7 +482,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 256
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -885,7 +513,7 @@ DraftBots: !hcv
       value: true
     log_loss_weight: !hcv
       help: The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight
-      value: 0.8
+      value: 1.0
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 1
@@ -893,12 +521,15 @@ DraftBots: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
       value: true
+    score_variance_weight: !hcv
+      help: The weight given to the variance of the combined scores.
+      value: 0.00
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
-      value: 0.002
+      value: 0.01
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
-      value: 0.00
+      value: 0.01
     seen_context_ratings: !hcv
       help: Whether to rate cards based on the packs seen so far.
       value: true
@@ -907,7 +538,7 @@ DraftBots: !hcv
       value: 32
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
-      value: 0.05
+      value: 0.01
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -921,11 +552,11 @@ novograd_learning_rate: !hcv
   help: The learning rate to use for novograd
   value: 0.0001
 novograd_weight_decay: !hcv
-  help: The amount to decay weights by each step
-  value: 1.0e-06
+  help: The weight decay to use for novograd
+  value: 1.0e-04
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 4
+  value: 32
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
@@ -934,13 +565,13 @@ cube_batch_size: !hcv
   value: 4
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
-  value: 0.25
+  value: 0.3
 cube_noise_std: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.1
 deck_adj_mtx_weight: !hcv
   help: The weight to multiply the deck adjacency matrix loss by.
-  value: 1
+  value: 0
 draftbots_weight: !hcv
   help: The weight to multiply the draftbot loss by.
   value: 1
@@ -958,24 +589,25 @@ optimizer: !hcv
   choices: !!python/tuple
   - adam
   - adamax
-  - adadelta
-  - nadam
-  - sgd
   - lazyadam
   - rectadam
   - novograd
   - lamb
+  - adadelta
+  - nadam
+  - rmsprop
+  - adafactor
   help: The optimizer type to use for optimization
-  value: novograd
+  value: adam
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 16
+  value: 21
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
-  value: 4
-use_xla: !hcv
-  help: Whether to use xla to speed up calculations.
-  value: true
+  value: 1
 use_async_execution: !hcv
+  help: Whether to enable experimental asynchronous execution.
+  value: true
+use_xla: !hcv
   help: Whether to use xla to speed up calculations.
   value: true

@@ -19,17 +19,17 @@ RATING_ORACLE_METADATA = {
 METADATA = [POOL_ORACLE_METADATA, SEEN_ORACLE_METADATA, RATING_ORACLE_METADATA]
 
 
-def get_draft_scores(drafter_state, model, card_to_int, tracer):
+def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_index):
     basics = np.zeros((1, MAX_BASICS), dtype=np.int16)
     idx = 0
     for card_id in drafter_state['basics']:
-        if card_id in card_to_int and idx < MAX_BASICS:
+        if card_id in card_to_int and original_to_new_index[card_to_int[card_id] + 1] != 0 and idx < MAX_BASICS:
             basics[0][idx] = card_to_int[card_id] + 1
             idx += 1
     pool = np.zeros((1, MAX_PICKED), dtype=np.int16)
     idx = 0
     for card_id in drafter_state['picked'][-MAX_SEEN_PACKS:]:
-        if card_id in card_to_int:
+        if card_id in card_to_int and original_to_new_index[card_to_int[card_id] + 1] != 0:
             pool[0][idx] = card_to_int[card_id] + 1
             idx += 1
     seen_packs = np.zeros((1, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK), dtype=np.int16)
@@ -44,8 +44,8 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer):
         seen_coords[0][idx_pack], seen_weights[0][idx_pack] = interpolate(pack['pickNum'], pack['numPicks'],
                                                                           pack['packNum'], drafter_state['numPacks'])
         for i, card_id in enumerate(pack['pack']):
-            if card_id in card_to_int and idx < MAX_CARDS_IN_PACK:
-                seen_packs[0][idx_pack][idx] = card_to_int[card_id] + 1
+            if card_id in card_to_int and original_to_new_index[card_to_int[card_id] + 1] != 0 and idx < MAX_CARDS_IN_PACK:
+                seen_packs[0][idx_pack][idx] = original_to_new_index[card_to_int[card_id] + 1]
                 original_cards_idx.append(i)
                 idx += 1
         idx_pack += 1
@@ -72,7 +72,6 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer):
     returned_oracles = [[metadata | {'weight': float(weight), 'score': 0}
                          for metadata, weight in zip(METADATA, oracle_weights)]
                         for _ in drafter_state['seen'][seen_idx]['pack']]
-    print(len(drafter_state['seen'][seen_idx]['pack']))
     for i, score, oracle in zip(original_cards_idx, scores, oracles):
         if 0 <= i < len(returned_scores):
             returned_scores[i] = float(score)

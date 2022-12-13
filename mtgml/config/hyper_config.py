@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Union
+from typing import Generic, TypeVar, overload
 
 import yaml
 from tensorflow.keras.utils import register_keras_serializable
@@ -16,12 +17,12 @@ LayerType2 = TypeVar('LayerType2', bound='mtgml.layers.configurable_layer.Config
 @dataclass
 class HyperConfigValue(Generic[ValueType]):
     help: str
-    min: Union[ValueType, None] = None
-    max: Union[ValueType, None] = None
-    step: Union[ValueType, None] = None
-    logdist: Union[bool, None] = None
-    choices: Union[tuple[ValueType], None] = None
-    value: Union[ValueType, None] = None
+    min: ValueType | None = None
+    max: ValueType | None = None
+    step: ValueType | None = None
+    logdist: bool | None = None
+    choices: Sequence[ValueType] | None = None
+    value: ValueType | None = None
 
     @classmethod
     def from_config(cls, config):
@@ -38,16 +39,27 @@ class HyperConfigValue(Generic[ValueType]):
 
 @register_keras_serializable(package='mtgml.config', name='HyperConfig')
 class HyperConfig(Generic[LayerType]):
-    def __init__(self, data: dict[str, HyperConfigValue] = {}, layer_type: Union[type[LayerType], None] = None,
+    def __init__(self, data: dict[str, HyperConfigValue] = {}, layer_type: type[LayerType] | None = None,
                  fixed: dict = {}, seed: int = 5723):
         self.data = dict(data or {})
         self.layer_type = layer_type
         self.fixed = fixed
         self.seed = seed
 
-    def get_int(self, name: str, *, default: Union[int, None], help: str,
-                min: Union[int, None] = None, max: Union[int, None] = None,
-                step: Union[int, None] = None, logdist: Union[bool, None] = None) -> Union[int,None]:
+    @overload
+    def get_int(self, name: str, *, default: int, help: str,
+                min: int | None = None, max: int | None = None,
+                step: int | None = None, logdist: bool | None = None) -> int:
+        ...
+    @overload
+    def get_int(self, name: str, *, default: None, help: str,
+                min: int | None = None, max: int | None = None,
+                step: int | None = None, logdist: bool | None = None) -> int | None:
+        ...
+
+    def get_int(self, name, *, default, help,
+                min=None, max=None,
+                step=None, logdist=None) -> int | None:
         if name in self.fixed:
             return self.fixed[name]
         if name in self.data:
@@ -58,9 +70,21 @@ class HyperConfig(Generic[LayerType]):
                                                logdist=logdist, value=default)
         return default
 
-    def get_float(self, name: str, *, default: Union[float, None], help: str,
-                  min: Union[float, None] = None, max: Union[float, None] = None,
-                  step: Union[float, None] = None, logdist: Union[bool, None] = None) -> Union[float, None]:
+    @overload
+    def get_float(self, name: str, *, default: float, help: str,
+                  min: float | None = None, max: float | None = None,
+                  step: float | None = None, logdist: bool | None = None) -> float:
+        ...
+
+    @overload
+    def get_float(self, name: str, *, default: None, help: str,
+                  min: float | None = None, max: float | None = None,
+                  step: float | None = None, logdist: bool | None = None) -> float | None:
+        ...
+
+    def get_float(self, name: str, *, default: float | None, help: str,
+                  min: float | None = None, max: float | None = None,
+                  step: float | None = None, logdist: bool | None = None) -> float | None:
         if name in self.fixed:
             return self.fixed[name]
         if name in self.data:
@@ -71,7 +95,25 @@ class HyperConfig(Generic[LayerType]):
                                                logdist=logdist, value=default)
         return default
 
-    def get_bool(self, name: str, *, default: bool, help: str) -> Union[bool, None]:
+    def get_bool(self, name: str, *, default: bool, help: str) -> bool:
+        if name in self.fixed:
+            return self.fixed[name]
+        if name in self.data:
+            if self.data[name].value is not None:
+                return self.data[name].value or False
+        else:
+            self.data[name] = HyperConfigValue(help=help, value=default)
+        return default
+
+    @overload
+    def get_list(self, name: str, *, default: list, help: str) -> list:
+        ...
+
+    @overload
+    def get_list(self, name: str, *, default: None, help: str) -> list | None:
+        ...
+
+    def get_list(self, name: str, *, default: list | None, help: str) -> list | None:
         if name in self.fixed:
             return self.fixed[name]
         if name in self.data:
@@ -81,25 +123,25 @@ class HyperConfig(Generic[LayerType]):
             self.data[name] = HyperConfigValue(help=help, value=default)
         return default
 
-    def get_list(self, name: str, *, default: Union[list, None], help: str) -> Union[list, None]:
-        if name in self.fixed:
-            return self.fixed[name]
-        if name in self.data:
-            if self.data[name].value is not None:
-                return self.data[name].value
-        else:
-            self.data[name] = HyperConfigValue(help=help, value=default)
-        return default
+    @overload
+    def get_choice(self, name: str, *, default: ValueType, choices: Sequence[ValueType],
+                   help: str) -> ValueType:
+        ...
 
-    def get_choice(self, name: str, *, default: Union[ValueType, None], choices=list[ValueType],
-                   help: str) -> Union[ValueType, None]:
+    @overload
+    def get_choice(self, name: str, *, default: ValueType | None, choices: Sequence[ValueType],
+                   help: str) -> ValueType | None:
+        ...
+
+    def get_choice(self, name: str, *, default: ValueType | None, choices: Sequence[ValueType],
+                   help: str) -> ValueType | None:
         if name in self.fixed:
             return self.fixed[name]
         if name in self.data:
             if self.data[name].value is not None:
                 return self.data[name].value
         else:
-            self.data[name] = HyperConfigValue(help=help, choices=choices, value=default)
+            self.data[name] = HyperConfigValue[ValueType](help=help, choices=choices, value=default)
         return default
 
     def get_sublayer_config(self, name: str, *, sub_layer_type: type[LayerType2], help: str,
@@ -126,26 +168,28 @@ class HyperConfig(Generic[LayerType]):
         return config
 
     def get_sublayer(self, name: str, *, sub_layer_type: type[LayerType2], help: str, seed_mod=7,
-                            fixed: dict = {}) -> Union[LayerType2, None]:
+                            fixed: dict = {}) -> LayerType2:
         config = self.get_sublayer_config(name, sub_layer_type=sub_layer_type, help=help,
                                           seed_mod=seed_mod, fixed=fixed)
         return config.build(name=name)
 
-    def build(self, *args, **kwargs) -> Union[LayerType, None]:
+    def build(self, *args, **kwargs) -> LayerType:
         if self.layer_type is not None:
             self.layer_type.get_properties(self, input_shapes=None)
             return self.layer_type(self, *args, **kwargs)
+        else:
+            raise ValueError('Tried to build a HyperConfig without a specified layer type.')
 
     def get_config(self) -> dict:
         data = {key: item for key, item in self.data.items() if key != 'seed' and (not isinstance(item.value, HyperConfig) or len(item.value.data) > 1)}
         return data
 
     @property
-    def seed(self):
-        return self.data['seed'].value
+    def seed(self) -> int:
+        return self.data['seed'].value or 7
 
     @seed.setter
-    def seed(self, value):
+    def seed(self, value: int):
         self.data['seed'] = HyperConfigValue(value=value, help='The seed for the rng')
 
     @classmethod

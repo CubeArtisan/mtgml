@@ -20,7 +20,8 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         return {
             'num_cards': num_cards,
             'embed_cube': hyper_config.get_sublayer('EmbedCube', sub_layer_type=AttentiveSetEmbedding,
-                                                    fixed={'Decoder': {'Final': {'activation': 'linear', 'dims': embed_dims}}},
+                                                    fixed={'Decoder': {'Final': {'activation': 'linear', 'dims': embed_dims}},
+                                                           'Encoder': {'ItemDropout': {'rate': 0.0}}},
                                                     help='Combine the card embeddings to get an embedding for the cube.'),
             'transform_cards': hyper_config.get_sublayer('TransformCards', sub_layer_type=MLP,
                                                          fixed={'Final': {'dims': embed_dims, 'activation': 'linear'}},

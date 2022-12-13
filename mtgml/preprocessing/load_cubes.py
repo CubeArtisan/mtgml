@@ -17,6 +17,13 @@ locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 with open('data/maps/int_to_card.json') as fp:
     int_to_card = json.load(fp)
 name_to_int = {card['name_lower']: i for i, card in enumerate(int_to_card)}
+original_to_new_path = Path('data/maps/original_to_new_index.json')
+if original_to_new_path.exists():
+    with original_to_new_path.open('r') as fp:
+        original_to_new_index = json.load(fp)
+else:
+    original_to_new_index = tuple(range(len(int_to_card) + 1))
+max_index = max(original_to_new_index)
 
 
 def pad(arr, desired_length, value=0):
@@ -42,10 +49,12 @@ def load_all_cubes(cube_dirs):
                     for cube in tqdm(cubes, leave=False, dynamic_ncols=True, unit='cube', unit_scale=1,
                                       smoothing=0.001, initial=num_cubes):
                         if MAX_CUBE_SIZE >= len(cube['cards']) >= 120 and all(isinstance(x, int) for x in cube['cards']):
-                            num_cubes += 1
-                            rand_val = random.randint(0, 9)
-                            dest = DESTS[rand_val]
-                            yield (dest, tuple(x + 1 for x in cube['cards']))
+                            cards = tuple(original_to_new_index[x + 1] for x in cube['cards'])
+                            if not any(x <= 0 or x > max_index for x in cards):
+                                num_cubes += 1
+                                rand_val = random.randint(0, 9)
+                                dest = DESTS[rand_val]
+                                yield (dest, cards)
             except:
                 logging.exception(f'Error in file {cubes_file}')
     print(f'Total cubes {num_cubes:n}')
@@ -61,10 +70,12 @@ def load_all_cubes2(cube_dirs):
                 for cube in tqdm(cubes, leave=False, dynamic_ncols=True, unit='cube', unit_scale=1,
                                   smoothing=0.001, initial=num_cubes):
                     if MAX_CUBE_SIZE >= len(cube) >= 120 and all(x in name_to_int for x in cube):
-                        num_cubes += 1
-                        rand_val = random.randint(0, 9)
-                        dest = DESTS[rand_val]
-                        yield (dest, tuple(name_to_int[x] + 1 for x in cube))
+                        cards = tuple(original_to_new_index[name_to_int[x] + 1] for x in cube)
+                        if not any(x <= 0 or x > max_index for x in cards):
+                            num_cubes += 1
+                            rand_val = random.randint(0, 9)
+                            dest = DESTS[rand_val]
+                            yield (dest, cards)
     print(f'Total cubes {num_cubes:n}')
 
 

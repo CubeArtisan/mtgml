@@ -26,10 +26,7 @@ class PiecewiseConstantDecayWithLinearWarmup(tf.keras.optimizers.schedules.Piece
         return learning_rate
 
     def get_config(self):
-        config = {
+        return super().get_config() | {
             "warmup_learning_rate": self.warmup_learning_rate,
             "warmup_steps": self.warmup_steps,
         }
-        base_config = super(PiecewiseConstantDecayWithLinearWarmup,
-                            self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
