@@ -35,7 +35,7 @@ export TAG=${GITHUB_SHA:0:8}
 
 rm -rf ml_files/train_prod
 mkdir -p ml_files/train_prod
-echo $TAG > git-commit
+echo $TAG > ml_files/train_prod/git-commit
 cp examples/prod.yaml ml_files/train_prod/hyper_config.yaml
 python -m mtgml.training.train_combined --name train_prod --epochs 1000 --seed 268459
 
