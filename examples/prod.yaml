@@ -604,7 +604,7 @@ optimizer: !hcv
   - rmsprop
   - adafactor
   help: The optimizer type to use for optimization
-  value: adam
+  value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
   value: 21
