@@ -204,13 +204,15 @@ if __name__ == '__main__':
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, seed)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', max(original_to_new_index),
                                                        cube_batch_size, seed, noise_mean, noise_std)
+    deck_adj_mtx_generator = PickAdjMtxGenerator('data/train_picks.bin', max(original_to_new_index), adj_mtx_batch_size,
+                                                 seed * 29)
     with draftbot_train_generator, recommender_train_generator:
-        generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator)
-                                                     # cube_adj_mtx_generator, deck_adj_mtx_generator)
+        generator = CombinedGenerator(draftbot_train_generator, recommender_train_generator,
+                                                      deck_adj_mtx_generator, deck_adj_mtx_generator)
         pick_train_example, cube_train_example, *rest = generator[0][0]
         pick_train_example = pick_train_example[:5]
         cube_train_example = cube_train_example[:1]
-    example = (*pick_train_example, *cube_train_example)
+    example = (*pick_train_example, *cube_train_example, *rest[0], *rest[1])
     model = get_model()
     model = replace_variables_with_constants(model)
     model(example, training=False)

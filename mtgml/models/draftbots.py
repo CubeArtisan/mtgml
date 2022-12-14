@@ -182,9 +182,22 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                mask=tf.expand_dims(mask, -1), axis=-2, name='oracle_pack_variances')
             score_variance = reduce_variance_masked(scores, mask=mask, axis=-1,
                                                     name='score_variances')
-            pool_variance = variances[:, :, 0]
-            seen_variance = variances[:, :, 1]
-            rating_variance = variances[:, :, 2]
+            i = 0
+            if self.rate_off_pool:
+                pool_variance = variances[:, :, i]
+                i += 1
+            else:
+                pool_variance = tf.zeros_like(score_variance)
+            if self.rate_off_seen:
+                seen_variance = variances[:, :, i]
+                i += 1
+            else:
+                seen_variance = tf.zeros_like(score_variance)
+            if self.rate_card:
+                rating_variance = variances[:, :, i]
+                i += 1
+            else:
+                rating_variance = tf.zeros_like(score_variance)
             score_variance_loss = tf.reduce_mean(score_variance, name='score_variance_loss')
             score_variance_loss_weighted = tf.math.multiply(score_variance_loss, tf.constant(self.score_variance_weight, dtype=loss_dtype, name='score_variance_weight'),
                                                            name='score_variance_loss_weighted')

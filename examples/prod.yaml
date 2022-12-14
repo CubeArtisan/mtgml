@@ -612,7 +612,7 @@ DraftBots: !hcv
       value: 0.0
     seen_context_ratings: !hcv
       help: Whether to rate cards based on the packs seen so far.
-      value: true
+      value: false
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
       value: 64
