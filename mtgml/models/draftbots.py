@@ -1,3 +1,5 @@
+import math
+
 import tensorflow as tf
 
 from mtgml.constants import LARGE_INT, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS, is_debug
@@ -44,6 +46,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                          help='The number of items that must be embedded. Should be 1 + the max index expected to see.')
         sublayer_count = len([x for x in (pool_context_ratings, seen_context_ratings, item_ratings) if x])
         return {
+            'seen_pack_dims': seen_pack_dims,
             'num_cards': num_cards - 1,
             'rate_off_pool': hyper_config.get_sublayer('RatingFromPool', sub_layer_type=ContextualRating,
                                                        fixed={'use_causal_mask': True},
@@ -85,7 +88,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             'margin': hyper_config.get_float('margin', min=0, max=10, step=0.1, default=2,
                                              help='The margin by which we want the correct choice to beat the incorrect choices.'),
             'sublayer_weights': hyper_config.get_sublayer('SubLayerWeights', sub_layer_type=TimeVaryingEmbedding,
-                                                          fixed={'dims': sublayer_count, 'time_shape': (3, 15)},
+                                                          fixed={'dims': sublayer_count, 'time_shape': (3, 15),
+                                                                 'activation': 'softplus'},
                                                           help='The weights for each of the sublayers that get combined together linearly.'),
             'sublayer_metadata': sublayer_metadatas
         }
@@ -126,7 +130,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training)
                 pack_embeds = tf.reshape(flat_pack_embeds, (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]))
                 position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
-                pack_embeds = pack_embeds + position_embeds
+                pack_embeds = pack_embeds * tf.constant(math.sqrt(self.seen_pack_dims), dtype=self.compute_dtype) + position_embeds
                 pack_embeds._keras_mask = tf.math.reduce_any(seen_packs > 0, axis=-1)
                 sublayer_scores.append(self.rate_off_seen((seen_pack_embeds, pack_embeds), training=training, mask=mask_pair))
         if self.rate_card:

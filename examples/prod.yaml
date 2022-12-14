@@ -54,13 +54,13 @@ CubeRecommender: !hcv
                   value: false
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.1
+                  value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.0
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.05
+              value: 0.0
             dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
@@ -89,6 +89,12 @@ CubeRecommender: !hcv
             value_dims: !hcv
               help: Size of the attention head for value.
               value: 32
+        ItemDropout: !hcv
+          help: Drops out entire items from the set.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.0
         PoolingAttention: !hcv
           help: The attention layer that combines the set elements.
           value: !hc
@@ -155,6 +161,70 @@ CubeRecommender: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
       value: 8
+    temperature_reg_weight: !hcv
+      help: The amount to scale the squared temperature by for loss.
+      value: 0.001
+DeckAdjMtxReconstructor: !hcv
+  help: The model to reconstruct the deck adjacency matrix
+  value: !hc
+    TransformSingleCard: !hcv
+      help: The MLP layer that tries to reconstruct the adjacency matrix row for the
+        single card cube
+      value: !hc
+        Dropout_0: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Dropout_1: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Final: !hcv
+          help: The last dense layer in the MLP.
+          value: !hc
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        Hidden_0: !hcv
+          help: The 1st hidden layer.
+          value: !hc
+            activation: !hcv
+              choices: &id002 !!python/tuple
+              - elu
+              - selu
+              - relu
+              - tanh
+              - sigmoid
+              - linear
+              - swish
+              help: The activation function on the output of the layer.
+              value: selu
+            dims: !hcv
+              help: The number of dimensions in the output of this layer.
+              value: 512
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        Hidden_1: !hcv
+          help: The 1st hidden layer.
+          value: !hc
+            activation: !hcv
+              choices: *id001
+              help: The activation function on the output of the layer.
+              value: selu
+            dims: !hcv
+              help: The number of dimensions in the output of this layer.
+              value: 1024
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        num_hidden: !hcv
+          help: The number of hidden layers in the MLP.
+          value: 2
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
       value: 0.001
@@ -245,7 +315,7 @@ DraftBots: !hcv
                   value: 0.2
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.1
+              value: 0.10
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.35
@@ -264,7 +334,7 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 3
+              value: 5
             output_dims: !hcv
               help: The number of output dimensions from this layer.
               value: 128
@@ -308,6 +378,13 @@ DraftBots: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
           value: 0.35
+    EmbedPackPosition: !hcv
+      help: The embedding for the position in the draft
+      value: !hc
+        activation: !hcv
+          choices: *id002
+          help: The activation to apply before combining the weights.
+          value: linear
     RatingFromPool: !hcv
       help: The layer that rates based on the other cards that have been picked.
       value: !hc
@@ -329,7 +406,7 @@ DraftBots: !hcv
               value: 0.05
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.25
+              value: 0.15
             dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
@@ -447,9 +524,12 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 2
+              value: 3
             output_dims: !hcv
               help: The number of output dimensions from this layer.
+              value: 128
+            token_stream_dims: !hcv
+              help: The size of the token embeddings passed between layers.
               value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
@@ -521,15 +601,15 @@ DraftBots: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
       value: true
-    score_variance_weight: !hcv
-      help: The weight given to the variance of the combined scores.
-      value: 0.00
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
       value: 0.001
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
-      value: 0.004
+      value: 0.001
+    score_variance_weight: !hcv
+      help: The weight given to the variance of the combined scores.
+      value: 0.0
     seen_context_ratings: !hcv
       help: Whether to rate cards based on the packs seen so far.
       value: true
@@ -548,21 +628,22 @@ EmbedCards: !hcv
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
-adafactor_learning_rate: !hcv
-  help: The learning rate to use for adafactor
-  value: 0.0001
-adafactor_weight_decay: !hcv
-  help: The weight decay to use for adafactor
-  value: 1.0e-05
 adafactor_ema_overwrite_frequency: !hcv
   help: The frequency to replace weights with their exponential moving averages.
   value: 2048
+adafactor_learning_rate: !hcv
+  help: The learning rate to use for adafactor
+  value: 0.0001
 adafactor_relative_step: !hcv
-  help: Whether to use the built in learning rate scaling of adafactor (min of set rate and 1 / sqrt(step + 1))
+  help: Whether to use the built in learning rate scaling of adafactor (min of set
+    rate and 1 / sqrt(step + 1))
   value: true
+adafactor_weight_decay: !hcv
+  help: The weight decay to use for adafactor
+  value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 32
+  value: 4
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
@@ -577,7 +658,7 @@ cube_noise_std: !hcv
   value: 0.1
 deck_adj_mtx_weight: !hcv
   help: The weight to multiply the deck adjacency matrix loss by.
-  value: 0
+  value: 1
 draftbots_weight: !hcv
   help: The weight to multiply the draftbot loss by.
   value: 1

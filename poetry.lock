@@ -3072,7 +3072,7 @@ python-versions = ">=3.7"
 
 [[package]]
 name = "tf-nightly"
-version = "2.12.0.dev20221208"
+version = "2.12.0.dev20221212"
 description = "TensorFlow is an open source machine learning framework for everyone."
 category = "main"
 optional = false
@@ -3099,14 +3099,14 @@ tb-nightly = ">=2.12.0.a,<2.13.0"
 tensorflow-io-gcs-filesystem = {version = ">=0.23.1", markers = "platform_machine != \"arm64\" or platform_system != \"Darwin\""}
 termcolor = ">=1.1.0"
 tf-estimator-nightly = ">=2.12.0.dev,<2.13.0"
-tf-nightly-cpu-aws = {version = "2.12.0-dev20221208", markers = "platform_system == \"Linux\" and (platform_machine == \"arm64\" or platform_machine == \"aarch64\")"}
-tf-nightly-intel = {version = "2.12.0-dev20221208", markers = "platform_system == \"Windows\""}
+tf-nightly-cpu-aws = {version = "2.12.0-dev20221212", markers = "platform_system == \"Linux\" and (platform_machine == \"arm64\" or platform_machine == \"aarch64\")"}
+tf-nightly-intel = {version = "2.12.0-dev20221212", markers = "platform_system == \"Windows\""}
 typing-extensions = ">=3.6.6"
 wrapt = ">=1.11.0"
 
 [[package]]
 name = "tf-nightly-cpu-aws"
-version = "2.12.0.dev20221208"
+version = "2.12.0.dev20221212"
 description = "TensorFlow is an open source machine learning framework for everyone."
 category = "main"
 optional = false
@@ -3138,7 +3138,7 @@ wrapt = ">=1.11.0"
 
 [[package]]
 name = "tf-nightly-intel"
-version = "2.12.0.dev20221208"
+version = "2.12.0.dev20221212"
 description = "TensorFlow is an open source machine learning framework for everyone."
 category = "main"
 optional = false
@@ -5742,33 +5742,32 @@ tf-estimator-nightly = [
     {file = "tf_estimator_nightly-2.12.0.dev2022120409-py2.py3-none-any.whl", hash = "sha256:2c4cd53994f45d53c967c229f54a2a5fc703f5ed6ca893dbd02c0455f136f36d"},
 ]
 tf-nightly = [
-    {file = "tf_nightly-2.12.0.dev20221208-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:e400766cb6f7e46dd178cb9a4051c6131d474291090f5f2e2030b7e7847b2c6b"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c5b71291a724d1316fe00a17a1b0ab0f2998f5602784383bbab0a180a2531078"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:56f493cae3c5765dfb1f0bb0729935d93c24116cb9e2522309e517afdec3b43f"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp310-cp310-win_amd64.whl", hash = "sha256:b2a8d71d32e0bc79c736fdfb94769d6f81fbf2c2cf75e77e500384a705a18142"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp37-cp37m-macosx_10_15_x86_64.whl", hash = "sha256:050182d68575fdd436fd5fba6ddecb6806da1f66d6637e8915265139b560b5b5"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4446ccdee26c74f7f1cda2eb8c6b452a9380d68e532068b2ef3fd37d29bb9997"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d5aa16d5e2781136c2cb3269b209769974ea17f2e0643018047e5bab3b424554"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp37-cp37m-win_amd64.whl", hash = "sha256:1f9805fb57eef97f542a942da6a872550a0ce00eff7eb7cbd84349adf14d786c"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp38-cp38-macosx_10_15_x86_64.whl", hash = "sha256:0ed022007812bda3c3196165598d84144825b4f0de528d5dd023bc02a1e852c3"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2c3e45b0542cb181e6dbf3397dfb40d52a4ece50d3a7401251c11ff54908755a"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8c539f677ea94dab226eb84e5bfdccfc3891f6b3f42d265882f91cf123ecb001"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp38-cp38-win_amd64.whl", hash = "sha256:3e8b990ec1de7833f11ad2b5e9b11de742fb3e238dfb873ab8395d008c8b80db"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:340ddbd0040311f6ab369c3a7f8e4c0f4656158360f29cccec9903e390bbf82c"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:023e887e07e5d417059e1fac350eb3b3813266448e024f51b3935dbac06c76c3"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ea783060465252844011171168ea3521e40b7553ef189506b3ac66f11639c332"},
-    {file = "tf_nightly-2.12.0.dev20221208-cp39-cp39-win_amd64.whl", hash = "sha256:03886020f95f93525ff444beeddf9398a516adf7de2688d873a378edf8fcc1fc"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:41f81ca366932fb3cc16ccd50fac4e25f33d260c5356795b14b23aa9ee7a870b"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f69928baeb76234232733e33a5ec5d4d9fb13e8de86ff44c21094efa1675e1eb"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7af1029d5ec2d1a06bbc92f275ae5a081782e017593d7e547372855b93dc12aa"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp310-cp310-win_amd64.whl", hash = "sha256:9aff343ec215a00550c15d36a97d832957a90079f3420ae25db4c406e026a436"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp37-cp37m-macosx_10_15_x86_64.whl", hash = "sha256:d4cce361235808375afedd0fd1750485f00e7f9bef06d0ecf532dc69ebc30016"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:665cbb112f84fee4cf0f52ecfc9056ad230e2cbf3be3785ab221f48a660f857c"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ff5867918cf0817dcc2cb9d1191e4d950d996645ec20331e9033884747ee096f"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp37-cp37m-win_amd64.whl", hash = "sha256:9c786bb709fde6ad79fa6b929f6782e8aafeaf35d9aae61c74a803c65924ce92"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp38-cp38-macosx_10_15_x86_64.whl", hash = "sha256:fdbf1b4617af4fd6a207b3bc02c9dcdba75cdb74caf0446e5ba9235508fc5179"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:aaacdfc18d652ab8394e05b7e55eca2d2dab2563f9ac74a39b462642244e4989"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:983576541ce61ad85f1e25b6d5b14ada64b86dfb2506ec6cf86836346887aa06"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp38-cp38-win_amd64.whl", hash = "sha256:e504ecb0bb3e2df60928ff541b75c2777fff353c9732c22b737af0aa9b442429"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:118953930b917b13e316865433fbb67c9d51224a0c571d2a4f174b4796512817"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b2b465e5cf32fd2d3a4f317235c0ad77a437b9bc5fc66ac0e199f063ad743477"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:af1146114963ed04a423ab95a5a74a37581583a1bd12f4242e7fb6e9a10362ea"},
+    {file = "tf_nightly-2.12.0.dev20221212-cp39-cp39-win_amd64.whl", hash = "sha256:fa8432db308a2299fd698b33780604bb4b11ee43b446290d01d1613d35711e50"},
 ]
 tf-nightly-cpu-aws = [
-    {file = "tf_nightly_cpu_aws-2.12.0.dev20221208-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0de3b96c388cc66cdaa43d2b2a08d83b294db04a38d8c042f78229c7c773de60"},
-    {file = "tf_nightly_cpu_aws-2.12.0.dev20221208-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:83335f3d617e6cb8aa18f85cfa96aaf815999f44488e54540f853000f2df0d98"},
-    {file = "tf_nightly_cpu_aws-2.12.0.dev20221208-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d2186a14026af5dcc458ce6ecfa1f400832c4aa407d6f3ca3b9f7aca653ea2c7"},
-    {file = "tf_nightly_cpu_aws-2.12.0.dev20221208-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a2ab76046e21bcb26a3e0a29dc9ee92e43a93e303dd5fe704ff5abcc95996e7d"},
+    {file = "tf_nightly_cpu_aws-2.12.0.dev20221212-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:40ec7139ead04029e1f92ecf487fa47533baf209b562fad642e6e19aaceca464"},
+    {file = "tf_nightly_cpu_aws-2.12.0.dev20221212-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6cfeb2bff9bc87d86667706fcd9f1fec4caf372a687697bbee3cb704d4154331"},
 ]
 tf-nightly-intel = [
-    {file = "tf_nightly_intel-2.12.0.dev20221208-cp310-cp310-win_amd64.whl", hash = "sha256:9d113d246d40a5da34f560f1e8d0188a7fa732690825e5ba2c9499f7a308a30d"},
-    {file = "tf_nightly_intel-2.12.0.dev20221208-cp38-cp38-win_amd64.whl", hash = "sha256:dd24b3bf1eb994c6e4eb7c8277ebc97e0b8d7a4530571387546bd357a9e9277d"},
-    {file = "tf_nightly_intel-2.12.0.dev20221208-cp39-cp39-win_amd64.whl", hash = "sha256:4572922137281d4d897b3cba5cdf0a934d2345f660b7841f974393b11f7ac884"},
+    {file = "tf_nightly_intel-2.12.0.dev20221212-cp310-cp310-win_amd64.whl", hash = "sha256:a23da6c095d8b75ec154b383643181c29d6fc188bc036702dbefa67936cfd033"},
+    {file = "tf_nightly_intel-2.12.0.dev20221212-cp37-cp37m-win_amd64.whl", hash = "sha256:e46653e24f4254deeb7e549b1b29c57f00673f7f278934042f6cf0cb69636af2"},
+    {file = "tf_nightly_intel-2.12.0.dev20221212-cp38-cp38-win_amd64.whl", hash = "sha256:5e0a7f51da8c9b9cd511dadbb43af31c6524d5d56fb71ee3b0ec6b36cd93e1a5"},
+    {file = "tf_nightly_intel-2.12.0.dev20221212-cp39-cp39-win_amd64.whl", hash = "sha256:c7f7b0ac087cd0604a0bbe56fa758d8b8d3c89a0e1fd1e1e3e993d289bb19dd6"},
 ]
 tfa-nightly = [
     {file = "tfa_nightly-0.19.0.dev20221011203729-cp310-cp310-macosx_10_14_x86_64.whl", hash = "sha256:2138955703b1af0f724e1203df869158d7c17d0843fb521f72b17e54df617d12"},

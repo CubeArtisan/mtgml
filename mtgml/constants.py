@@ -1,7 +1,7 @@
 ACTIVATION_CHOICES = ('elu', 'selu', 'relu', 'tanh', 'sigmoid', 'linear', 'swish')
 
 OPTIMIZER_CHOICES = ('adam', 'adamax', 'lazyadam', 'rectadam', 'novograd', 'lamb', 'adadelta',
-                     'nadam', 'rmsprop')
+                     'nadam', 'rmsprop', 'adafactor')
 
 LARGE_INT = 1e+04
 
@@ -11,7 +11,7 @@ MAX_PICKED = 48
 MAX_SEEN_PACKS = 48
 MAX_CUBE_SIZE = 1080
 MAX_DECK_SIZE = 64
-MAX_SIDEBOARD_SIZE = 48
+MAX_SIDEBOARD_SIZE = 32
 
 RISKINESS_CONSTANT = 8
 
