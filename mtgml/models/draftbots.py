@@ -206,18 +206,21 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             pool_variance_loss = tf.reduce_mean(pool_variance, name='pool_variance_loss')
             pool_variance_loss_weighted = tf.math.multiply(pool_variance_loss, tf.constant(self.pool_variance_weight, dtype=loss_dtype, name='pool_variance_weight'),
                                                            name='pool_variance_loss_weighted')
-            self.add_metric(pool_variance_loss, 'pool_variance_loss')
-            tf.summary.scalar('pool_variance_loss', pool_variance_loss)
+            if self.rate_off_pool:
+                self.add_metric(pool_variance_loss, 'pool_variance_loss')
+                tf.summary.scalar('pool_variance_loss', pool_variance_loss)
             seen_variance_loss = tf.reduce_mean(seen_variance, name='seen_variance_loss')
             seen_variance_loss_weighted = tf.math.multiply(seen_variance_loss, tf.constant(self.seen_variance_weight, dtype=loss_dtype, name='seen_variance_weight'),
                                                            name='seen_variance_loss_weighted')
-            self.add_metric(seen_variance_loss, 'seen_variance_loss')
-            tf.summary.scalar('seen_variance_loss', seen_variance_loss)
+            if self.rate_off_seen:
+                self.add_metric(seen_variance_loss, 'seen_variance_loss')
+                tf.summary.scalar('seen_variance_loss', seen_variance_loss)
             rating_variance_loss = tf.reduce_mean(rating_variance, name='rating_variance_loss')
             rating_variance_loss_weighted = tf.math.multiply(rating_variance_loss, tf.constant(self.rating_variance_weight, dtype=loss_dtype, name='rating_variance_weight'),
                                                            name='rating_variance_loss_weighted')
-            self.add_metric(rating_variance_loss, 'rating_variance_loss')
-            tf.summary.scalar('rating_variance_loss', rating_variance_loss)
+            if self.rate_card:
+                self.add_metric(rating_variance_loss, 'rating_variance_loss')
+                tf.summary.scalar('rating_variance_loss', rating_variance_loss)
             max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
             min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
