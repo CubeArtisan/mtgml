@@ -151,6 +151,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             else:
                 y_idx = tf.cast(inputs[6], dtype=tf.int32, name='y_idx')
                 riskiness = tf.cast(inputs[7], dtype=tf.float32, name='riskiness')
+            num_in_pack = tf.math.reduce_sum(mask, axis=-1, name='num_in_pack')
+            mask_freebies_1 = num_in_pack > 1.0
             pos_scores = (tf.cast(scores, dtype=loss_dtype, name='cast_scores') + tf.constant(LARGE_INT, dtype=loss_dtype)) * mask
             neg_scores = (tf.constant(LARGE_INT, dtype=loss_dtype) - tf.cast(scores, dtype=loss_dtype, name='cast_scores')) * mask
             pos_mask = tf.cast(tf.expand_dims(y_idx == 0, -1), dtype=pos_scores.dtype)
@@ -159,8 +161,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             probs_correct = probs[:, :, 0]
             probs_for_loss = tf.concat([probs[:, :, :1], tf.constant(1, dtype=self.compute_dtype) - probs[:, :, 1:]], axis=-1)
             log_losses = tf.negative(tf.math.log((1 - 2e-10) * probs_for_loss + 1e-10, name='log_probs'), name='log_loss')
+            loss_mask = tf.cast(tf.expand_dims(mask_freebies_1, -1), dtype=loss_dtype) * mask
             log_losses = riskiness * log_losses
-            log_loss = reduce_mean_masked(log_losses, mask=mask, axis=[0,1,2], name='log_loss')
+            log_loss = reduce_mean_masked(log_losses, mask=loss_mask, axis=[0,1,2], name='log_loss')
             tf.summary.scalar('log_loss', log_loss)
             log_loss_weighted = tf.math.multiply(log_loss,
                                            tf.constant(self.log_loss_weight, dtype=loss_dtype, name='log_loss_weight'),
@@ -168,9 +171,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             self.add_metric(log_losses, 'pick_log_loss')
             score_diffs = tf.subtract(tf.add(tf.constant(self.margin, dtype=scores.dtype),
                                              scores[:, :, 1:]), scores[:, :, :1],
-                                      name='score_diffs') * mask[:, :, 1:]
+                                      name='score_diffs') * loss_mask[:, :, 1:]
             clipped_diffs = tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name='clipped_score_diffs') * riskiness[:, :, 1:]
-            triplet_losses = reduce_mean_masked(clipped_diffs, mask[:, :, 1:], axis=[0,1,2], name='triplet_loss')
+            triplet_losses = reduce_mean_masked(clipped_diffs, loss_mask[:, :, 1:], axis=[0,1,2], name='triplet_loss')
             tf.summary.scalar('triplet_loss', triplet_losses)
             triplet_loss_weighted = tf.math.multiply(triplet_losses,
                                                      tf.constant(1 - self.log_loss_weight, dtype=loss_dtype,
@@ -179,10 +182,11 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             self.add_metric(triplet_losses, 'triplet_loss')
             mask = tf.cast(mask, dtype=self.compute_dtype)
             variances = reduce_variance_masked(sublayer_scores * tf.expand_dims(sublayer_weights, -2),
-                                               mask=tf.expand_dims(mask, -1), axis=-2, name='oracle_pack_variances')
-            score_variance = reduce_variance_masked(scores, mask=mask, axis=-1,
+                                               mask=tf.expand_dims(loss_mask, -1), axis=-2, name='oracle_pack_variances')
+            score_variance = reduce_variance_masked(scores, mask=loss_mask, axis=-1,
                                                     name='score_variances')
             i = 0
+            variance_mask = tf.reduce_any(loss_mask > 0, axis=-1)
             if self.rate_off_pool:
                 pool_variance = variances[:, :, i]
                 i += 1
@@ -198,24 +202,24 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 i += 1
             else:
                 rating_variance = tf.zeros_like(score_variance)
-            score_variance_loss = tf.reduce_mean(score_variance, name='score_variance_loss')
+            score_variance_loss = reduce_mean_masked(score_variance, mask=variance_mask, axis=[0,1], name='score_variance_loss')
             score_variance_loss_weighted = tf.math.multiply(score_variance_loss, tf.constant(self.score_variance_weight, dtype=loss_dtype, name='score_variance_weight'),
                                                            name='score_variance_loss_weighted')
             self.add_metric(score_variance_loss, 'score_variance_loss')
             tf.summary.scalar('score_variance_loss', score_variance_loss)
-            pool_variance_loss = tf.reduce_mean(pool_variance, name='pool_variance_loss')
+            pool_variance_loss =reduce_mean_masked(pool_variance, mask=variance_mask, axis=[0, 1], name='pool_variance_loss')
             pool_variance_loss_weighted = tf.math.multiply(pool_variance_loss, tf.constant(self.pool_variance_weight, dtype=loss_dtype, name='pool_variance_weight'),
                                                            name='pool_variance_loss_weighted')
             if self.rate_off_pool:
                 self.add_metric(pool_variance_loss, 'pool_variance_loss')
                 tf.summary.scalar('pool_variance_loss', pool_variance_loss)
-            seen_variance_loss = tf.reduce_mean(seen_variance, name='seen_variance_loss')
+            seen_variance_loss = reduce_mean_masked(seen_variance, mask=variance_mask, axis=[0,1], name='seen_variance_loss')
             seen_variance_loss_weighted = tf.math.multiply(seen_variance_loss, tf.constant(self.seen_variance_weight, dtype=loss_dtype, name='seen_variance_weight'),
                                                            name='seen_variance_loss_weighted')
             if self.rate_off_seen:
                 self.add_metric(seen_variance_loss, 'seen_variance_loss')
                 tf.summary.scalar('seen_variance_loss', seen_variance_loss)
-            rating_variance_loss = tf.reduce_mean(rating_variance, name='rating_variance_loss')
+            rating_variance_loss = reduce_mean_masked(rating_variance, mask=variance_mask, axis=[0,1], name='rating_variance_loss')
             rating_variance_loss_weighted = tf.math.multiply(rating_variance_loss, tf.constant(self.rating_variance_weight, dtype=loss_dtype, name='rating_variance_weight'),
                                                            name='rating_variance_loss_weighted')
             if self.rate_card:
@@ -230,16 +234,22 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             scores = tf.cast(scores, dtype=tf.float32)
             chosen_idx = tf.reshape(chosen_idx, (-1,))
             scores = tf.reshape(scores, (-1, tf.shape(scores)[-1]))
+            mask_freebies_1 = tf.reshape(mask_freebies_1, (-1,))
+            mask_freebies_2 = tf.reshape(num_in_pack > 2.0, (-1,))
+            mask_freebies_3 = tf.reshape(num_in_pack > 3.0, (-1,))
             top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
             top_2_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 2)
             top_3_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3)
-            self.add_metric(top_1_accuracy, 'accuracy')
+            print(top_1_accuracy.shape)
+            accuracy = reduce_mean_masked(top_1_accuracy, mask=mask_freebies_1, name='accuracy_top_1')
+            self.add_metric(accuracy, 'accuracy')
             scores = tf.cast(scores, dtype=self.compute_dtype)
             # Logging for Tensorboard
-            tf.summary.scalar('accuracy_top_1', tf.reduce_mean(top_1_accuracy))
-            tf.summary.scalar('accuracy_top_2', tf.reduce_mean(top_2_accuracy))
-            tf.summary.scalar('accuracy_top_3', tf.reduce_mean(top_3_accuracy))
-            tf.summary.scalar('prob_correct', tf.reduce_mean(probs_correct))
+            tf.summary.scalar('accuracy_top_1', accuracy)
+            tf.summary.scalar('accuracy_top_2', reduce_mean_masked(top_2_accuracy, mask=mask_freebies_2, name='accuracy_top_2'))
+            tf.summary.scalar('accuracy_top_3', reduce_mean_masked(top_3_accuracy, mask=mask_freebies_3, name='accuracy_top_3'))
+            tf.summary.scalar('prob_correct', reduce_mean_masked(tf.reshape(probs_correct, (-1,)), mask=mask_freebies_1,
+                                                                 name='mean_prob_correct'))
             if is_debug():
                 tf.summary.histogram('max_diff_scores', max_scores - min_scores)
                 mask = tf.reshape(mask, (-1, tf.shape(mask)[-1]))

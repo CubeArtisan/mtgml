@@ -41,7 +41,12 @@ if __name__ == "__main__":
     parser.set_defaults(float_type=tf.float32, use_xla=True)
     args = parser.parse_args()
     tf.keras.utils.set_random_seed(args.seed)
-
+    physical_devices = tf.config.list_physical_devices('GPU')
+    for device in physical_devices:
+        try:
+            tf.config.experimental.set_memory_growth(device, True)
+        except:
+            logging.exception(f'Could not set memory growth on {device}.')
     logging.info('Loading card data for seeding weights.')
     with open('data/maps/int_to_card.json', 'r') as cards_file:
         cards_json = json.load(cards_file)
@@ -52,6 +57,9 @@ if __name__ == "__main__":
     else:
         original_to_new_index = tuple(range(len(cards_json) + 1))
     num_cards = max(original_to_new_index) + 1
+    new_to_original = {v: i for i, v in enumerate(original_to_new_index)}
+    new_to_original = [new_to_original[i] - 1 for i in range(1, num_cards)]
+    new_cards_json = [cards_json[i] for i in new_to_original]
 
     config_path = Path('ml_files')/args.name/'hyper_config.yaml'
     data = {}
@@ -168,10 +176,10 @@ if __name__ == "__main__":
     color_name = {'W': 'White', 'U': 'Blue', 'B': 'Black', 'R': "Red", 'G': 'Green'}
     metadata = os.path.join(log_dir, 'metadata.tsv')
     with open(metadata, "w") as f:
-        f.write('Index\tName\tColors\tMana Value\tType\n')
+        f.write('Index\tName\tColors\tMana Value\tRarity\tSet\tType\n')
         f.write('0\tPlaceholderForNull\tNA\tNA\tNA\n')
-        for i, card in enumerate(cards_json):
-            f.write(f'{i+1}\t"{card["name"]}"\t{"".join(color_name[x] for x in sorted(card.get("color_identity")))}\t{card["cmc"]}\t{card.get("type")}\n')
+        for i, card in enumerate(new_cards_json):
+            f.write(f'{i+1}\t"{card["name"]}"\t{"".join(color_name[x] for x in sorted(card.get("color_identity")))}\t{card["cmc"]}\t{card.get("rarity")}\t{card.get("set")}\t{card.get("type")}\n')
 
     logging.info('Loading Combined model.')
     output_dir = f'././ml_files/{args.name}/'

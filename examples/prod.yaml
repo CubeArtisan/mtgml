@@ -309,10 +309,10 @@ DraftBots: !hcv
                 blank_last_dim: !hcv
                   help: Apply dropout to the entire last dimension vs choosing for
                     each element of the last dimension.
-                  value: false
+                  value: true
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.0
+                  value: 0.25
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.0
@@ -400,7 +400,7 @@ DraftBots: !hcv
                   value: true
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.0
+                  value: 0.10
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.0
@@ -593,7 +593,7 @@ DraftBots: !hcv
       value: true
     log_loss_weight: !hcv
       help: The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight
-      value: 1.0
+      value: 0.9
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 1
@@ -603,10 +603,10 @@ DraftBots: !hcv
       value: true
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
-      value: 0.001
+      value: 1.0e-04
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
-      value: 0.001
+      value: 1.0e-04
     score_variance_weight: !hcv
       help: The weight given to the variance of the combined scores.
       value: 0.0
@@ -618,7 +618,7 @@ DraftBots: !hcv
       value: 64
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
-      value: 0.01
+      value: 1.0e-03
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
