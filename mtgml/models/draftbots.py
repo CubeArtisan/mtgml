@@ -240,7 +240,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
             top_2_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 2)
             top_3_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3)
-            print(top_1_accuracy.shape)
             accuracy = reduce_mean_masked(top_1_accuracy, mask=mask_freebies_1, name='accuracy_top_1')
             self.add_metric(accuracy, 'accuracy')
             scores = tf.cast(scores, dtype=self.compute_dtype)

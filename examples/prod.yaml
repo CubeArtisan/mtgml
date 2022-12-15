@@ -79,7 +79,7 @@ CubeRecommender: !hcv
               value: 7
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 256
+              value: 512
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 256
@@ -205,7 +205,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 512
+              value: 1024
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -218,7 +218,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 2048
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -255,7 +255,7 @@ DraftBots: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 8
+              value: 32
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -312,7 +312,7 @@ DraftBots: !hcv
                   value: true
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.25
+                  value: 0.2
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.0
@@ -337,10 +337,10 @@ DraftBots: !hcv
               value: 5
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 256
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 128
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -482,7 +482,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 128
+          value: 256
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -584,7 +584,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 32
+          value: 128
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -615,7 +615,7 @@ DraftBots: !hcv
       value: true
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
-      value: 64
+      value: 128
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
       value: 1.0e-03
@@ -624,7 +624,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 256
+      value: 512
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
