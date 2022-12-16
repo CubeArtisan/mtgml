@@ -202,6 +202,18 @@ DeckAdjMtxReconstructor: !hcv
             rate: !hcv
               help: The percent of values that get replaced with zero.
               value: 0
+        Dropout_2: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Dropout_3: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -232,18 +244,44 @@ DeckAdjMtxReconstructor: !hcv
           help: The 1st hidden layer.
           value: !hc
             activation: !hcv
-              choices: *id001
+              choices: *id002
               help: The activation function on the output of the layer.
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 2048
+              value: 1024
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        Hidden_2: !hcv
+          help: The 1st hidden layer.
+          value: !hc
+            activation: !hcv
+              choices: *id002
+              help: The activation function on the output of the layer.
+              value: selu
+            dims: !hcv
+              help: The number of dimensions in the output of this layer.
+              value: 1024
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        Hidden_3: !hcv
+          help: The 1st hidden layer.
+          value: !hc
+            activation: !hcv
+              choices: *id002
+              help: The activation function on the output of the layer.
+              value: selu
+            dims: !hcv
+              help: The number of dimensions in the output of this layer.
+              value: 1024
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 2
+          value: 4
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
       value: 0.001
