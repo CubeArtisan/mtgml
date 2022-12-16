@@ -31,6 +31,7 @@ require_clean_work_tree () {
 }
 
 require_clean_work_tree
+export GITHUB_SHA=`git rev-parse HEAD`
 export TAG=${GITHUB_SHA:0:8}
 
 rm -rf ml_files/train_prod

@@ -26,7 +26,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
         super(TimeVaryingEmbedding, self).build(input_shapes)
         shape = (*self.time_shape, self.dims)
         if self.dims == 3:
-            initializer = tf.constant_initializer(np.zeros(shape, dtype=np.float32) + np.log(np.exp([1.0, 0.01, 10.0]) - 1.0))
+            initializer = tf.constant_initializer(np.zeros(shape, dtype=np.float32) + np.log(np.exp([0.1, 0.01, 10.0]) - 1.0))
         else:
             initializer = tf.constant_initializer(np.log(np.exp(np.ones(shape, dtype=np.float32)) - 1.0))
         self.embeddings = self.add_weight('embeddings', shape=shape, initializer=initializer, trainable=True)

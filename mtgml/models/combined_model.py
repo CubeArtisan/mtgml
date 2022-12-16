@@ -74,10 +74,10 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                     recommender_loss = self.recommender_weight * self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
                 else:
                     recommender_loss = self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
-            if self.deck_adj_mtx_weight > 0:
-                deck_adj_mtx_loss = self.deck_adj_mtx_weight * self.deck_adj_mtx_reconstructor((*inputs[3], self.embed_cards.embeddings), training=training)
             if self.cube_adj_mtx_weight > 0:
                 cube_adj_mtx_loss = self.cube_adj_mtx_weight * self.cube_adj_mtx_reconstructor((*inputs[2], self.embed_cards.embeddings), training=training)
+            if self.deck_adj_mtx_weight > 0:
+                deck_adj_mtx_loss = self.deck_adj_mtx_weight * self.deck_adj_mtx_reconstructor((*inputs[3], self.embed_cards.embeddings), training=training)
         if len(inputs[0]) > 6:
             loss = draftbot_loss + recommender_loss + deck_adj_mtx_loss + cube_adj_mtx_loss
             self.add_loss(loss)

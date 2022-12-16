@@ -17,18 +17,6 @@ DeckAdjMtxReconstructor: !hcv
             rate: !hcv
               help: The percent of values that get replaced with zero.
               value: 0
-        Dropout_2: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
-        Dropout_3: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -68,38 +56,12 @@ DeckAdjMtxReconstructor: !hcv
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
-        Hidden_2: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id002
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 1024
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        Hidden_3: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id002
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 1024
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 4
+          value: 2
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
-      value: 0.01
+      value: 0.004
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -109,9 +71,15 @@ EmbedCards: !hcv
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
+adam_ema_overwrite_frequency: !hcv
+  help: The frequency to replace weights with their exponential moving averages.
+  value: 2048
 adam_learning_rate: !hcv
   help: The learning rate to use for adafactor
   value: 0.001
+adam_weight_decay: !hcv
+  help: The weight decay to use for adafactor
+  value: 1.0e-04
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
   value: 64

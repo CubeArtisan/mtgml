@@ -197,18 +197,26 @@ if __name__ == "__main__":
                                         default='adam', help='The optimizer type to use for optimization')
     learning_rate = hyper_config.get_float(f"{optimizer}_learning_rate", min=1e-05, max=1.0, logdist=True,
                                            default=1e-03, help=f'The learning rate to use for {optimizer}') * math.sqrt(strategy.num_replicas_in_sync)
+    weight_decay = hyper_config.get_float(f'{optimizer}_weight_decay', min=1e-10, max=1e-01, default=1e-06, logdist=True,
+                                          help=f'The weight decay per batch for optimization  with {optimizer}.')
+    ema_frequency = hyper_config.get_int(f'{optimizer}_ema_overwrite_frequency', default=0, min=0, max=2**16,
+                                         help='How often to overwrie weights with their moving averages. Set to 0 to disable.')
     with strategy.scope():
         model = hyper_config.build(name='CombinedModel', dynamic=False)
         if model is None:
             sys.exit(1)
         if optimizer == 'adam':
-            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, weight_decay=weight_decay, ema_overwrite_frequency=ema_frequency,
+                                           use_ema=ema_frequency > 0, jit_compile=use_xla)
         elif optimizer == 'adamax':
-            opt = tf.keras.optimizers.Adamax(learning_rate=learning_rate)
+            opt = tf.keras.optimizers.Adamax(learning_rate=learning_rate, weight_decay=weight_decay, ema_overwrite_frequency=ema_frequency,
+                                             use_ema=ema_frequency > 0, jit_compile=use_xla)
         elif optimizer == 'adadelta':
-            opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate)
+            opt = tf.keras.optimizers.Adadelta(learning_rate=learning_rate, weight_decay=weight_decay, ema_overwrite_frequency=ema_frequency,
+                                                use_ema=ema_frequency > 0, jit_compile=use_xla)
         elif optimizer == 'nadam':
-            opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
+            opt = tf.keras.optimizers.Nadam(learning_rate=learning_rate, weight_decay=weight_decay, ema_overwrite_frequency=ema_frequency,
+                                            use_ema=ema_frequency > 0, jit_compile=use_xla)
         elif optimizer == 'sgd':
             momentum = hyper_config.get_float('sgd_momentum', min=1e-05, max=1e-01, logdist=True,
                                               default=1e-04, help='The momentum for sgd optimization.')
@@ -229,10 +237,6 @@ if __name__ == "__main__":
                                                   help='The weight decay for lamb optimization per batch.')
             opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
         elif optimizer == 'adafactor':
-            weight_decay = hyper_config.get_float('adafactor_weight_decay', min=1e-10, max=1e-01, default=1e-06, logdist=True,
-                                                  help='The weight decay for adafactor optimization per batch.')
-            ema_frequency = hyper_config.get_int('adafactor_ema_overwrite_frequency', default=0, min=0, max=2**16,
-                                                 help='How often to overwrie weights with their moving averages. Set to 0 to disable.') or 0
             relative_step = bool(hyper_config.get_bool('adafactor_relative_step', default=True,
                                                        help='Whether to use the learning rate schedule builtin to adafactor. It makes learning rate the min of lr and 1/sqrt(iterations + 1).'))
             opt = tf.keras.optimizers.experimental.Adafactor(learning_rate=learning_rate, weight_decay=weight_decay,
