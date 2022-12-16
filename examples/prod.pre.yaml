@@ -86,7 +86,7 @@ adafactor_weight_decay: !hcv
   value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 8
+  value: 4
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
