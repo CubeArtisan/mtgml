@@ -19,7 +19,7 @@ repos:
     language: python
     language_version: python3
     pass_filenames: false
-    files: ^pyproject.toml$
+    files: ^pyproject.toml|poetry.lock|poetry.toml$
 
   - id: poetry-lock
     name: Make sure poetry dependencies are locked correctly
@@ -28,7 +28,7 @@ repos:
     entry: poetry lock --no-update
     language: python
     language_version: python3
-    files: ^pyproject.toml$
+    files: ^pyproject.toml|poetry.lock$
     pass_filenames: false
 
   - id: poetry-export
@@ -39,7 +39,7 @@ repos:
     language: python
     language_version: python3
     pass_filenames: false
-    files: ^poetry.lock$
+    files: ^poetry.lock|requirements.txt$
     args: [-f, requirements.txt, -o, requirements.txt, --with, dev]
 
   - id: dvc-fetch
