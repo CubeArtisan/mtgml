@@ -5,6 +5,7 @@ import tensorflow as tf
 from mtgml.constants import LARGE_INT, MAX_CARDS_IN_PACK, MAX_PICKED, MAX_SEEN_PACKS, is_debug
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
+from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AttentiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
@@ -44,6 +45,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             if seen_context_ratings else 0
         num_cards = hyper_config.get_int('num_cards', min=1, max=None, default=None,
                                          help='The number of items that must be embedded. Should be 1 + the max index expected to see.')
+        pool_embed_dropout_rate = hyper_config.get_float('pool_embed_dropout_rate', min=0, max=1, default=0.25,
+                                         help='The percent of entries of the card embeddings for the pool that should be dropped out.')\
+                                    if pool_context_ratings else None
         sublayer_count = len([x for x in (pool_context_ratings, seen_context_ratings, item_ratings) if x])
         return {
             'seen_pack_dims': seen_pack_dims,
@@ -52,6 +56,11 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                                                        fixed={'use_causal_mask': True},
                                                        seed_mod=31, help='The layer that rates based on the other cards that have been picked.')
                              if pool_context_ratings else None,
+            'dropout_pool_embeds': hyper_config.get_sublayer('PoolDenseDropout', sub_layer_type=ExtendedDropout, seed_mod=71,
+                                                             fixed={'rate': pool_embed_dropout_rate, 'noise_shape': None,
+                                                                    'blank_last_dim': False},
+                                                            help='The layer that drops out part of the card embeddings for the cards in the pool.')
+                                  if pool_context_ratings else None,
             'seen_pack_dims': seen_pack_dims,
             'embed_pack': hyper_config.get_sublayer('EmbedPack', sub_layer_type=AttentiveSetEmbedding,
                                                     fixed={'use_causal_mask': False, 'Decoder': {'Final': {'dims': seen_pack_dims}}},
@@ -122,8 +131,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name='seen_pack_embeds')
         if self.rate_off_pool or self.rate_off_seen:
             if self.rate_off_pool:
+                pool_embeds_dropped = self.dropout_pool_embeds(pool_embeds, training=training)
                 mask_pair = (tf.cast(mask, tf.bool), pool > 0)
-                sublayer_scores.append(self.rate_off_pool((seen_pack_embeds, pool_embeds), training=training, mask=mask_pair))
+                sublayer_scores.append(self.rate_off_pool((seen_pack_embeds, pool_embeds_dropped), training=training, mask=mask_pair))
             if self.rate_off_seen:
                 mask_pair = (tf.cast(mask, tf.bool), tf.reduce_any(tf.cast(mask, tf.bool), -1))
                 flat_seen_pack_embeds = tf.reshape(seen_pack_embeds, (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1]))
