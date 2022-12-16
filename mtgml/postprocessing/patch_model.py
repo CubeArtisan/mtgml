@@ -214,12 +214,11 @@ if __name__ == '__main__':
         cube_train_example = cube_train_example[:1]
     example = (*pick_train_example, *cube_train_example, *rest[0], *rest[1])
     model = get_model()
+    print(model.summary())
     model = replace_variables_with_constants(model)
     model(example, training=False)
     model.call_draftbots(*pick_train_example)
     model.call_recommender(cube_train_example[0].astype(np.int16))
-    print(model.summary())
-
     tf.saved_model.save(
         tf.keras.Model(),
         'data/draftbots_tflite_full',
