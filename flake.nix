@@ -15,6 +15,7 @@
           config.allowUnfree = true;
           overlays = [ poetry2nix.overlay ];
         };
+        libclang = pkgs.llvmPackages_14.libclang;
       in
         {
           devShell = pkgs.mkShell {
@@ -41,7 +42,7 @@
             ];
 
             shellHook = ''
-              export LIBCLANG_PATH="${pkgs.llvmPackages_12.libclang}/lib";
+              export LIBCLANG_PATH="${libclang}/lib";
               export CUDATOOLKIT=${pkgs.cudaPackages.cudatoolkit}
               export CUDATOOLKIT_LIB=${pkgs.cudaPackages.cudatoolkit.lib}
               export CUDA_DIR=$CUDATOOLKIT_LIB
