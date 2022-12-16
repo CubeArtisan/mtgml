@@ -74,6 +74,10 @@ if __name__ == "__main__":
     tf.config.threading.set_inter_op_parallelism_threads(32)
     # strategy = tf.distribute.MirroredStrategy()
     strategy = tf.distribute.experimental.CentralStorageStrategy()
+    use_draftbots =  hyper_config.get_float('draftbots_weight', default=1, min=0, max=128,
+                                          help='The weight to multiply the draftbot loss by.') > 0
+    use_recommender = hyper_config.get_float('recommender_weight', default=1, min=0, max=128,
+                                            help='The weight to multiply the recommender loss by.') > 0
     cube_batch_size = hyper_config.get_int('cube_batch_size', min=8, max=2048, step=8, logdist=True, default=8,
                                            help='The number of cube samples to evaluate at a time') * strategy.num_replicas_in_sync
     pick_batch_size = hyper_config.get_int('pick_batch_size', min=8, max=2048, step=8, logdist=True, default=64,
@@ -278,7 +282,10 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
-        pick_train_example, cube_train_example, *rest = validation_generator[0][0]
+        if use_draftbots or use_recommender:
+            pick_train_example, cube_train_example, *rest = validation_generator[0][0]
+        else:
+            pick_train_example, cube_train_example, *rest = train_generator[0][0]
         pick_train_example = pick_train_example[:5]
         cube_train_example = cube_train_example[:1]
         # Make sure it compiles the correct setup for evaluation
@@ -287,8 +294,8 @@ if __name__ == "__main__":
             print(model.summary())
             model.fit(
                 train_generator,
-                validation_data=validation_generator,
-                validation_freq=max(epochs_for_completion // 10, 1),
+                validation_data=validation_generator if use_draftbots or use_recommender else None,
+                validation_freq=max(epochs_for_completion // 10, 1) if use_draftbots or use_recommender else 0,
                 epochs=args.epochs,
                 callbacks=callbacks,
                 verbose=0,

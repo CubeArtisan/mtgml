@@ -30,8 +30,10 @@ if original_to_new_path.exists():
     with original_to_new_path.open('r') as fp:
         original_to_new_index = json.load(fp)
 else:
-    original_to_new_index = tuple(range(len(int_to_card) + 1))
+    original_to_new_index = np.asarray(tuple(range(len(int_to_card) + 1)), dtype=np.int32)
 max_index = max(original_to_new_index)
+new_index_to_original = {v: i for i, v in enumerate(original_to_new_index)}
+new_index_to_original = np.asarray([0, *[new_index_to_original[i] for i in range(1, max_index + 1)]], dtype=np.int32)
 default_basic_ids = [
     "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
     "b2c6aa39-2d2a-459c-a555-fb48ba993373",
@@ -174,8 +176,8 @@ def calculate_devotion(cost, cmc, color_identity, type_line):
     return final_cost * final_cost.sum() / max(cmc, 1)
 
 
-DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc'], c['color_identity'], c['type']) for c in int_to_card])
-COLOR_IDENTITY = np.array([np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in int_to_card])
+DEVOTION = np.array([np.zeros((5,), dtype=np.float32)] + [calculate_devotion(c['parsed_cost'], c['cmc'], c['color_identity'], c['type']) for c in (int_to_card[i - 1] for i in new_index_to_original[1:])])
+COLOR_IDENTITY = np.array([np.zeros((5,), dtype=np.float32)] + [colors_to_mask(card['color_identity']) for card in (int_to_card[i - 1] for i in new_index_to_original[1:])])
 DEVOTION_AND_IDENTITY = DEVOTION + COLOR_IDENTITY
 
 

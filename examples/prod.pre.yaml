@@ -109,28 +109,18 @@ EmbedCards: !hcv
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
-adafactor_ema_overwrite_frequency: !hcv
-  help: The frequency to replace weights with their exponential moving averages.
-  value: 2048
-adafactor_learning_rate: !hcv
+adam_learning_rate: !hcv
   help: The learning rate to use for adafactor
   value: 0.001
-adafactor_relative_step: !hcv
-  help: Whether to use the built in learning rate scaling of adafactor (min of set
-    rate and 1 / sqrt(step + 1))
-  value: true
-adafactor_weight_decay: !hcv
-  help: The weight decay to use for adafactor
-  value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 4
+  value: 64
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 4
+  value: 64
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.35
@@ -166,10 +156,10 @@ optimizer: !hcv
   - rmsprop
   - adafactor
   help: The optimizer type to use for optimization
-  value: adafactor
+  value: adam
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 22
+  value: 512
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
@@ -178,4 +168,4 @@ use_async_execution: !hcv
   value: false
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: false
+  value: true
