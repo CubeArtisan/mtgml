@@ -67,7 +67,7 @@ CubeRecommender: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -103,7 +103,7 @@ CubeRecommender: !hcv
               value: 0
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 32
@@ -115,7 +115,7 @@ CubeRecommender: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 32
+              value: 16
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -362,7 +362,7 @@ DraftBots: !hcv
               value: 7
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 512
+              value: 256
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 512
@@ -371,7 +371,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 32
+              value: 16
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
@@ -386,7 +386,7 @@ DraftBots: !hcv
               value: 0
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -438,7 +438,7 @@ DraftBots: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -754,7 +754,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 32
+  value: 16
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 1
