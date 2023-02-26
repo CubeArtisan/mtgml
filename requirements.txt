@@ -1891,6 +1891,7 @@ ruamel-yaml-clib==0.2.7 ; platform_python_implementation == "CPython" and python
     --hash=sha256:3243f48ecd450eddadc2d11b5feb08aca941b5cd98c9b1db14b2fd128be8c697 \
     --hash=sha256:370445fd795706fd291ab00c9df38a0caed0f17a6fb46b0f607668ecb16ce763 \
     --hash=sha256:40d030e2329ce5286d6b231b8726959ebbe0404c92f0a578c0e2482182e38282 \
+    --hash=sha256:41d0f1fa4c6830176eef5b276af04c89320ea616655d01327d5ce65e50575c94 \
     --hash=sha256:4a4d8d417868d68b979076a9be6a38c676eca060785abaa6709c7b31593c35d1 \
     --hash=sha256:4b3a93bb9bc662fc1f99c5c3ea8e623d8b23ad22f861eb6fce9377ac07ad6072 \
     --hash=sha256:5bc0667c1eb8f83a3752b71b9c4ba55ef7c7058ae57022dd9b29065186a113d9 \
@@ -1971,9 +1972,6 @@ scmrepo==0.1.4 ; python_version >= "3.10" and python_version < "3.11" \
 seaborn==0.12.1 ; python_version >= "3.10" and python_version < "3.11" \
     --hash=sha256:a9eb39cba095fcb1e4c89a7fab1c57137d70a715a7f2eefcd41c9913c4d4ed65 \
     --hash=sha256:bb1eb1d51d3097368c187c3ef089c0288ec1fe8aa1c69fb324c68aa1d02df4c1
-setuptools-scm==7.0.5 ; python_version >= "3.10" and python_version < "3.11" \
-    --hash=sha256:031e13af771d6f892b941adb6ea04545bbf91ebc5ce68c78aaf3fff6e1fb4844 \
-    --hash=sha256:7930f720905e03ccd1e1d821db521bff7ec2ac9cf0ceb6552dd73d24a45d3b02
 setuptools==65.6.3 ; python_version >= "3.10" and python_version < "3.11" \
     --hash=sha256:57f6f22bde4e042978bcd50176fdb381d7c21a9efa4041202288d3737a0c6a54 \
     --hash=sha256:a7620757bf984b58deaf32fc8a4577a9bbc0850cf92c20e1ce41c38c19e5fb75
@@ -2019,13 +2017,17 @@ tensorflow-io-gcs-filesystem==0.28.0 ; python_version >= "3.10" and python_versi
     --hash=sha256:00cf6a92f1f9f90b2ba2d728870bcd2a70b116316d0817ab0b91dd390c25b3fd \
     --hash=sha256:22753dc28c949bfaf29b573ee376370762c88d80330fe95cfb291261eb5e927a \
     --hash=sha256:366e1eff8dbd6b64333d7061e2a8efd081ae4742614f717ced08d8cc9379eb50 \
+    --hash=sha256:3ebb4724594bb897f74c637c256cb9509b25fc6b83860a2a6e2a6d42fd1a1a2a \
+    --hash=sha256:47944fba38f46c9137b7bc27fb293953249d437f225bf46b96bac6a177bdfe04 \
     --hash=sha256:52988659f405166df79905e9859bc84ae2a71e3ff61522ba32a95e4dce8e66d2 \
     --hash=sha256:5fbef5836e70026245d8d9e692c44dae2c6dbc208c743d01f5b7a2978d6b6bc6 \
     --hash=sha256:698d7f89e09812b9afeb47c3860797343a22f997c64ab9dab98132c61daa8a7d \
     --hash=sha256:6d95f306ff225c5053fd06deeab3e3a2716357923cb40c44d566c11be779caa3 \
     --hash=sha256:9484893779324b2d34874b0aacf3b824eb4f22d782e75df029cbccab2e607974 \
+    --hash=sha256:9cf11d36d5aac6365f9f6c4bc71eb23346a2f5dc139c91af1e2ea06cfd7f69a7 \
     --hash=sha256:a6670e0da16c884267e896ea5c3334d6fd319bd6ff7cf917043a9f3b2babb1b3 \
     --hash=sha256:b6e2d275020fb4d1a952cd3fa546483f4e46ad91d64e90d3458e5ca3d12f6477 \
+    --hash=sha256:b8f4b1b83ee28906881221c0a40822cbf30ebfcc3e96430f91f396309e6b452c \
     --hash=sha256:bbf245883aa52ec687b66d0fcbe0f5f0a92d98c0b1c53e6a736039a3548d29a1 \
     --hash=sha256:bfed720fc691d3f45802a7bed420716805aef0939c11cebf25798906201f626e \
     --hash=sha256:c5d99f56c12a349905ff684142e4d2df06ae68ecf50c4aad5449a5f81731d858 \
@@ -2113,9 +2115,9 @@ traitlets==5.6.0 ; python_version >= "3.10" and python_version < "3.11" \
 typeguard==2.13.3 ; python_version >= "3.10" and python_version < "3.11" \
     --hash=sha256:00edaa8da3a133674796cf5ea87d9f4b4c367d77476e185e80251cc13dfbb8c4 \
     --hash=sha256:5e3e3be01e887e7eafae5af63d1f36c849aaa94e3a0112097312aabfa16284f1
-typing-extensions==4.4.0 ; python_version >= "3.10" and python_version < "3.11" \
-    --hash=sha256:1511434bb92bf8dd198c12b1cc812e800d4181cfcb867674e0f8279cc93087aa \
-    --hash=sha256:16fa4864408f655d35ec496218b85f79b3437c829e93320c7c9215ccfd92489e
+typing-extensions==4.5.0 ; python_version >= "3.10" and python_version < "3.11" \
+    --hash=sha256:5cb5f4a79139d699607b3ef622a1dedafa84e115ab0024e0d9c044a9479ca7cb \
+    --hash=sha256:fb33085c39dd998ac16d1431ebc293a8b3eedd00fd4a32de0ff79002c19511b4
 umap-learn==0.5.3 ; python_version >= "3.10" and python_version < "3.11" \
     --hash=sha256:dbd57cb181c2b66d238acb5635697526bf24c798082daed0cf9b87f6a3a6c0c7
 urllib3==1.26.13 ; python_version >= "3.10" and python_version < "3.11" \

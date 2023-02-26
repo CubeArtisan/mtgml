@@ -88,6 +88,8 @@ if __name__ == "__main__":
                                         help='The median of the noise distribution for cubes.')
     noise_std = hyper_config.get_float('cube_noise_std', min=0, max=1, default=0.15,
                                        help='The median of the noise distribution for cubes.')
+    print(pick_batch_size, type(pick_batch_size))
+    print(args.seed, type(args.seed))
     draftbot_train_generator = DraftbotGenerator('data/train_picks.bin', pick_batch_size, args.seed)
     draftbot_validation_generator = DraftbotGenerator('data/validation_picks.bin', 2 * pick_batch_size, args.seed * 31)
     recommender_train_generator = RecommenderGenerator('data/train_cubes.bin', num_cards - 1,
