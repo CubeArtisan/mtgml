@@ -51,7 +51,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -64,7 +64,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -73,7 +73,7 @@ DeckAdjMtxReconstructor: !hcv
           value: 2
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
-      value: 0.004
+      value: 0.001
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -88,10 +88,10 @@ adam_ema_overwrite_frequency: !hcv
   value: 2048
 adam_learning_rate: !hcv
   help: The learning rate to use for adafactor
-  value: 0.01
+  value: 0.0064
 adam_weight_decay: !hcv
   help: The weight decay to use for adafactor
-  value: 1.0e-04
+  value: 1.0e-03
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
   value: 64

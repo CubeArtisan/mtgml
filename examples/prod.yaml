@@ -35,7 +35,7 @@ CubeRecommender: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 1024
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -103,19 +103,19 @@ CubeRecommender: !hcv
               value: 0
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 64
+              value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 32
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 64
+              value: 32
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -153,7 +153,7 @@ CubeRecommender: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -166,7 +166,7 @@ CubeRecommender: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -224,7 +224,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -237,7 +237,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -318,7 +318,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 1024
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -386,7 +386,7 @@ DraftBots: !hcv
               value: 0
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 64
+              value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -398,7 +398,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 64
+              value: 32
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -491,7 +491,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 1024
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -504,7 +504,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 1024
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
