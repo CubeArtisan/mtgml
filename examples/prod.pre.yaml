@@ -17,6 +17,18 @@ DeckAdjMtxReconstructor: !hcv
             rate: !hcv
               help: The percent of values that get replaced with zero.
               value: 0
+        Dropout_2: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
+        Dropout_3: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -82,7 +94,7 @@ adam_weight_decay: !hcv
   value: 1.0e-04
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 64
+  value: 96
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
@@ -127,7 +139,7 @@ optimizer: !hcv
   value: adam
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 768
+  value: 512
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
