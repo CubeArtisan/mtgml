@@ -88,7 +88,7 @@ adam_ema_overwrite_frequency: !hcv
   value: 2048
 adam_learning_rate: !hcv
   help: The learning rate to use for adafactor
-  value: 0.0032
+  value: 0.0008
 adam_weight_decay: !hcv
   help: The weight decay to use for adafactor
   value: 1.0e-03
