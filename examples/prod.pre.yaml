@@ -88,13 +88,13 @@ adam_ema_overwrite_frequency: !hcv
   value: 2048
 adam_learning_rate: !hcv
   help: The learning rate to use for adafactor
-  value: 0.001
+  value: 0.01
 adam_weight_decay: !hcv
   help: The weight decay to use for adafactor
   value: 1.0e-04
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 96
+  value: 64
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
