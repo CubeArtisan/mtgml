@@ -131,6 +131,7 @@ DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
 def load_all_drafts(pool, *args):
     for drafts_dir, picks_gen in zip(args, (picks_from_draft, picks_from_draft2)):
         def load_drafts_file(drafts_file):
+            print(drafts_file)
             try:
                 with open(drafts_file, 'rb') as fp:
                     drafts = JsonSlicer(fp, (None,))
