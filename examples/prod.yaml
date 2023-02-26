@@ -350,7 +350,7 @@ DraftBots: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -612,7 +612,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 1024
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -681,7 +681,7 @@ DraftBots: !hcv
       value: true
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
-      value: 512
+      value: 256
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
       value: 1.0e-03

@@ -16,6 +16,7 @@
           overlays = [ poetry2nix.overlay ];
         };
         libclang = pkgs.llvmPackages_14.libclang;
+        pythonPackages = pkgs.python310Packages;
       in
         {
           devShell = pkgs.mkShell {
@@ -29,7 +30,8 @@
               pkgs.docker
               pkgs.linuxPackages.nvidia_x11
               poetry2nix.packages.${system}.poetry
-              pkgs.python310Packages.python
+              pythonPackages.python
+              pythonPackages.tensorboard-data-server
               pkgs.docker-compose
               pkgs.pkg-config
               pkgs.docker
