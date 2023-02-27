@@ -359,7 +359,7 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 7
+              value: 3
             output_dims: !hcv
               help: The number of output dimensions from this layer.
               value: 256
@@ -447,7 +447,7 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 7
+              value: 4
             output_dims: !hcv
               help: The number of output dimensions from this layer.
               value: 512
@@ -568,7 +568,7 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 3
+              value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
               value: 256
