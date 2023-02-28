@@ -146,7 +146,7 @@ if __name__ == "__main__":
         "data/train_cubes.bin", num_cards - 1, cube_batch_size, args.seed, noise_mean, noise_std
     )
     recommender_validation_generator = RecommenderGenerator(
-        "data/validation_cubes.bin", num_cards - 1, 2 * cube_batch_size, args.seed + 13, 0, 0
+        "data/validation_cubes.bin", num_cards - 1, cube_batch_size, args.seed + 13, 0, 0
     )
     # deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     # deck_adj_mtx_generator.on_epoch_end()
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     )
     deck_adj_mtx_generator.on_epoch_end()
     cube_adj_mtx_generator = PickAdjMtxGenerator(
-        "data/train_picks.bin", num_cards - 1, 14 * adj_mtx_batch_size, args.seed * 23
+        "data/train_picks.bin", num_cards - 1, 8 * adj_mtx_batch_size, args.seed * 23
     )
     cube_adj_mtx_generator.on_epoch_end()
     print(f"There are {len(draftbot_train_generator)} training pick batches")
