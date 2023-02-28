@@ -35,7 +35,7 @@ CubeRecommender: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 512
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -76,10 +76,10 @@ CubeRecommender: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 7
+              value: 5
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 512
+              value: 256
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 512
@@ -88,7 +88,7 @@ CubeRecommender: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 32
+              value: 16
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
@@ -157,25 +157,12 @@ CubeRecommender: !hcv
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
-        Hidden_1: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id001
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 512
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 2
+          value: 1
     embed_dims: !hcv
       help: The number of dimensions for similarity comparisons
-      value: 512
+      value: 256
     scale_relevant_cards: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
@@ -228,22 +215,9 @@ DeckAdjMtxReconstructor: !hcv
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
-        Hidden_1: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: *id002
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 512
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 2
+          value: 1
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
       value: 0.001
@@ -274,7 +248,7 @@ DraftBots: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 32
+              value: 8
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -353,19 +327,19 @@ DraftBots: !hcv
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 16
+              value: 8
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 3
+              value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 256
+              value: 128
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 512
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -392,13 +366,13 @@ DraftBots: !hcv
               value: 16
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 512
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 32
+              value: 16
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -447,10 +421,10 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 4
+              value: 3
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 512
+              value: 256
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 512
@@ -459,7 +433,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 32
+              value: 16
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -495,22 +469,9 @@ DraftBots: !hcv
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
-            Hidden_1: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 512
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
             num_hidden: !hcv
               help: The number of hidden layers in the MLP.
-              value: 2
+              value: 1
         ProjectContext: !hcv
           help: Project the context embeddings to the space for measuring distance.
           value: !hc
@@ -526,7 +487,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 512
+          value: 256
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -562,7 +523,7 @@ DraftBots: !hcv
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 16
+              value: 8
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
@@ -571,7 +532,7 @@ DraftBots: !hcv
               value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 256
+              value: 128
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 256
@@ -616,22 +577,9 @@ DraftBots: !hcv
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
-            Hidden_1: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  choices: *id001
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 512
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
             num_hidden: !hcv
               help: The number of hidden layers in the MLP.
-              value: 2
+              value: 1
         ProjectContext: !hcv
           help: Project the context embeddings to the space for measuring distance.
           value: !hc
@@ -690,7 +638,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 512
+      value: 256
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
@@ -709,13 +657,13 @@ adafactor_weight_decay: !hcv
   value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 4
+  value: 8
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 4
+  value: 8
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.3
@@ -754,7 +702,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 32
+  value: 64
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 1
