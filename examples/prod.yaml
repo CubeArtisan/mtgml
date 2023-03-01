@@ -617,7 +617,7 @@ DraftBots: !hcv
       value: 0.25
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
-      value: 1.0e-04
+      value: 4.0e-04
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
       value: 1.0e-04
@@ -632,7 +632,7 @@ DraftBots: !hcv
       value: 256
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
-      value: 1.0e-03
+      value: 1.0e-02
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -657,13 +657,13 @@ adafactor_weight_decay: !hcv
   value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 8
+  value: 4
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 8
+  value: 4
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.3
@@ -702,7 +702,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 64
+  value: 16
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 1

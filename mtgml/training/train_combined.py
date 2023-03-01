@@ -441,7 +441,7 @@ if __name__ == "__main__":
             log_dir=log_dir,
             histogram_freq=0,
             write_graph=True,
-            update_freq=128,
+            update_freq=2048,
             embeddings_freq=None,
             profile_batch=0 if args.debug or not args.profile else (128, 135),
         )

@@ -35,6 +35,7 @@ private:
   moodycamel::BlockingConcurrentQueue<ProcessedValue> processed_queue;
   moodycamel::ConsumerToken processed_consumer;
   std::jthread worker_thread;
+  std::jthread worker_thread2;
 
   static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 9;
 
@@ -52,13 +53,18 @@ public:
     worker_thread = std::jthread([this](std::stop_token st) {
       this->worker_func(st, pcg32(this->seed, 0));
     });
+    worker_thread2 = std::jthread([this](std::stop_token st) {
+      this->worker_func(st, pcg32(this->seed, 1));
+    });
     queue_new_epoch();
     return *this;
   }
 
   bool exit(py::object, py::object, py::object) {
     worker_thread.request_stop();
+    worker_thread2.request_stop();
     worker_thread.join();
+    worker_thread2.join();
     return false;
   }
 
@@ -193,9 +199,9 @@ private:
         } else {
           if (current_batch_idx >= batch_size) {
             if (processed_queue.size_approx() >=
-                4 * SHUFFLE_BUFFER_SIZE / batch_size) {
+                16 * SHUFFLE_BUFFER_SIZE / batch_size) {
               while (processed_queue.size_approx() >=
-                         2 * SHUFFLE_BUFFER_SIZE / batch_size &&
+                         8 * SHUFFLE_BUFFER_SIZE / batch_size &&
                      !st.stop_requested()) {
                 std::this_thread::sleep_for(100ms);
               }

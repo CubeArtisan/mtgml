@@ -99,7 +99,6 @@ def verify_request():
     if not AUTH_ENABLED or "/version" in request.path:
         return None
     else:
-        logger.warn(os.environ.get("MTGML_AUTH_ENABLED"))
         token = request.args.get("auth_token", None)
         if token is None or token not in AUTH_TOKENS:
             return {"success": False, "error": "Not authorized"}, 401

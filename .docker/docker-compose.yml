@@ -7,6 +7,10 @@ services:
       # cache_from:
       #   - ${REPOSITORY}/mtgml:latest
     image: ${REPOSITORY}/mtgml:${TAG}
+    environment:
+      MTGML_AUTH_TOKENS: "testing"
+      MTGML_AUTH_ENABLED: "True"
+      MTGML_VERSION: "cubeartisan-testing"
     ports:
       - "8000:8000"
     deploy:
