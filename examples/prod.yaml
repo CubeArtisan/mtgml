@@ -266,13 +266,13 @@ DraftBots: !hcv
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.35
+                  value: 0.0
             Dropout_1: !hcv
               help: The dropout applied after the 1st hidden layer.
               value: !hc
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.35
+                  value: 0.0
             Final: !hcv
               help: The last dense layer in the MLP.
               value: !hc
@@ -311,13 +311,13 @@ DraftBots: !hcv
                   value: false
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.25
+                  value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.0
+              value: 0.25
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.25
+              value: 0.0
             dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
@@ -376,7 +376,7 @@ DraftBots: !hcv
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
-          value: 0.35
+          value: 0.0
     EmbedPackPosition: !hcv
       help: The embedding for the position in the draft
       value: !hc
@@ -399,13 +399,13 @@ DraftBots: !hcv
                   value: true
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.16
+                  value: 0.00
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.0
+              value: 0.05
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.2
+              value: 0.00
             dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
@@ -507,13 +507,13 @@ DraftBots: !hcv
                   value: false
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.35
+                  value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.00
+              value: 0.10
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.25
+              value: 0.0
             dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
@@ -614,7 +614,7 @@ DraftBots: !hcv
       value: true
     pool_embed_dropout_rate: !hcv
       help: The percent of enetries of the card embeddings for the pool that should be dropped out.
-      value: 0.25
+      value: 0.0
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
       value: 4.0e-04
