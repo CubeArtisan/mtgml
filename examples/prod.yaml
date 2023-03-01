@@ -35,7 +35,7 @@ CubeRecommender: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 256
+                  value: 512
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -67,7 +67,7 @@ CubeRecommender: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 16
+              value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -76,7 +76,7 @@ CubeRecommender: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 5
+              value: 9
             output_dims: !hcv
               help: The number of output dimensions from this layer.
               value: 256
@@ -88,7 +88,7 @@ CubeRecommender: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 16
+              value: 32
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
@@ -109,7 +109,7 @@ CubeRecommender: !hcv
               value: 32
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 512
+              value: 1024
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -153,7 +153,7 @@ CubeRecommender: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 512
+              value: 1024
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -162,7 +162,7 @@ CubeRecommender: !hcv
           value: 1
     embed_dims: !hcv
       help: The number of dimensions for similarity comparisons
-      value: 256
+      value: 512
     scale_relevant_cards: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
@@ -211,7 +211,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 512
+              value: 256
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -292,7 +292,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 512
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -336,10 +336,10 @@ DraftBots: !hcv
               value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 256
+              value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -415,7 +415,7 @@ DraftBots: !hcv
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 16
+              value: 8
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
@@ -424,10 +424,10 @@ DraftBots: !hcv
               value: 3
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 256
+              value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 512
+              value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -465,7 +465,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 512
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -487,7 +487,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 256
+          value: 64
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -532,10 +532,10 @@ DraftBots: !hcv
               value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 256
+              value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -573,7 +573,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 512
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -595,7 +595,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 256
+          value: 32
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -604,7 +604,7 @@ DraftBots: !hcv
       value: true
     log_loss_weight: !hcv
       help: The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight
-      value: 0.9
+      value: 0.8
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 1
@@ -617,7 +617,7 @@ DraftBots: !hcv
       value: 0.0
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
-      value: 4.0e-04
+      value: 1.0e-03
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
       value: 1.0e-04
@@ -638,7 +638,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 256
+      value: 512
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true

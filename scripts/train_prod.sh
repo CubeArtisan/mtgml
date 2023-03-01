@@ -41,7 +41,7 @@ cp examples/prod.pre.yaml ml_files/train_prod/hyper_config.yaml
 python -m mtgml.training.train_combined --name train_prod --epochs 8 --seed 268459 || true
 cp ml_files/train_prod/hyper_config.yaml ml_files/train_prod/hyper_config.pre.yaml
 cp examples/prod.yaml ml_files/train_prod/hyper_config.yaml
-for i in {1..8}; do python -m mtgml.training.train_combined --name train_prod --epochs 16 --seed 16809$i$i; done
+for i in {1..8}; do python -m mtgml.training.train_combined --name train_prod --epochs 16 --seed 16809$i$i || true; done
 
 rm -rf ml_files/latest
 mkdir ml_files/latest

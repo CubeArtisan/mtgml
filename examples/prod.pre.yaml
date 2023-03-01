@@ -39,7 +39,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 512
+              value: 256
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -54,7 +54,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 256
+      value: 512
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
@@ -69,7 +69,7 @@ adam_weight_decay: !hcv
   value: 1.0e-03
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 128
+  value: 32
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
