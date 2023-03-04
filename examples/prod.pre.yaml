@@ -11,12 +11,6 @@ DeckAdjMtxReconstructor: !hcv
             rate: !hcv
               help: The percent of values that get replaced with zero.
               value: 0
-        Dropout_1: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -39,7 +33,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 256
+              value: 64
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -54,7 +48,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 512
+      value: 256
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true

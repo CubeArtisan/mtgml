@@ -35,7 +35,7 @@ CubeRecommender: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 512
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -57,7 +57,7 @@ CubeRecommender: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.0
+              value: 0.05
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.0
@@ -67,7 +67,7 @@ CubeRecommender: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 16
@@ -82,13 +82,13 @@ CubeRecommender: !hcv
               value: 256
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 512
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 32
+              value: 16
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
@@ -106,10 +106,10 @@ CubeRecommender: !hcv
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 32
+              value: 16
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 1024
+              value: 512
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -162,7 +162,7 @@ CubeRecommender: !hcv
           value: 1
     embed_dims: !hcv
       help: The number of dimensions for similarity comparisons
-      value: 512
+      value: 256
     scale_relevant_cards: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
@@ -211,7 +211,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 256
+              value: 64
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -314,7 +314,7 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.25
+              value: 0.40
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.0
@@ -402,7 +402,7 @@ DraftBots: !hcv
                   value: 0.00
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.05
+              value: 0.30
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.00
@@ -510,7 +510,7 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.10
+              value: 0.25
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.0
@@ -638,7 +638,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 512
+      value: 256
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
@@ -657,7 +657,7 @@ adafactor_weight_decay: !hcv
   value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 4
+  value: 2
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
@@ -702,7 +702,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 32
+  value: 16
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 1
