@@ -37,7 +37,7 @@ private:
   std::jthread worker_thread;
   std::jthread worker_thread2;
 
-  static constexpr std::size_t SHUFFLE_BUFFER_SIZE = 1 << 9;
+  static constexpr std::size_t SHUFFLE_BUFFER_SIZE = READ_SIZE * (1 << 6);
 
 public:
   DraftbotGenerator(std::string filename, std::size_t batch_size,
@@ -45,7 +45,7 @@ public:
       : mmap(filename), batch_size{batch_size}, seed{seed},
         num_picks{mmap.size() / sizeof(Draft)}, main_rng{seed, 1},
         chunk_producer{chunk_queue}, processed_consumer{processed_queue} {
-    std::cout << "Sizeof Draft " << sizeof(Draft) << std::endl;
+    // std::cout << "Sizeof Draft " << sizeof(Draft) << std::endl;
   }
 
   DraftbotGenerator &enter() & {
@@ -91,8 +91,9 @@ public:
         std::cout << "Waiting on a draftbot sample." << std::endl;
         queue_new_epoch();
         while (!processed_queue.wait_dequeue_timed(processed_consumer,
-                                                   processed_value, 100'000)) {
+                                                   processed_value, 250'000)) {
           std::cout << "Waiting on a draftbots sample." << std::endl;
+          queue_new_epoch();
         }
       }
       batched = processed_value.release();
@@ -196,6 +197,7 @@ private:
                 mmap.data() + sizeof(Draft) * READ_SIZE * read_idx);
             shuffle_buffer.push_back(read_start[i]);
           }
+          // std::cout << "Reading into Shuffle Buffer." << std::endl;
         } else {
           if (current_batch_idx >= batch_size) {
             if (processed_queue.size_approx() >=
@@ -203,6 +205,7 @@ private:
               while (processed_queue.size_approx() >=
                          8 * SHUFFLE_BUFFER_SIZE / batch_size &&
                      !st.stop_requested()) {
+                // std::cout << "Waiting for queue to empty." << std::endl;
                 std::this_thread::sleep_for(100ms);
               }
             }

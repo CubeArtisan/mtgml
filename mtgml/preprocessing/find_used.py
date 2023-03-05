@@ -60,11 +60,9 @@ def picks_from_draft(draft) -> Generator[Counter[int], None, None]:
                 picked_idx = pick.get("pickedIdx", pick.get("trashedIdx", None))
                 if not (
                     all(isinstance(x, int) for x in pick["cardsInPack"])
-                    and all(isinstance(x, int) for x in pick["picked"])
                     and len(seen) < MAX_SEEN_PACKS
                     and picked_idx is not None
                     and 0 <= picked_idx < len(pick["cardsInPack"])
-                    and len(pick["picked"]) <= MAX_PICKED
                 ):
                     break
                 cards_in_pack = [x + 1 for x in pick["cardsInPack"]]
