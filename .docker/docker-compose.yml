@@ -9,7 +9,7 @@ services:
     image: ${REPOSITORY}/mtgml:${TAG}
     environment:
       MTGML_AUTH_TOKENS: "testing"
-      MTGML_AUTH_ENABLED: "True"
+      MTGML_AUTH_ENABLED: "False"
       MTGML_VERSION: "cubeartisan-testing"
     ports:
       - "8000:8000"
