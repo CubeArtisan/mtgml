@@ -7,7 +7,7 @@ repos:
     - post-checkout
     - post-commit
     language: system
-    entry: poetry install -q
+    entry: poetry install -q --sync
     pass_filenames: false
     files: ^poetry.lock$
 
@@ -42,24 +42,16 @@ repos:
     files: ^poetry.lock|requirements.txt$
     args: [-f, requirements.txt, -o, requirements.txt, --with, dev]
 
-  - id: dvc-fetch
-    name: dvc-fetch
-    description: Fetch latest data from dvc
-    stages:
-      - post-checkout
-    language: system
-    entry: dvc fetch
-    pass_filenames: false
-    always_run: true
-
-- repo: https://github.com/iterative/dvc
-  rev: 2.19.0
-  hooks:
-  - id: dvc-post-checkout
+  - id: poetry-export-serving
+    name: Export Poetry Packages for Serving
+    description: run poetry export to sync lock file with serving_requirements.txt
+    stages: [commit]
+    entry: poetry export
+    language: python
     language_version: python3
-    stages:
-    - post-checkout
-    always_run: true
+    pass_filenames: false
+    files: ^poetry.lock|serving_requirements.txt$
+    args: [-f, requirements.txt, -o, serving_requirements.txt, --only, serving]
 
 default_install_hook_types:
 - pre-commit

@@ -238,12 +238,24 @@ if __name__ == '__main__':
             yield ('call_recommender', {'cube': example[1][0].astype(np.int16)})
 
 
-    converter = tf.lite.TFLiteConverter.from_saved_model('data/draftbots_tflite_full')
+    converter = tf.lite.TFLiteConverter.from_saved_model("data/draftbots_tflite_full")
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
     ]
-    converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
-    # converter.representative_dataset = combined_gen
+    converter.optimizations = [
+        tf.lite.Optimize.DEFAULT,
+        # tf.lite.Optimize.EXPERIMENTAL_SPARSITY,
+    ]
+    # converter.representative_dataset = tf.lite.RepresentativeDataset(combined_gen)
+    converter.exclude_conversion_metadata = True
+    # debugger = tf.lite.experimental.QuantizationDebugger(
+    #     converter=converter, debug_dataset=tf.lite.RepresentativeDataset(combined_gen)
+    # )
+    # debugger.run()
+    # with open("logs/debugger_results.csv", "w") as fp:
+    #     debugger.layer_statistics_dump(fp)
+    # converter.input_inference_type = tf.int8
     with draftbot_train_generator, recommender_train_generator:
         tflite_model = converter.convert()
         tflite_dir.mkdir(exist_ok=True, parents=True)

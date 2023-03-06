@@ -5,9 +5,7 @@ import sys
 from pathlib import Path
 
 import flask
-import numpy as np
 import tflite_runtime.interpreter as tflite
-import yaml
 from opentelemetry import trace
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
@@ -18,10 +16,7 @@ from opentelemetry.resourcedetector.gcp_resource_detector import (
 )
 from opentelemetry.sdk.resources import get_aggregated_resources
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import (  # SimpleExportSpanProcessor,
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
-)
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from mtgml.server.cube_recommender import get_cube_recomendations
 from mtgml.server.draftbots import get_draft_scores
