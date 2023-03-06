@@ -78,7 +78,7 @@ def get_draft(rows, name_to_int):
 
 def read_file(name_to_int, filename):
     prefix = "pack_card_"
-    data = pd.read_csv(filename)
+    data = pd.read_csv(filename, engine="pyarrow")
     pack_cols = [col for col in data.columns if col.startswith(prefix)]
     old_cols = ["draft_id", "pack_number", "pick_number", "pick", *pack_cols]
     new_cols = [

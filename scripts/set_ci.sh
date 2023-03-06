@@ -68,6 +68,12 @@ do
     curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME --output $FILENAME \
         && gzip -fd ${DRAFT_TYPE}Draft.csv.gz \
         || true
+    while [[ -f ${DRAFT_TYPE}Draft.csv ]] && ! iconv -f UTF-8 ${DRAFT_TYPE}Draft.csv -o /dev/null
+    do
+        curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME --output $FILENAME \
+            && gzip -fd ${DRAFT_TYPE}Draft.csv.gz \
+            || true
+    done
 done
 
 cd ../../../
