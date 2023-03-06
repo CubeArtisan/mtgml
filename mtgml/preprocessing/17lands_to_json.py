@@ -48,7 +48,7 @@ class IterEncoder(json.JSONEncoder):
         return super().default(o)
 
 
-def get_pick(row, name_to_int):
+def get_pick(row, name_to_int, num_picks):
     cards_in_pack = tuple(
         itertools.chain.from_iterable(itertools.repeat(col, val) for col, val in row.iloc[4:].items())
     )
@@ -57,19 +57,22 @@ def get_pick(row, name_to_int):
         "pickedIdx": cards_in_pack.index(name_to_int[row.iloc[3].lower()]),
         "packNum": int(row.iloc[1]),
         "pickNum": int(row.iloc[2]),
-        "numPicks": 14,
+        "numPicks": num_picks,
         "numPacks": 3,
     }
 
 
 def get_draft(rows, name_to_int):
+    num_picks = len(rows) // 3
     try:
         return {
             "picks": [
-                get_pick(row, name_to_int) for _, row in rows.sort_values(["pack_number", "pick_number"]).iterrows()
+                get_pick(row, name_to_int, num_picks)
+                for _, row in rows.sort_values(["pack_number", "pick_number"]).iterrows()
             ]
         }
     except ValueError:
+        print("Draft contained invalid pick.")
         return {}
 
 
@@ -96,7 +99,7 @@ def read_file(name_to_int, filename):
             unit_scale=1,
             smoothing=0.01,
         )
-        if len(idxs) == 42
+        if len(idxs) == 42 or len(idxs) == 45 or len(idxs) == 39
     )
 
 

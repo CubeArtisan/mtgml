@@ -414,10 +414,10 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
-        pick_train_example = draftbot_validation_generator[0][0]
-        pick_train_example = pick_train_example[:5]
         train_generator = CombinedGenerator(draftbot_train_generator)
         validation_generator = CombinedGenerator(draftbot_validation_generator)
+        pick_train_example = validation_generator[0][0][0]
+        pick_train_example = pick_train_example[:5]
         # Make sure it compiles the correct setup for evaluation
         with strategy.scope():
             model((pick_train_example,), training=False)

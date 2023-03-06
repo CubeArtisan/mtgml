@@ -268,12 +268,12 @@ if __name__ == "__main__":
     converter = tf.lite.TFLiteConverter.from_saved_model("data/draftbots_tflite_full")
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+        # tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
     ]
-    converter.optimizations = [
-        tf.lite.Optimize.DEFAULT,
-    ]
-    # converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
+    # converter.optimizations = [
+    #     tf.lite.Optimize.DEFAULT,
+    # ]
+    converter.optimizations = [tf.lite.Optimize.DEFAULT, tf.lite.Optimize.EXPERIMENTAL_SPARSITY]
     # converter.representative_dataset = tf.lite.RepresentativeDataset(combined_gen)
     converter.exclude_conversion_metadata = True
     # debugger = tf.lite.experimental.QuantizationDebugger(
