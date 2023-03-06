@@ -58,7 +58,7 @@
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.libcublas}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.cudaPackages.tensorrt}/lib:${pkgs.zlib}/lib:$LD_LIBRARY_PATH
               export LD_LIBRARY_PATH=${pkgs.yajl}/lib:$LD_LIBRARY_PATH
-              export TF_GPU_ALLOCATOR=cuda_malloc_async
+              # export TF_GPU_ALLOCATOR=cuda_malloc_async
               export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${pkgs.cudaPackages.cudatoolkit}"
               export TF_XLA_FLAGS="--tf_xla_cpu_global_jit --tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
               # export TF_XLA_FLAGS="$TF_XLA_FLAGS --tf_mlir_enable_mlir_bridge --tf_mlir_enable_merge_control_flow_pass"

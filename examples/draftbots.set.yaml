@@ -530,7 +530,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 8
+  value: 64
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
