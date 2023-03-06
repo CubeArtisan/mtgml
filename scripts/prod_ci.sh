@@ -75,7 +75,7 @@ if [[ -d data/CubeCobra/cubes ]]; then
 else
     python -m mtgml.preprocessing.load_cubes data/$DATE/cubes
 fi
-python -m mtgml.preprocessing.load_picks data/$DATE/drafts\;data/$DATE/draftlogs
+python -m mtgml.preprocessing.load_picks data/$DATE/drafts\;data/$DATE/draftlogs\;data/17lands/complete
 
 export GITHUB_SHA=`git rev-parse HEAD`
 export TYPE=prod
