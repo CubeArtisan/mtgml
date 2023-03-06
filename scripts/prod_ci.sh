@@ -56,10 +56,12 @@ export DATE=`gsutil ls -lh $GS_PATH\
     | cut -d '/' -f 5\
     | cut -d '.' -f 1`
 
-gsutil cp $GS_PATH$DATE.tar.xz $DATE.tar.xz
-rm -rf $DATE
-tar xJf $DATE.tar.xz
-rm $DATE.tar.xz
+if ! [[ -d $DATE ]]
+then
+    gsutil cp $GS_PATH$DATE.tar.xz $DATE.tar.xz
+    tar xJf $DATE.tar.xz
+    rm $DATE.tar.xz
+fi
 cp $DATE/int_to_card.json maps/int_to_card.json
 cp $DATE/card_to_int.json maps/card_to_int.json
 

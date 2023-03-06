@@ -47,13 +47,14 @@ export DATE=`gsutil ls -lh $GS_PATH\
     | cut -d '/' -f 5\
     | cut -d '.' -f 1`
 
-gsutil cp $GS_PATH$DATE.tar.xz $DATE.tar.xz
-rm -rf $DATE
-tar xJf $DATE.tar.xz
-rm $DATE.tar.xz
+if ! [[ -d $DATE ]]
+then
+    gsutil cp $GS_PATH$DATE.tar.xz $DATE.tar.xz
+    tar xJf $DATE.tar.xz
+    rm $DATE.tar.xz
+fi
 cp $DATE/int_to_card.json maps/int_to_card.json
 cp $DATE/card_to_int.json maps/card_to_int.json
-rm -r $DATE
 
 mkdir -p 17lands/$1
 cd 17lands/$1
@@ -62,18 +63,13 @@ export FILENAME_BASE=draft_data_public.${1^^}
 export DRAFT_TYPES=("Trad" "Premier")
 for DRAFT_TYPE in ${DRAFT_TYPES[@]}
 do
-    export FILENAME=${DRAFT_TYPE}Draft.csv.gz
-    echo https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME
-    # https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/draft_data_public.BRO.PremierDraft.csv.gz
-    curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME --output $FILENAME \
-        && gzip -fd ${DRAFT_TYPE}Draft.csv.gz \
-        || true
-    while [[ -f ${DRAFT_TYPE}Draft.csv ]] && ! iconv -f UTF-8 ${DRAFT_TYPE}Draft.csv -o /dev/null
-    do
-        curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME --output $FILENAME \
-            && gzip -fd ${DRAFT_TYPE}Draft.csv.gz \
+    export FILENAME=${DRAFT_TYPE}Draft.csv
+    if [[ ! -f ${FILENAME}.json ]]
+    then
+        curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME.gz --output $FILENAME.gz \
+            && gzip -fd ${FILENAME}.gz \
             || true
-    done
+    fi
 done
 
 cd ../../../
