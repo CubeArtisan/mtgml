@@ -83,7 +83,7 @@ do
     fi
 done
 python -m mtgml.preprocessing.find_used data/17lands/$1 nonexistant nonexistant
-python -m mtgml.preprocessing.load_picks
+python -m mtgml.preprocessing.load_picks data/17lands/$1
 
 export GITHUB_SHA=`git rev-parse HEAD`
 export TYPE=$1
