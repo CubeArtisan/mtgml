@@ -22,9 +22,9 @@ with open("data/maps/card_to_int.json") as fp:
     card_to_int = json.load(fp)
 with open("data/maps/int_to_card.json") as fp:
     int_to_card = json.load(fp)
-with open("data/maps/old_int_to_card.json") as fp:
-    old_int_to_card = json.load(fp)
-old_int_to_new_int = [card_to_int[c["oracle_id"]] if c["oracle_id"] in card_to_int else -1 for c in old_int_to_card]
+# with open("data/maps/old_int_to_card.json") as fp:
+#     old_int_to_card = json.load(fp)
+# old_int_to_new_int = [card_to_int[c["oracle_id"]] if c["oracle_id"] in card_to_int else -1 for c in old_int_to_card]
 original_to_new_path = Path("data/maps/original_to_new_index.json")
 if original_to_new_path.exists():
     with original_to_new_path.open("r") as fp:
@@ -100,44 +100,44 @@ def picks_from_draft(draft):
 ALL_PICKS = tuple(0 for _ in range(MAX_SEEN_PACKS))
 
 
-def picks_from_draft2(draft):
-    if "picks" in draft:
-        seen = []
-        seen_coords = []
-        seen_coord_weights = []
-        value = None
-        for pick in draft["picks"]:
-            if not (
-                all(isinstance(x, int) for x in pick["cardsInPack"])
-                and all(isinstance(x, int) for x in pick["picked"])
-                and len(seen) < MAX_SEEN_PACKS
-                and len(pick["picked"]) <= MAX_PICKED
-            ):
-                break
-            cards_in_pack = [original_to_new_index[old_int_to_new_int[x] + 1] for x in pick["cardsInPack"]]
-            coords, coord_weights = interpolate(pick["pick"], pick["packSize"], pick["pack"], pick["packs"])
-            chosen_card = original_to_new_index[old_int_to_new_int[pick["chosenCard"]] + 1]
-            picked_idx = cards_in_pack.index(chosen_card)
-            if picked_idx < 0:
-                break
-            cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
-            cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
-            new_value = tuple(original_to_new_index[old_int_to_new_int[x] + 1] for x in pick["picked"])
-            if any(x <= 0 or x > max_index for x in cards_in_pack) or any(x <= 0 or x > max_index for x in new_value):
-                break
-            seen.append(cards_in_pack)
-            seen_coords.append(coords)
-            seen_coord_weights.append(coord_weights)
-            value = new_value
-        if value is not None:
-            yield (default_basics, value, seen, seen_coords, seen_coord_weights, ALL_PICKS)
+# def picks_from_draft2(draft):
+#     if "picks" in draft:
+#         seen = []
+#         seen_coords = []
+#         seen_coord_weights = []
+#         value = None
+#         for pick in draft["picks"]:
+#             if not (
+#                 all(isinstance(x, int) for x in pick["cardsInPack"])
+#                 and all(isinstance(x, int) for x in pick["picked"])
+#                 and len(seen) < MAX_SEEN_PACKS
+#                 and len(pick["picked"]) <= MAX_PICKED
+#             ):
+#                 break
+#             cards_in_pack = [original_to_new_index[old_int_to_new_int[x] + 1] for x in pick["cardsInPack"]]
+#             coords, coord_weights = interpolate(pick["pick"], pick["packSize"], pick["pack"], pick["packs"])
+#             chosen_card = original_to_new_index[old_int_to_new_int[pick["chosenCard"]] + 1]
+#             picked_idx = cards_in_pack.index(chosen_card)
+#             if picked_idx < 0:
+#                 break
+#             cards_in_pack[0], cards_in_pack[picked_idx] = cards_in_pack[picked_idx], cards_in_pack[0]
+#             cards_in_pack = cards_in_pack[:MAX_CARDS_IN_PACK]
+#             new_value = tuple(original_to_new_index[old_int_to_new_int[x] + 1] for x in pick["picked"])
+#             if any(x <= 0 or x > max_index for x in cards_in_pack) or any(x <= 0 or x > max_index for x in new_value):
+#                 break
+#             seen.append(cards_in_pack)
+#             seen_coords.append(coords)
+#             seen_coord_weights.append(coord_weights)
+#             value = new_value
+#         if value is not None:
+#             yield (default_basics, value, seen, seen_coords, seen_coord_weights, ALL_PICKS)
 
 
 DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
 
 
 def load_all_drafts(pool, *args):
-    for drafts_dir, picks_gen in zip(args, (picks_from_draft, picks_from_draft2)):
+    for drafts_dir, picks_gen in zip(args, (picks_from_draft,)):
 
         def load_drafts_file(drafts_file):
             print(drafts_file)

@@ -29,8 +29,6 @@ with open("data/maps/card_to_int.json") as fp:
     card_to_int = json.load(fp)
 with open("data/maps/int_to_card.json") as fp:
     int_to_card = json.load(fp)
-with open("data/maps/old_int_to_card.json") as fp:
-    old_int_to_card = json.load(fp)
 with open("data/maps/scryToOracle.json") as fp:
     scry_to_oracle = json.load(fp)
 name_to_int = {card["name_lower"]: i for i, card in enumerate(int_to_card)}
