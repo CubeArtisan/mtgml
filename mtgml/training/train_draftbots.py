@@ -12,12 +12,10 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
-from mtgml_native.generators.recommender_generator import RecommenderGenerator
 
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.constants import OPTIMIZER_CHOICES, set_debug
 from mtgml.generators.combined_generator import CombinedGenerator
-from mtgml.generators.split_generator import SplitGenerator
 from mtgml.models.combined_model import CombinedModel
 from mtgml.tensorboard.callback import TensorBoardFix
 from mtgml.utils.tqdm_callback import TQDMProgressBar
@@ -132,16 +130,8 @@ if __name__ == "__main__":
     print(args.seed, type(args.seed))
     draftbot_train_generator = DraftbotGenerator("data/train_picks.bin", pick_batch_size, args.seed)
     draftbot_validation_generator = DraftbotGenerator("data/validation_picks.bin", pick_batch_size, args.seed * 31)
-    recommender_train_generator = RecommenderGenerator(
-        "data/train_cubes.bin", num_cards - 1, cube_batch_size, args.seed, noise_mean, noise_std
-    )
-    recommender_validation_generator = RecommenderGenerator(
-        "data/validation_cubes.bin", num_cards - 1, cube_batch_size, args.seed + 13, 0, 0
-    )
     print(f"There are {len(draftbot_train_generator)} training pick batches")
     print(f"There are {len(draftbot_validation_generator)} validation pick batches")
-    print(f"There are {len(recommender_train_generator)} training recommender batches")
-    print(f"There are {len(recommender_validation_generator)} validation recommender batches")
     logging.info(f"There are {num_cards:n} cards being trained on.")
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.debug:
