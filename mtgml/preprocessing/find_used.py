@@ -29,8 +29,6 @@ with open("data/maps/card_to_int.json") as fp:
     card_to_int = json.load(fp)
 with open("data/maps/int_to_card.json") as fp:
     int_to_card = json.load(fp)
-with open("data/maps/scryToOracle.json") as fp:
-    scry_to_oracle = json.load(fp)
 name_to_int = {card["name_lower"]: i for i, card in enumerate(int_to_card)}
 default_basic_ids = [
     "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
@@ -40,7 +38,6 @@ default_basic_ids = [
     "a3fb7228-e76b-4e96-a40e-20b5fed75685",
 ]
 default_basics = tuple(card_to_int[c] + 1 for c in default_basic_ids)
-scry_to_int = {id: card_to_int[oracleId] for id, oracleId in scry_to_oracle.items() if oracleId in card_to_int}
 
 BUFFER_SIZE = 1024 // 64
 
