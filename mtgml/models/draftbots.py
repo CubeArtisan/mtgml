@@ -312,7 +312,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             loss_mask = tf.cast(tf.expand_dims(mask_freebies_1, -1), dtype=loss_dtype) * mask
             log_losses = riskiness * log_losses
             log_loss = reduce_mean_masked(log_losses, mask=loss_mask, axis=[0, 1, 2], name="log_loss")
-            tf.summary.scalar("log_loss", log_loss)
+            # tf.summary.scalar("log_loss", log_loss)
             log_loss_weighted = tf.math.multiply(
                 log_loss,
                 tf.constant(self.log_loss_weight, dtype=loss_dtype, name="log_loss_weight"),
@@ -332,7 +332,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 * riskiness[:, :, 1:]
             )
             triplet_losses = reduce_mean_masked(clipped_diffs, loss_mask[:, :, 1:], axis=[0, 1, 2], name="triplet_loss")
-            tf.summary.scalar("triplet_loss", triplet_losses)
+            # tf.summary.scalar("triplet_loss", triplet_losses)
             triplet_loss_weighted = tf.math.multiply(
                 triplet_losses,
                 tf.constant(1 - self.log_loss_weight, dtype=loss_dtype, name="triplet_loss_weight"),
@@ -374,7 +374,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
             score_stddev = tf.math.sqrt(score_variance_loss, name="score_stddev")
             self.add_metric(score_stddev, "score_stddev")
-            tf.summary.scalar("score_stddev", score_stddev)
+            # tf.summary.scalar("score_stddev", score_stddev)
             pool_variance_loss = reduce_mean_masked(
                 pool_variance, mask=variance_mask, axis=[0, 1], name="pool_variance_loss"
             )
@@ -386,7 +386,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             if self.rate_off_pool:
                 pool_stddev = tf.math.sqrt(pool_variance_loss, name="score_stddev")
                 self.add_metric(pool_stddev, "pool_stddev")
-                tf.summary.scalar("pool_stddev", pool_stddev)
+                # tf.summary.scalar("pool_stddev", pool_stddev)
             seen_variance_loss = reduce_mean_masked(
                 seen_variance, mask=variance_mask, axis=[0, 1], name="seen_variance_loss"
             )
@@ -398,7 +398,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             if self.rate_off_seen:
                 seen_stddev = tf.math.sqrt(seen_variance_loss, name="score_stddev")
                 self.add_metric(seen_stddev, "seen_stddev")
-                tf.summary.scalar("seen_stddev", seen_stddev)
+                # tf.summary.scalar("seen_stddev", seen_stddev)
             rating_variance_loss = reduce_mean_masked(
                 rating_variance, mask=variance_mask, axis=[0, 1], name="rating_variance_loss"
             )
@@ -410,7 +410,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             if self.rate_card:
                 rating_stddev = tf.math.sqrt(rating_variance_loss, name="score_stddev")
                 self.add_metric(rating_stddev, "rating_stddev")
-                tf.summary.scalar("rating_stddev", rating_stddev)
+                # tf.summary.scalar("rating_stddev", rating_stddev)
             max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
             min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
@@ -424,24 +424,41 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             mask_freebies_1 = tf.reshape(mask_freebies_1, (-1,))
             mask_freebies_2 = tf.reshape(num_in_pack > 2.0, (-1,))
             mask_freebies_3 = tf.reshape(num_in_pack > 3.0, (-1,))
-            top_1_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1)
-            top_2_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 2)
-            top_3_accuracy = tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3)
-            accuracy = reduce_mean_masked(top_1_accuracy, mask=mask_freebies_1, name="accuracy_top_1")
-            self.add_metric(accuracy, "accuracy")
+            top_1_accuracy = reduce_mean_masked(
+                tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1),
+                mask=mask_freebies_1,
+                name="accuracy_top_1",
+            )
+            top_2_accuracy = reduce_mean_masked(
+                tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 2),
+                mask=mask_freebies_2,
+                name="accuracy_top_2",
+            )
+            top_3_accuracy = reduce_mean_masked(
+                tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3),
+                mask=mask_freebies_3,
+                name="accuracy_top_3",
+            )
             scores = tf.cast(scores, dtype=self.compute_dtype)
             # Logging for Tensorboard
-            tf.summary.scalar("accuracy_top_1", accuracy)
-            tf.summary.scalar(
-                "accuracy_top_2", reduce_mean_masked(top_2_accuracy, mask=mask_freebies_2, name="accuracy_top_2")
+            self.add_metric(top_1_accuracy, "accuracy_top_1")
+            self.add_metric(top_2_accuracy, "accuracy_top_2")
+            self.add_metric(top_3_accuracy, "accuracy_top_3")
+            probs_correct_mean = reduce_mean_masked(
+                tf.reshape(probs_correct, (-1,)), mask=mask_freebies_1, name="mean_prob_correct"
             )
-            tf.summary.scalar(
-                "accuracy_top_3", reduce_mean_masked(top_3_accuracy, mask=mask_freebies_3, name="accuracy_top_3")
-            )
-            tf.summary.scalar(
-                "prob_correct",
-                reduce_mean_masked(tf.reshape(probs_correct, (-1,)), mask=mask_freebies_1, name="mean_prob_correct"),
-            )
+            self.add_metric(probs_correct_mean, "prob_correct")
+            # tf.summary.scalar("accuracy_top_1", top_1_accuracy)
+            # tf.summary.scalar(
+            #     "accuracy_top_2", top_2_accuracy
+            # )
+            # tf.summary.scalar(
+            #     "accuracy_top_3", top_3_accuracy
+            # )
+            # tf.summary.scalar(
+            #     "prob_correct",
+            #     reduce_mean_masked(tf.reshape(probs_correct, (-1,)), mask=mask_freebies_1, name="mean_prob_correct"),
+            # )
             if is_debug():
                 tf.summary.histogram("max_diff_scores", max_scores - min_scores)
                 mask = tf.reshape(mask, (-1, tf.shape(mask)[-1]))
