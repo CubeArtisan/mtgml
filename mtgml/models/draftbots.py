@@ -372,8 +372,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 tf.constant(self.score_variance_weight, dtype=loss_dtype, name="score_variance_weight"),
                 name="score_variance_loss_weighted",
             )
-            self.add_metric(score_variance_loss, "score_variance_loss")
-            tf.summary.scalar("score_variance_loss", score_variance_loss)
+            score_stddev = tf.math.sqrt(score_variance_loss, name="score_stddev")
+            self.add_metric(score_stddev, "score_stddev")
+            tf.summary.scalar("score_stddev", score_stddev)
             pool_variance_loss = reduce_mean_masked(
                 pool_variance, mask=variance_mask, axis=[0, 1], name="pool_variance_loss"
             )
@@ -383,8 +384,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 name="pool_variance_loss_weighted",
             )
             if self.rate_off_pool:
-                self.add_metric(pool_variance_loss, "pool_variance_loss")
-                tf.summary.scalar("pool_variance_loss", pool_variance_loss)
+                pool_stddev = tf.math.sqrt(pool_variance_loss, name="score_stddev")
+                self.add_metric(pool_stddev, "pool_stddev")
+                tf.summary.scalar("pool_stddev", pool_stddev)
             seen_variance_loss = reduce_mean_masked(
                 seen_variance, mask=variance_mask, axis=[0, 1], name="seen_variance_loss"
             )
@@ -394,8 +396,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 name="seen_variance_loss_weighted",
             )
             if self.rate_off_seen:
-                self.add_metric(seen_variance_loss, "seen_variance_loss")
-                tf.summary.scalar("seen_variance_loss", seen_variance_loss)
+                seen_stddev = tf.math.sqrt(seen_variance_loss, name="score_stddev")
+                self.add_metric(seen_stddev, "seen_stddev")
+                tf.summary.scalar("seen_stddev", seen_stddev)
             rating_variance_loss = reduce_mean_masked(
                 rating_variance, mask=variance_mask, axis=[0, 1], name="rating_variance_loss"
             )
@@ -405,8 +408,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 name="rating_variance_loss_weighted",
             )
             if self.rate_card:
-                self.add_metric(rating_variance_loss, "rating_variance_loss")
-                tf.summary.scalar("rating_variance_loss", rating_variance_loss)
+                rating_stddev = tf.math.sqrt(rating_variance_loss, name="score_stddev")
+                self.add_metric(rating_stddev, "rating_stddev")
+                tf.summary.scalar("rating_stddev", rating_stddev)
             max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
             max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
             min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
