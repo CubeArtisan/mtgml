@@ -82,6 +82,7 @@ if original_to_new_path.exists():
     with original_to_new_path.open("r") as fp:
         original_to_new_index = json.load(fp)
 else:
+    logger.warn("No original_to_new_index.json file found.")
     original_to_new_index = tuple(range(len(int_to_card) + 1))
 CARD_TO_INT = {v: k for k, v in enumerate(int_to_card)}
 INT_TO_CARD = int_to_card

@@ -256,11 +256,15 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             if self.rate_off_seen:
                 mask_pair = (tf.cast(mask, tf.bool), tf.reduce_any(tf.cast(mask, tf.bool), -1))
                 flat_seen_pack_embeds = tf.reshape(
-                    seen_pack_embeds, (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1])
+                    seen_pack_embeds,
+                    (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1]),
+                    name="flat_seen_pack_embeds",
                 )
                 flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training)
                 pack_embeds = tf.reshape(
-                    flat_pack_embeds, (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1])
+                    flat_pack_embeds,
+                    (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]),
+                    name="pack_embeds_no_pos",
                 )
                 position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
                 pack_embeds = (

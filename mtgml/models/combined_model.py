@@ -144,10 +144,10 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
     @tf.function(
         input_signature=[
             tf.TensorSpec(shape=[1, 16], dtype=tf.int16),
-            tf.TensorSpec(shape=[1, 48], dtype=tf.int16),
-            tf.TensorSpec(shape=[1, 48, 16], dtype=tf.int16),
-            tf.TensorSpec(shape=[1, 48, 4, 2], dtype=tf.int8),
-            tf.TensorSpec(shape=[1, 48, 4], dtype=tf.float32),
+            tf.TensorSpec(shape=[1, None], dtype=tf.int16),
+            tf.TensorSpec(shape=[1, None, None], dtype=tf.int16),
+            tf.TensorSpec(shape=[1, None, 4, 2], dtype=tf.int8),
+            tf.TensorSpec(shape=[1, None, 4], dtype=tf.float32),
         ]
     )
     def call_draftbots(self, basics, pool, seen, seen_coords, seen_coord_weights):
@@ -159,7 +159,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
             "sublayer_weights": tf.identity(sublayer_weights, "sublayer_weights"),
         }
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[1, 1080], dtype=tf.int16)])
+    @tf.function(input_signature=[tf.TensorSpec(shape=[1, None], dtype=tf.int16)])
     def call_recommender(self, cube):
         decoded_noisy_cube, encoded_noisy_cube = self.cube_recommender(
             (cube, self.embed_cards.embeddings), training=False

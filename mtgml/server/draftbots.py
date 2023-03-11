@@ -32,7 +32,7 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_
     idx = 0
     for card_id in drafter_state["picked"][-MAX_SEEN_PACKS:]:
         if card_id in card_to_int and original_to_new_index[card_to_int[card_id] + 1] != 0:
-            pool[0][idx] = card_to_int[card_id] + 1
+            pool[0][idx] = original_to_new_index[card_to_int[card_id] + 1]
             idx += 1
     seen_packs = np.zeros((1, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK), dtype=np.int16)
     seen_coords = np.zeros((1, MAX_SEEN_PACKS, 4, 2), dtype=np.int8)
@@ -57,6 +57,12 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_
                 idx += 1
         idx_pack += 1
         seen_idx = original_idx
+    # 1 is a bad number for dimensions
+    trim = max(2, seen_idx + 1)
+    seen_packs = seen_packs[:, :trim]
+    seen_coords = seen_coords[:, :trim]
+    seen_weights = seen_weights[:, :trim]
+    pool = pool[:, :trim]
     with tracer.start_as_current_span("call_draftbots"):
         call_draftbots = model.get_signature_runner("call_draftbots")
         result = call_draftbots(

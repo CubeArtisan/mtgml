@@ -7,13 +7,7 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 import yaml
-from mtgml_native.generators.adj_mtx_generator import (
-    CubeAdjMtxGenerator,
-    DeckAdjMtxGenerator,
-    PickAdjMtxGenerator,
-)
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
-from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from tqdm.auto import tqdm, trange
 
 from mtgml.config.hyper_config import HyperConfig
@@ -240,6 +234,14 @@ if __name__ == "__main__":
         generator = CombinedGenerator(draftbot_train_generator)
         (pick_train_example,) = generator[0][0]
     pick_train_example = pick_train_example[:5]
+    pick_train_example = (
+        pick_train_example[0],
+        pick_train_example[1][:, :3],
+        pick_train_example[2][:, :3],
+        pick_train_example[3][:, :3],
+        pick_train_example[4][:, :3],
+    )
+    print(pick_train_example)
     example = (pick_train_example[:5],)
     model = get_model()
     print(model.summary())
