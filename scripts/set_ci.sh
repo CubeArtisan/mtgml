@@ -92,7 +92,7 @@ rm -rf ml_files/train_$TYPE
 mkdir -p ml_files/train_$TYPE
 echo $GITHUB_SHA > ml_files/train_$TYPE/git-commit
 cp examples/draftbots.set.yaml ml_files/train_$TYPE/hyper_config.yaml
-python -m mtgml.training.train_draftbots --name train_$TYPE --epochs 8 --seed 16809
+python -m mtgml.training.train_draftbots --name train_$TYPE --epochs 64 --seed 16809
 
 export REPOSITORY=ghcr.io/cubeartisan
 

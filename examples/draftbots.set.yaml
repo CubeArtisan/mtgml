@@ -109,7 +109,7 @@ DraftBots: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 16
+              value: 8
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 8
@@ -157,7 +157,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 16
+              value: 8
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -247,13 +247,13 @@ DraftBots: !hcv
               value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 16
+              value: 8
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -376,7 +376,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 4
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -401,7 +401,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 128
+                  value: 64
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -460,7 +460,7 @@ DraftBots: !hcv
       value: 64
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
-      value: 0.01
+      value: 0.004
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -530,7 +530,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 64
+  value: 48
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
