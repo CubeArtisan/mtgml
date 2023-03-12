@@ -2,7 +2,7 @@ version: '3'
 services:
   mtgml:
     build:
-      dockerfile: .docker/Dockerfile.eval
+      dockerfile: .docker/Dockerfile
       context: ../
       # cache_from:
       #   - ${REPOSITORY}/mtgml:latest
@@ -17,4 +17,4 @@ services:
       resources:
         limits:
           cpus: 2000m
-          memory: 8g
+          memory: 4g

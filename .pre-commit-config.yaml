@@ -40,7 +40,7 @@ repos:
     language_version: python3
     pass_filenames: false
     files: ^poetry.lock|requirements.txt$
-    args: [-f, requirements.txt, -o, requirements.txt]
+    args: [-f, requirements.txt, -o, requirements.txt, --with, serving]
 
   - id: poetry-export-serving
     name: Export Poetry Packages for Serving
@@ -51,7 +51,7 @@ repos:
     language_version: python3
     pass_filenames: false
     files: ^poetry.lock|serving_requirements.txt$
-    args: [-f, requirements.txt, -o, serving_requirements.txt, --only, serving]
+    args: [-f, requirements.txt, -o, serving_requirements.txt, --only, "serving,tflite"]
 
 default_install_hook_types:
 - pre-commit

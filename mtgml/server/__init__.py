@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -5,7 +7,12 @@ import sys
 from pathlib import Path
 
 import flask
-import tflite_runtime.interpreter as tflite
+
+try:
+    import tflite_runtime.interpreter as tflite
+except ModuleNotFoundError:
+    import tensorflow.lite as tflite
+
 from opentelemetry import trace
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
@@ -27,7 +34,7 @@ request = flask.request
 try:
     resources = get_aggregated_resources([GoogleCloudResourceDetector(raise_on_error=True)])
 
-    # set_global_textmap(CloudTraceFormatPropagator())
+    set_global_textmap(CloudTraceFormatPropagator())
 
     tracer_provider = TracerProvider(resource=resources)
     cloud_trace_exporter = CloudTraceSpanExporter()
@@ -73,19 +80,7 @@ try:
 except Exception:
     logger.error("Failed to attach instrumenter to flask app.")
 
-MODEL_PATH = Path("ml_files/testing_tflite")
-MODEL = None
-with open(MODEL_PATH / "int_to_oracle_id.json", "r") as map_file:
-    int_to_card = json.load(map_file)
-original_to_new_path = MODEL_PATH / "original_to_new_index.json"
-if original_to_new_path.exists():
-    with original_to_new_path.open("r") as fp:
-        original_to_new_index = json.load(fp)
-else:
-    logger.warn("No original_to_new_index.json file found.")
-    original_to_new_index = tuple(range(len(int_to_card) + 1))
-CARD_TO_INT = {v: k for k, v in enumerate(int_to_card)}
-INT_TO_CARD = int_to_card
+MODELS = {}
 AUTH_TOKENS = os.environ.get("MTGML_AUTH_TOKENS", "testing").split(";")
 AUTH_ENABLED = os.environ.get("MTGML_AUTH_ENABLED", "False") == "True"
 
@@ -102,12 +97,30 @@ def verify_request():
             return None
 
 
-def get_model():
-    global MODEL
-    if MODEL is None:
-        MODEL = tflite.Interpreter(model_path=str(MODEL_PATH / "combined_model.tflite"))
-        MODEL.allocate_tensors()
-    return MODEL
+def get_model_dict(name="prod"):
+    global INT_TO_CARD
+    global CARD_TO_INT
+    if name not in MODELS:
+        model_path = Path(f"ml_files/tflite")
+        model = tflite.Interpreter(model_path=str(model_path / f"{name}_model.tflite"))
+        model.allocate_tensors()
+        with open(model_path / f"{name}_int_to_oracle_id.json", "r") as map_file:
+            int_to_card = json.load(map_file)
+        card_to_int = {v: k for k, v in enumerate(int_to_card)}
+        original_to_new_path = model_path / f"{name}_original_to_new_index.json"
+        if original_to_new_path.exists():
+            with original_to_new_path.open("r") as fp:
+                original_to_new_index = json.load(fp)
+        else:
+            logger.warn("No original_to_new_index.json file found.")
+            original_to_new_index = tuple(range(len(int_to_card) + 1))
+        MODELS[name] = {
+            "model": model,
+            "original_to_new_index": original_to_new_index,
+            "int_to_card": int_to_card,
+            "card_to_int": card_to_int,
+        }
+    return MODELS[name]
 
 
 # This is a POST request since it needs to take in a cube object
@@ -120,15 +133,15 @@ def cube_recommendations():
         app.logger.error(error)
         return {"success": False, "error": error}, 400
     cube = json_data.get("cube")
-    model = get_model()
+    model_dict = get_model_dict("prod")
     results = get_cube_recomendations(
         cube=cube,
-        model=model,
-        card_to_int=CARD_TO_INT,
-        int_to_card=INT_TO_CARD,
+        model=model_dict["model"],
+        card_to_int=model_dict["card_to_int"],
+        int_to_card=model_dict["int_to_card"],
         tracer=tracer,
         num_recs=num_recs,
-        original_to_new_index=original_to_new_index,
+        original_to_new_index=model_dict["original_to_new_index"],
     )
     return results, 200
 
@@ -141,17 +154,22 @@ def draft_recommendations():
         error = "Must have a valid drafter state at the drafterState key in the json body."
         app.logger.error(error)
         return {"success": False, "error": error}, 400
+    name = request.args.get("model_type", "prod")
     drafter_state = json_data.get("drafterState")
-    model = get_model()
+    model_dict = get_model_dict(name)
     results = get_draft_scores(
-        drafter_state, model=model, card_to_int=CARD_TO_INT, tracer=tracer, original_to_new_index=original_to_new_index
+        drafter_state,
+        model=model_dict["model"],
+        card_to_int=model_dict["card_to_int"],
+        tracer=tracer,
+        original_to_new_index=model_dict["original_to_new_index"],
     )
     return results, 200
 
 
 @app.route("/version", methods=["GET"])
 def get_version():
-    return {"version": os.environ.get("MTGML_VERSION", "alpha"), "success": True}, 200
+    return {"version": os.environ.get("MTGML_VERSION", "development"), "success": True}, 200
 
 
 @app.after_request
@@ -161,8 +179,6 @@ def after_request(response):
     response.headers.add("Access-Control-Allow-Methods", "*")
     return response
 
-
-get_model()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, threaded=True)

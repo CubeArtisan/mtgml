@@ -129,7 +129,7 @@ def set_by_path(structure, path, value):
 
 
 set_debug(False)
-MODEL_PATH = Path("ml_files/latest")
+MODEL_PATH = Path(f"ml_files/train_{sys.argv[1]}")
 MODEL = None
 with open(MODEL_PATH / "int_to_card.json", "rb") as map_file:
     int_to_card = json.load(map_file)
@@ -198,9 +198,9 @@ def get_model():
     global MODEL
     if MODEL is None:
         tf.keras.utils.set_random_seed(1)
-        # tf.config.experimental.enable_op_determinism()
+        tf.config.experimental.enable_op_determinism()
         tf.config.optimizer.set_jit(True)
-        with open(MODEL_PATH / "hyper_config.yaml", "r") as config_file:
+        with (MODEL_PATH / "hyper_config.yaml").open("r") as config_file:
             data = yaml.load(config_file, yaml.Loader)
         hyper_config = HyperConfig(
             layer_type=CombinedModel,
@@ -228,18 +228,18 @@ if __name__ == "__main__":
     adj_mtx_batch_size = 1
     noise_mean = 0.5
     noise_std = 0.2
-    tflite_dir = Path("ml_files/testing_tflite")
+    tflite_dir = Path("ml_files/tflite")
     draftbot_train_generator = DraftbotGenerator("data/train_picks.bin", pick_batch_size, seed)
     with draftbot_train_generator:
         generator = CombinedGenerator(draftbot_train_generator)
         (pick_train_example,) = generator[0][0]
     pick_train_example = pick_train_example[:5]
     pick_train_example = (
-        pick_train_example[0],
-        pick_train_example[1][:, :3],
-        pick_train_example[2][:, :3],
-        pick_train_example[3][:, :3],
-        pick_train_example[4][:, :3],
+        np.zeros_like(pick_train_example[0]),
+        np.zeros_like(pick_train_example[1][:, :3]),
+        np.zeros_like(pick_train_example[2][:, :3]),
+        np.zeros_like(pick_train_example[3][:, :3]),
+        np.zeros_like(pick_train_example[4][:, :3]),
     )
     print(pick_train_example)
     example = (pick_train_example[:5],)
@@ -289,15 +289,15 @@ if __name__ == "__main__":
         tflite_model = converter.convert()
         print("Converted model.")
         tflite_dir.mkdir(exist_ok=True, parents=True)
-        with (tflite_dir / "combined_model.tflite").open("wb") as fp:
+        with (tflite_dir / f"{sys.argv[1]}_model.tflite").open("wb") as fp:
             fp.write(tflite_model)
-        with (tflite_dir / "int_to_oracle_id.json").open("w") as fp:
+        with (tflite_dir / f"{sys.argv[1]}_int_to_oracle_id.json").open("w") as fp:
             json.dump(INT_TO_CARD, fp)
-        with (tflite_dir / "original_to_new_index.json").open("w") as fp:
+        with (tflite_dir / f"{sys.argv[1]}_original_to_new_index.json").open("w") as fp:
             json.dump(original_to_new_index, fp)
-        tf.lite.experimental.Analyzer.analyze(model_content=tflite_model, gpu_compatibility=False)
+        # tf.lite.experimental.Analyzer.analyze(model_content=tflite_model, gpu_compatibility=False)
 
-        interpreter = tf.lite.Interpreter(model_path="ml_files/testing_tflite/combined_model.tflite")
+        interpreter = tf.lite.Interpreter(model_path=str(tflite_dir / f"{sys.argv[1]}_model.tflite"))
         interpreter.allocate_tensors()
         call_draftbots = interpreter.get_signature_runner("call_draftbots")
         basics, pool, seen, seen_coords, seen_coord_weights = pick_train_example
