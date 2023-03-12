@@ -40,7 +40,7 @@ repos:
     language_version: python3
     pass_filenames: false
     files: ^poetry.lock|requirements.txt$
-    args: [-f, requirements.txt, -o, requirements.txt, --with, dev]
+    args: [-f, requirements.txt, -o, requirements.txt]
 
   - id: poetry-export-serving
     name: Export Poetry Packages for Serving
