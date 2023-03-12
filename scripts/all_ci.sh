@@ -2,7 +2,8 @@
 
 set -e
 
-export SET_TYPES=("one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
+# export SET_TYPES=("one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
+export SET_TYPES=("dmu" "snc" "neo" "vow" "mid" "afr" "stx")
 
 for set in ${SET_TYPES[@]}
 do
