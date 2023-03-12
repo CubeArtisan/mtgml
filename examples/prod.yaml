@@ -211,7 +211,7 @@ DeckAdjMtxReconstructor: !hcv
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 64
+              value: 128
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
@@ -638,7 +638,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 256
+      value: 128
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
