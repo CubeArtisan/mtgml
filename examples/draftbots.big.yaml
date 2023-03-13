@@ -60,7 +60,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 64
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -109,10 +109,10 @@ DraftBots: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 8
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 8
+              value: 16
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
@@ -121,10 +121,10 @@ DraftBots: !hcv
               value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 64
+              value: 128
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 64
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -151,13 +151,13 @@ DraftBots: !hcv
               value: 16
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 128
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 16
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -223,7 +223,7 @@ DraftBots: !hcv
                   value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.09
+              value: 0.04
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.0
@@ -235,25 +235,25 @@ DraftBots: !hcv
               value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 8
+              value: 16
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 4
+              value: 5
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 64
+              value: 256
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 64
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 16
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -284,7 +284,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 128
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -305,7 +305,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 64
+          value: 256
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -346,7 +346,7 @@ DraftBots: !hcv
                   value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.04
+              value: 0.01
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.0
@@ -355,7 +355,7 @@ DraftBots: !hcv
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 8
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 8
@@ -367,16 +367,16 @@ DraftBots: !hcv
               value: 2
             output_dims: !hcv
               help: The number of output dimensions from this layer.
-              value: 32
+              value: 128
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 64
+              value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 4
+              value: 16
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -401,7 +401,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 64
+                  value: 256
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -422,7 +422,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 32
+          value: 128
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -457,7 +457,7 @@ DraftBots: !hcv
       value: true
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
-      value: 64
+      value: 128
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
       value: 0.004
@@ -466,7 +466,7 @@ EmbedCards: !hcv
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 64
+      value: 256
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
@@ -530,7 +530,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 48
+  value: 32
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
