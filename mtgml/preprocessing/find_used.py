@@ -159,21 +159,72 @@ if __name__ == "__main__":
         for seen_set in load_all_drafts(read_pool, sys.argv[1]):
             drafts += 1
             seen_indices += seen_set
-        print("drafts", drafts, "seen", len(seen_indices))
+        print(f"We saw {drafts} drafts")
         seen_indices_1 = seen_indices
+        start = 1
+        end = drafts * 15 * 24 // len(int_to_card)
+        cur = start / 2
+        interesting = [
+            1,
+            5,
+            10,
+            20,
+            25,
+            32,
+            50,
+            64,
+            80,
+            100,
+            128,
+            150,
+            200,
+            256,
+            300,
+            400,
+            512,
+            650,
+            800,
+            1000,
+            1250,
+            1500,
+            1800,
+            2048,
+            2500,
+            3000,
+            3600,
+            4096,
+            5000,
+            6000,
+        ]
+        for cur in interesting:
+            clipped_seen_indices = [k for k, v in seen_indices.items() if v >= cur]
+            num_remaining = len(clipped_seen_indices)
+            num_cut = len(int_to_card) - num_remaining
+            print(
+                f"Filtering all cards that show up in less than {cur / end: >8.3%}({cur: >5d}) of expected "
+                f" drafts(360 * |drafts| / |cards|) leaves {num_remaining: >5d}({num_remaining / len(int_to_card): >6.2%})"
+                f" cards cutting {num_cut: >5d}({num_cut / len(int_to_card): >6.2%})",
+            )
+        with open("data/maps/card_draft_counts.json", "w") as fp:
+            json.dump(seen_indices, fp)
         seen_indices = Counter()
         for seen_set in load_all_cubes(sys.argv[2]):
             seen_indices += seen_set
         for seen_set in load_all_cubes2(sys.argv[3]):
             seen_indices += seen_set
         seen_indices = seen_indices + seen_indices_1
-        for i in range(1, 256):
-            clipped_seen_indices = [k for k, v in seen_indices.items() if v >= i]
-            print(i, len(clipped_seen_indices))
-        seen_indices = [k for k, v in seen_indices.items() if v >= 100]
+        with open("data/maps/card_seen_counts.json", "w") as fp:
+            json.dump(seen_indices, fp)
+        seen_indices = [k for k, v in seen_indices.items() if v >= min(100, end // 100)]
         new_map = [0 for _ in int_to_card] + [0]
         for new_index, original_index in enumerate(sorted(seen_indices)):
             new_map[original_index] = new_index
         with open("data/maps/original_to_new_index.json", "w") as fp:
             json.dump(new_map, fp)
-        print("Reduced from", len(int_to_card) + 1, "cards to", max(new_map) + 1)
+        print(
+            "Reduced from",
+            len(int_to_card) + 1,
+            "cards to",
+            max(new_map) + 1,
+            "by cutting everything that shows up less than 0.25% of the expected rate.",
+        )
