@@ -657,7 +657,7 @@ adafactor_weight_decay: !hcv
   value: 1.0e-05
 adj_mtx_batch_size: !hcv
   help: The number of rows of the adjacency matrices to evaluate at a time.
-  value: 2
+  value: 32
 cube_adj_mtx_weight: !hcv
   help: The weight to multiply the cube adjacency matrix loss by.
   value: 0
@@ -672,7 +672,7 @@ cube_noise_std: !hcv
   value: 0.1
 deck_adj_mtx_weight: !hcv
   help: The weight to multiply the deck adjacency matrix loss by.
-  value: 1
+  value: 0
 draftbots_weight: !hcv
   help: The weight to multiply the draftbot loss by.
   value: 1

@@ -85,12 +85,12 @@ export TYPE=prod
 rm -rf ml_files/train_$TYPE
 mkdir -p ml_files/train_$TYPE
 echo $GITHUB_SHA > ml_files/train_$TYPE/git-commit
-cp examples/$TYPE.pre.yaml ml_files/train_$TYPE/hyper_config.yaml
+# cp examples/$TYPE.pre.yaml ml_files/train_$TYPE/hyper_config.yaml
 cp data/maps/original_to_new_index.json ml_files/train_$TYPE/original_to_new_index.json
-python -m mtgml.training.train_combined --name train_$TYPE --epochs 8 --seed 268459 || true
-cp ml_files/train_$TYPE/hyper_config.yaml ml_files/train_$TYPE/hyper_config.pre.yaml
+# python -m mtgml.training.train_combined --name train_$TYPE --epochs 8 --seed 268459 || true
+# cp ml_files/train_$TYPE/hyper_config.yaml ml_files/train_$TYPE/hyper_config.pre.yaml
 cp examples/$TYPE.yaml ml_files/train_$TYPE/hyper_config.yaml
-python -m mtgml.training.train_combined --name train_$TYPE --epochs 2 --seed 16809
+python -m mtgml.training.train_combined --name train_$TYPE --epochs 32 --seed 16809
 
 export REPOSITORY=ghcr.io/cubeartisan
 
