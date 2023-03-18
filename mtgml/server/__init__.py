@@ -34,7 +34,7 @@ request = flask.request
 try:
     resources = get_aggregated_resources([GoogleCloudResourceDetector(raise_on_error=True)])
 
-    set_global_textmap(CloudTraceFormatPropagator())
+    # set_global_textmap(CloudTraceFormatPropagator())
 
     tracer_provider = TracerProvider(resource=resources)
     cloud_trace_exporter = CloudTraceSpanExporter()
@@ -102,7 +102,7 @@ def get_model_dict(name="prod"):
     global CARD_TO_INT
     if name not in MODELS:
         model_path = Path(f"ml_files/tflite")
-        model = tflite.Interpreter(model_path=str(model_path / f"{name}_model.tflite"))
+        model = tflite.Interpreter(model_path=str(model_path / f"{name}_model.tflite"), num_threads=2)
         model.allocate_tensors()
         with open(model_path / f"{name}_int_to_oracle_id.json", "r") as map_file:
             int_to_card = json.load(map_file)
