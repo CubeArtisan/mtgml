@@ -94,6 +94,7 @@ def verify_request():
         if token is None or token not in AUTH_TOKENS:
             return {"success": False, "error": "Not authorized"}, 401
         else:
+            trace.get_current_span().set_attribute("authorized", True)
             return None
 
 
@@ -127,6 +128,7 @@ def get_model_dict(name="prod"):
 @app.route("/cube", methods=["POST"])
 def cube_recommendations():
     num_recs = int(request.args.get("num_recs", 100))
+    trace.get_current_span().set_attribute("num_recs", num_recs)
     json_data = request.get_json()
     if json_data is None or "cube" not in json_data:
         error = "Must have a valid cube at the cube key in the json body."
@@ -155,6 +157,7 @@ def draft_recommendations():
         app.logger.error(error)
         return {"success": False, "error": error}, 400
     name = request.args.get("model_type", "prod")
+    trace.get_current_span().set_attribute("model_name", name)
     drafter_state = json_data.get("drafterState")
     model_dict = get_model_dict(name)
     results = get_draft_scores(
