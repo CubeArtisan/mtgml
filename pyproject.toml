@@ -19,7 +19,9 @@ dynamic = ["version", "description"]
 classifiers = [
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
 ]
 
 [project.scripts]
@@ -49,19 +51,20 @@ description = ""
 authors = ["Devon Richards (ruler501) <admin@cubeartisan.net>"]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.11"
+python = ">=3.9,<3.12"
 jsonslicer = "^0.1.7"
 numpy = "^1.23.2"
 pybind11 = "^2.10.0"
 PyYAML = "^6.0"
 scikit-build = "^0.15.0"
 tqdm = "^4.64.0"
-tensorflow = { version = "^2.12.0rc0", allow-prereleases = true }
-tensorboard = { version = "^2.12.0", allow-prereleases = true }
-tensorflow-addons = { version = "^0.19.0", allow-prereleases = true }
+tensorflow = "^2.12.0"
+tensorboard = "^2.12.0"
+tensorflow-addons = "^0.20.0"
 pandas = "^1.5.3"
 pyarrow = "^11.0.0"
 zstandard = "^0.20.0"
+tensorflow-probability = "^0.20.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.8.0"
@@ -83,8 +86,6 @@ flake8-use-pathlib = "^0.3.0"
 flake8-warnings = "^0.2.1"
 pre-commit = "^2.20.0"
 tensor-annotations-tensorflow-stubs = "^1.0.0"
-hypertools = "^0.8.0"
-plotly = "^5.10.0"
 typing-extensions = "^4.5.0"
 
 [tool.poetry.group.serving.dependencies]
