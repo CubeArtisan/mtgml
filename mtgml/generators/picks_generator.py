@@ -6,16 +6,16 @@ import tensorflow as tf
 
 from mtgml.generators.utils import load_npy_to_tensor
 
-FIELDS = ('cards_in_pack', 'picked', 'seen', 'seen_coords', 'seen_coord_weights', 'coords',
-          'coord_weights', 'y_idx')
+FIELDS = ("cards_in_pack", "picked", "seen", "seen_coords", "seen_coord_weights", "coords", "coord_weights", "y_idx")
 
-__ALL__ = ('PickGenerator',)
+__ALL__ = ("PickGenerator",)
+
 
 class PickGenerator(tf.keras.utils.Sequence):
     def __init__(self, batch_size, folder, epochs_per_completion, skip_seen=False, seed=29):
-        with open(folder / 'counts.json') as count_file:
+        with open(folder / "counts.json") as count_file:
             counts = json.load(count_file)
-            self.context_count = counts['contexts']
+            self.context_count = counts["contexts"]
         self.batch_size = batch_size
         self.seed = seed
         self.rng = np.random.Generator(np.random.PCG64(self.seed))
@@ -26,7 +26,7 @@ class PickGenerator(tf.keras.utils.Sequence):
         self.on_epoch_end()
         self.fields = (*FIELDS[0:2], *FIELDS[5:]) if skip_seen else FIELDS
         for FIELD in self.fields:
-            setattr(self, FIELD, load_npy_to_tensor(folder/f'{FIELD}.npy.zstd'))
+            setattr(self, FIELD, load_npy_to_tensor(folder / f"{FIELD}.npy.zstd"))
 
     def reset_rng(self):
         self.rng = np.random.Generator(np.random.PCG64(self.seed))

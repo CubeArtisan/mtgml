@@ -5,7 +5,7 @@ import zstandard as zstd
 
 
 def load_npy_to_tensor(path):
-    with zstd.open(path, 'rb') as fh:
+    with zstd.open(path, "rb") as fh:
         filedata = io.BytesIO(fh.readall())
         pool_npy = np.load(filedata)
         del filedata

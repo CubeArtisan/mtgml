@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 from mtgml.constants import ACTIVATION_CHOICES
@@ -144,7 +145,12 @@ class BERT(ConfigurableLayer):
                 for i in range(num_hidden_dense)
             }
         )
-        return {
+        props = {
+            "use_position_embeds": hyper_config.get_bool(
+                "use_position_embeds",
+                default=None,
+                help="Whether to expect positions along with token indices that need to be embedded.",
+            ),
             "initial_dropout": hyper_config.get_sublayer(
                 "InitialDropout",
                 sub_layer_type=ExtendedDropout,
@@ -153,10 +159,11 @@ class BERT(ConfigurableLayer):
                 help="The dropout to apply to the tokens before any other operations.",
             ),
             "seq_length": input_shapes[1] if input_shapes is not None else 1,
+            # This should fix all the hyperparameters of the layer but is left for future proofing.
             "transform_initial_tokens": hyper_config.get_sublayer(
                 "TransformInitialTokens",
                 sub_layer_type=WDense,
-                fixed={"dims": original_token_dims, "use_bias": use_bias, "activation": "linear"},
+                fixed={"dims": original_token_dims, "use_bias": False, "activation": "linear"},
                 seed_mod=37,
                 help="The layer to upscale or downscale the token embeddings.",
             ),
@@ -178,9 +185,23 @@ class BERT(ConfigurableLayer):
             ),
             "supports_masking": True,
         }
+        if props["use_position_embeds"]:
+            props["num_positions"] = hyper_config.get_int(
+                "num_positions", default=None, min=1, max=None, help="The number of position embeddings to create."
+            )
+        return props
+
+    def build(self, input_shapes):
+        if self.use_position_embeds:
+            self.position_embeddings = self.add_weight(
+                "copy_embeddings", shape=(self.num_positions, self.card_embed_dims), traininable=True
+            )
 
     def call(self, inputs, mask=None, training=False):
-        token_embeds = inputs
+        if self.use_position_embeds:
+            token_embeds = inputs[0]
+        else:
+            token_embeds = inputs
         if mask is None:
             mask = tf.ones(tf.shape(token_embeds)[:-1], dtype=tf.bool)
         token_embeds, dropout_mask = self.initial_dropout(token_embeds, training=training, mask=mask)
@@ -189,6 +210,11 @@ class BERT(ConfigurableLayer):
         else:
             mask = dropout_mask
         token_embeds = self.transform_initial_tokens(token_embeds, training=training, mask=mask)
+        if self.use_position_embeds:
+            position_tokens = tf.gather(self.position_embeddings, inputs[1], name="position_tokens")
+            token_embeds = token_embeds + position_tokens / tf.constant(
+                np.sqrt(self.original_token_dims), dtype=self.compute_dtype
+            )
         embeddings = tf.expand_dims(tf.cast(mask, dtype=self.compute_dtype), -1) * token_embeds
         attention_mask = tf.logical_and(tf.expand_dims(mask, -1), tf.expand_dims(mask, -2), name="attention_mask")
         for layer in self.layers:

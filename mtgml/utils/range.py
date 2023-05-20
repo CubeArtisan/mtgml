@@ -7,7 +7,7 @@ class Range(object):
         return self.start <= other <= self.end
 
     def __str__(self):
-        return f'values in the inclusive range [{self.start}, {self.end}]'
+        return f"values in the inclusive range [{self.start}, {self.end}]"
 
     def __repr__(self):
         return str(self)

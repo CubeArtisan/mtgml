@@ -40,6 +40,16 @@ changelog_start_rev = "v1.0.0"
 
 [tool.black]
 line-length = 120
+target-version = ['py311']
+
+[tool.flake8]
+ignore = ["E203", "PL123", "U101", "W503"]
+max-line-length = 120
+max-complexity = 12
+inline-quotes = "double"
+known-modules = ":[mtgml]"
+application-names = "mtgml"
+max-expression-complexity = 8
 
 [tool.isort]
 profile = "black"
@@ -102,3 +112,14 @@ optional = true
 
 [tool.poetry.group.tflite.dependencies]
 tflite-runtime = "^2.11.0"
+
+[tool.pyright]
+venvPath = "./"
+venv = ".venv"
+exclude = ["**/__pycache__"]
+include = ["mtgml"]
+reportMissingImports = true
+reportMissingTypeStubs = true
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = true

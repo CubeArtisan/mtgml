@@ -7,6 +7,16 @@ def interpolate(pickNum, numPicks, packNum, numPacks):
     ceilpickIdx = min(14, floorpickIdx + 1)
     modpackIdx = fpackIdx - floorpackIdx
     modpickIdx = fpickIdx - floorpickIdx
-    coords = ((floorpackIdx, floorpickIdx), (floorpackIdx, ceilpickIdx), (ceilpackIdx, floorpickIdx), (ceilpackIdx, ceilpickIdx))
-    weights = ((1 - modpackIdx) * (1 - modpickIdx), (1 - modpackIdx) * modpickIdx, modpackIdx * (1 - modpickIdx), modpackIdx * modpickIdx)
+    coords = (
+        (floorpackIdx, floorpickIdx),
+        (floorpackIdx, ceilpickIdx),
+        (ceilpackIdx, floorpickIdx),
+        (ceilpackIdx, ceilpickIdx),
+    )
+    weights = (
+        (1 - modpackIdx) * (1 - modpickIdx),
+        (1 - modpackIdx) * modpickIdx,
+        modpackIdx * (1 - modpickIdx),
+        modpackIdx * modpickIdx,
+    )
     return coords, weights

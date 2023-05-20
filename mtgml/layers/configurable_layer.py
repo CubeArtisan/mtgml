@@ -14,12 +14,12 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
 
     def get_config(self):
         config = super(ConfigurableLayer, self).get_config()
-        config.update({ "hyper_config": self.hyper_config.get_config()})
+        config.update({"hyper_config": self.hyper_config.get_config()})
         return config
 
     @classmethod
     def from_config(cls, config):
-        config['hyper_config'] = HyperConfig(layer_type=cls, data=config['hyper_config'])
+        config["hyper_config"] = HyperConfig(layer_type=cls, data=config["hyper_config"])
         return cls(**config)
 
     def build(self, input_shapes):
@@ -29,6 +29,7 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
         for key, prop in properties.items():
             setattr(self, key, prop)
         self.built = True
+
 
 #     @abc.abstractmethod
 #     def generate_image(self):
