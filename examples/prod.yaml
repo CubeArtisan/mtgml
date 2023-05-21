@@ -55,6 +55,42 @@ CubeRecommender: !hcv
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
                   value: 0.0
+            Transformer_0: !hcv
+              help: The 0th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_1: !hcv
+              help: The 1th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_2: !hcv
+              help: The 2th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_3: !hcv
+              help: The 3th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_4: !hcv
+              help: The 4th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_5: !hcv
+              help: The 5th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.01
@@ -86,6 +122,10 @@ CubeRecommender: !hcv
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
+            use_position_embeds: !hcv
+              help: Whether to expect positions along with token indices that need
+                to be embedded.
+              value: null
             value_dims: !hcv
               help: Size of the attention head for value.
               value: 16
@@ -170,6 +210,88 @@ CubeRecommender: !hcv
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
       value: 0.001
+DeckBuilder: !hcv
+  help: The model for recommending how to build a deck out of a pool.
+  value: !hc
+    EmbedPool: !hcv
+      help: Allow the card embeddings to interact with each other and give final embeddings.
+      value: !hc
+        InitialDropout: !hcv
+          help: The dropout to apply to the tokens before any other operations.
+          value: !hc
+            blank_last_dim: !hcv
+              help: Apply dropout to the entire last dimension vs choosing for each
+                element of the last dimension.
+              value: false
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.0
+        Transformer_0: !hcv
+          help: The 0th transformer layer.
+          value: !hc
+            FinalMLP: !hcv
+              help: The final transformation.
+              value: !hc {}
+        Transformer_1: !hcv
+          help: The 1th transformer layer.
+          value: !hc
+            FinalMLP: !hcv
+              help: The final transformation.
+              value: !hc {}
+        Transformer_2: !hcv
+          help: The 2th transformer layer.
+          value: !hc
+            FinalMLP: !hcv
+              help: The final transformation.
+              value: !hc {}
+        attention dropout_rate: !hcv
+          help: The dropout rate for the attention layers of the transformer blocks.
+          value: 0.01
+        dense dropout_rate: !hcv
+          help: The dropout rate for the dense layers of the transformer blocks.
+          value: 0.0
+        dense_activation: !hcv
+          choices: !!python/tuple
+          - elu
+          - selu
+          - relu
+          - tanh
+          - sigmoid
+          - linear
+          - swish
+          help: The activation function on the output of the layer.
+          value: selu
+        key_dims: !hcv
+          help: Size of the attention head for query and key.
+          value: 32
+        num_heads: !hcv
+          help: The number of separate heads of attention to use.
+          value: 16
+        num_hidden_dense: !hcv
+          help: The number of hidden dense layers
+          value: 0
+        num_hidden_layers: !hcv
+          help: Number of transformer blocks.
+          value: 5
+        output_dims: !hcv
+          help: The number of output dimensions from this layer.
+          value: 128
+        use_bias: !hcv
+          help: Use bias in the dense layers
+          value: true
+        value_dims: !hcv
+          help: Size of the attention head for value.
+          value: 8
+    InclusionProb: !hcv
+      help: The layer to convert the final embeddings of the cards to probabilities
+        of inclusion.
+      value: !hc
+        use_bias: !hcv
+          help: Whether to use bias on the output.
+          value: true
+    embed_dims: !hcv
+      help: The number of dimensions for the tokens passed through the attenion layers.
+      value: 256
 DraftBots: !hcv
   help: The model for the draftbots
   value: !hc
@@ -261,6 +383,24 @@ DraftBots: !hcv
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
                   value: 0.0
+            Transformer_0: !hcv
+              help: The 0th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_1: !hcv
+              help: The 1th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_2: !hcv
+              help: The 2th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.09
@@ -292,6 +432,10 @@ DraftBots: !hcv
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
+            use_position_embeds: !hcv
+              help: Whether to expect positions along with token indices that need
+                to be embedded.
+              value: null
             value_dims: !hcv
               help: Size of the attention head for value.
               value: 8
@@ -330,9 +474,16 @@ DraftBots: !hcv
       help: The embedding for the position in the draft
       value: !hc
         activation: !hcv
-          choices: *id002
+          choices: []
           help: The activation to apply before combining the weights.
           value: linear
+    PoolDenseDropout: !hcv
+      help: The layer that drops out part of the card embeddings for the cards in
+        the pool.
+      value: !hc
+        return_mask: !hcv
+          help: Whether to return both the output and the mask for the noise.
+          value: false
     RatingFromPool: !hcv
       help: The layer that rates based on the other cards that have been picked.
       value: !hc
@@ -348,13 +499,43 @@ DraftBots: !hcv
                   value: true
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
-                  value: 0.00
+                  value: 0.0
+            Transformer_0: !hcv
+              help: The 0th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_1: !hcv
+              help: The 1th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_2: !hcv
+              help: The 2th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_3: !hcv
+              help: The 3th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_4: !hcv
+              help: The 4th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.04
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.00
+              value: 0.0
             dense_activation: !hcv
               choices: *id001
               help: The activation function on the output of the layer.
@@ -380,6 +561,10 @@ DraftBots: !hcv
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
+            use_position_embeds: !hcv
+              help: Whether to expect positions along with token indices that need
+                to be embedded.
+              value: null
             value_dims: !hcv
               help: Size of the attention head for value.
               value: 16
@@ -457,6 +642,24 @@ DraftBots: !hcv
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
                   value: 0.0
+            Transformer_0: !hcv
+              help: The 0th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_1: !hcv
+              help: The 1th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
+            Transformer_2: !hcv
+              help: The 2th transformer layer.
+              value: !hc
+                FinalMLP: !hcv
+                  help: The final transformation.
+                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.04
@@ -488,6 +691,10 @@ DraftBots: !hcv
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
+            use_position_embeds: !hcv
+              help: Whether to expect positions along with token indices that need
+                to be embedded.
+              value: null
             value_dims: !hcv
               help: Size of the attention head for value.
               value: 8
@@ -562,14 +769,15 @@ DraftBots: !hcv
         pool so far.
       value: true
     pool_embed_dropout_rate: !hcv
-      help: The percent of enetries of the card embeddings for the pool that should be dropped out.
+      help: The percent of enetries of the card embeddings for the pool that should
+        be dropped out.
       value: 0.0
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
-      value: 1.0e-03
+      value: 0.001
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
-      value: 1.0e-04
+      value: 0.0001
     score_variance_weight: !hcv
       help: The weight given to the variance of the combined scores.
       value: 0.0
@@ -581,7 +789,7 @@ DraftBots: !hcv
       value: 64
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
-      value: 1.0e-02
+      value: 0.01
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -622,6 +830,12 @@ cube_noise_std: !hcv
 deck_adj_mtx_weight: !hcv
   help: The weight to multiply the deck adjacency matrix loss by.
   value: 0
+deck_batch_size: !hcv
+  help: The number of decks to evaluate at a time
+  value: 4
+deck_builder_weight: !hcv
+  help: The weight to multiply the deck builder loss by.
+  value: 1
 draftbots_weight: !hcv
   help: The weight to multiply the draftbot loss by.
   value: 1

@@ -102,6 +102,8 @@ def load_all_decks(deck_dirs):
                                     for card in pool:
                                         copy_counts.append(pool_counter[card])
                                         pool_counter[card] += 1
+                                    if max(pool_counter.values()) >= MAX_COPIES:
+                                        continue
                                     indices = {card: i for i, card in list(enumerate(pool))[::-1]}
                                     target = [0 for _ in pool]
                                     for card in main:
@@ -153,16 +155,12 @@ def load_all_old_decks(deck_dirs):
                                     max_to_add = MAX_COPIES - pool_counter.get(basic, 0)
                                     if max_to_add < 0:
                                         break
-                                    pool += [
-                                        basic
-                                        for _ in range(
-                                            min(
-                                                max_to_add,
-                                                (i + 1) * remaining_space // num_basics
-                                                - i * remaining_space // num_basics,
-                                            )
-                                        )
-                                    ]
+                                    to_add = min(
+                                        max_to_add,
+                                        (i + 1) * remaining_space // num_basics - i * remaining_space // num_basics,
+                                    )
+                                    pool += [basic for _ in range(to_add)]
+                                    pool_counter[basic] += to_add
                                 if max_to_add >= 0:
                                     pool = sorted(pool)
                                     pool_counter = defaultdict(int)
@@ -170,6 +168,8 @@ def load_all_old_decks(deck_dirs):
                                     for card in pool:
                                         copy_counts.append(pool_counter[card])
                                         pool_counter[card] += 1
+                                    if max(pool_counter.values()) > MAX_COPIES:
+                                        continue
                                     indices = {card: i for i, card in list(enumerate(pool))[::-1]}
                                     target = [0 for _ in pool]
                                     for card in main:

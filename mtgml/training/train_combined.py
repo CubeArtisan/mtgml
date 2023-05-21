@@ -11,7 +11,8 @@ from pathlib import Path
 import tensorflow as tf
 import tensorflow_addons as tfa
 import yaml
-from mtgml_native.generators.adj_mtx_generator import PickAdjMtxGenerator
+
+# from mtgml_native.generators.adj_mtx_generator import PickAdjMtxGenerator
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 
@@ -157,8 +158,6 @@ if __name__ == "__main__":
     noise_std = hyper_config.get_float(
         "cube_noise_std", min=0, max=1, default=0.15, help="The median of the noise distribution for cubes."
     )
-    print(pick_batch_size, type(pick_batch_size))
-    print(args.seed, type(args.seed))
     draftbot_train_generator = DraftbotGenerator("data/train_picks.bin", pick_batch_size, args.seed)
     draftbot_validation_generator = DraftbotGenerator("data/validation_picks.bin", pick_batch_size, args.seed * 31)
     recommender_train_generator = RecommenderGenerator(
@@ -171,18 +170,22 @@ if __name__ == "__main__":
     deck_validation_generator = DeckGenerator("data/validation_decks.bin", deck_batch_size, args.seed * 37)
     # deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     # deck_adj_mtx_generator.on_epoch_end()
-    deck_adj_mtx_generator = PickAdjMtxGenerator(
-        "data/train_picks.bin", num_cards - 1, adj_mtx_batch_size, args.seed * 29
-    )
-    deck_adj_mtx_generator.on_epoch_end()
-    cube_adj_mtx_generator = PickAdjMtxGenerator(
-        "data/train_picks.bin", num_cards - 1, 8 * adj_mtx_batch_size, args.seed * 23
-    )
-    cube_adj_mtx_generator.on_epoch_end()
+    deck_adj_mtx_generator = deck_validation_generator
+    # deck_adj_mtx_generator = PickAdjMtxGenerator(
+    #     "data/train_picks.bin", num_cards - 1, adj_mtx_batch_size, args.seed * 29
+    # )
+    # deck_adj_mtx_generator.on_epoch_end()
+    # cube_adj_mtx_generator = PickAdjMtxGenerator(
+    #     "data/train_picks.bin", num_cards - 1, 8 * adj_mtx_batch_size, args.seed * 23
+    # )
+    # cube_adj_mtx_generator.on_epoch_end()
+    cube_adj_mtx_generator = deck_validation_generator
     print(f"There are {len(draftbot_train_generator)} training pick batches")
     print(f"There are {len(draftbot_validation_generator)} validation pick batches")
     print(f"There are {len(recommender_train_generator)} training recommender batches")
     print(f"There are {len(recommender_validation_generator)} validation recommender batches")
+    print(f"There are {len(deck_train_generator)} training deck batches")
+    print(f"There are {len(deck_validation_generator)} validation deck batches")
     print(f"There are {len(deck_adj_mtx_generator)} adjacency matrix batches")
     print(f"There are {len(cube_adj_mtx_generator)} validation adjacency matrix batches")
     logging.info(f"There are {num_cards:n} cards being trained on.")

@@ -5,6 +5,7 @@ import logging
 import random
 import struct
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 from jsonslicer import JsonSlicer
@@ -16,6 +17,8 @@ locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
 
 with open("data/maps/int_to_card.json") as fp:
     int_to_card = json.load(fp)
+with open("data/maps/card_to_int.json") as fp:
+    card_to_int = json.load(fp)
 name_to_int = {card["name_lower"]: i for i, card in enumerate(int_to_card)}
 original_to_new_path = Path("data/maps/original_to_new_index.json")
 if original_to_new_path.exists():
@@ -24,6 +27,16 @@ if original_to_new_path.exists():
 else:
     original_to_new_index = tuple(range(len(int_to_card) + 1))
 max_index = max(original_to_new_index)
+cobra_path = Path("data/CubeCobra/indexToOracleMap.json")
+if cobra_path.exists():
+    with cobra_path.open() as fp:
+        cobra_int_to_oracle = json.load(fp)
+    cobra_to_new_index = [
+        original_to_new_index[card_to_int.get(cobra_int_to_oracle[str(i)], -1) + 1]
+        for i in range(max([int(x) for x in cobra_int_to_oracle.keys()]) + 1)
+    ]
+else:
+    cobra_to_new_index = defaultdict(lambda: -1)
 
 
 def pad(arr, desired_length, value=0):
@@ -87,8 +100,8 @@ def load_all_cubes2(cube_dirs):
                     smoothing=0.001,
                     initial=num_cubes,
                 ):
-                    if MAX_CUBE_SIZE >= len(cube) >= 120 and all(x in name_to_int for x in cube):
-                        cards = tuple(original_to_new_index[name_to_int[x] + 1] for x in cube)
+                    if MAX_CUBE_SIZE >= len(cube) >= 120 and all(len(cobra_to_new_index) > x >= 0 for x in cube):
+                        cards = tuple(cobra_to_new_index[x] for x in cube)
                         if all(max_index >= x > 0 for x in cards):
                             num_cubes += 1
                             rand_val = random.randint(0, 9)

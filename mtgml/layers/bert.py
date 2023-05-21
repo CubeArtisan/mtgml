@@ -167,6 +167,7 @@ class BERT(ConfigurableLayer):
                 seed_mod=37,
                 help="The layer to upscale or downscale the token embeddings.",
             ),
+            "stream_dims": original_token_dims,
             "layers": tuple(
                 hyper_config.get_sublayer(
                     f"Transformer_{i}",
@@ -192,9 +193,10 @@ class BERT(ConfigurableLayer):
         return props
 
     def build(self, input_shapes):
+        super().build(input_shapes)
         if self.use_position_embeds:
             self.position_embeddings = self.add_weight(
-                "copy_embeddings", shape=(self.num_positions, self.card_embed_dims), traininable=True
+                "copy_embeddings", shape=(self.num_positions + 1, self.stream_dims), trainable=True
             )
 
     def call(self, inputs, mask=None, training=False):
@@ -213,7 +215,7 @@ class BERT(ConfigurableLayer):
         if self.use_position_embeds:
             position_tokens = tf.gather(self.position_embeddings, inputs[1], name="position_tokens")
             token_embeds = token_embeds + position_tokens / tf.constant(
-                np.sqrt(self.original_token_dims), dtype=self.compute_dtype
+                np.sqrt(self.stream_dims), dtype=self.compute_dtype
             )
         embeddings = tf.expand_dims(tf.cast(mask, dtype=self.compute_dtype), -1) * token_embeds
         attention_mask = tf.logical_and(tf.expand_dims(mask, -1), tf.expand_dims(mask, -2), name="attention_mask")

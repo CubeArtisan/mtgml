@@ -47,8 +47,6 @@ class ExtendedDropout(ConfigurableLayer):
         if self.noise_shape is None:
             return None
         concrete_inputs_shape = tf.shape(inputs)
-        if not tf.executing_eagerly():
-            print("noise_shape", inputs.name, self.noise_shape)
         noise_shape = [concrete_inputs_shape[i] if value is None else value for i, value in enumerate(self.noise_shape)]
         return noise_shape
         # return tf.convert_to_tensor(noise_shape, name="noise_shape")

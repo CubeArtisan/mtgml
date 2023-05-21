@@ -1,7 +1,9 @@
+import math
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from mtgml.constants import EPSILON, MAX_COPIES, is_debug
+from mtgml.constants import EPSILON, MAX_COPIES, MAX_DECK_SIZE, is_debug
 from mtgml.layers.bert import BERT
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.wrapped import WDense
@@ -9,7 +11,7 @@ from mtgml.layers.wrapped import WDense
 
 @tf.function
 def scan_probs(acc, xs):
-    return tf.where(xs[1], acc[0], tf.ones_like(acc[0]), name="propagating_prob") * xs[0]
+    return (tf.where(xs[1], acc[0], tf.ones_like(acc[0]), name="propagating_prob") * xs[0], tf.zeros_like(xs[1]))
 
 
 class DeckBuilder(ConfigurableLayer, tf.keras.Model):
@@ -39,6 +41,7 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                     "token_stream_dims": card_embed_dims,
                     "use_causal_mask": False,
                     "use_position_embeds": True,
+                    "num_positions": MAX_COPIES,
                 },
                 help="Allow the card embeddings to interact with each other and give final embeddings.",
             ),
@@ -61,8 +64,8 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
         }
 
     def call(self, inputs, training=None):
-        pool_cards = tf.cast(inputs[0], dtype=tf.int32, name="pool_cards")
-        instance_nums = tf.cast(inputs[1], dtype=tf.int32, name="instance_counts")
+        pool_cards = tf.reshape(tf.cast(inputs[0], dtype=tf.int32, name="pool_cards"), (-1, MAX_DECK_SIZE))
+        instance_nums = tf.reshape(tf.cast(inputs[1], dtype=tf.int32, name="instance_counts"), (-1, MAX_DECK_SIZE))
         card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name="card_embeddings")
         pool_card_embeddings = tf.gather(card_embeddings, pool_cards, name="pool_card_embeddings")
         pool_mask = pool_cards > 0
@@ -72,22 +75,28 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
         inclusion_probs = tf.squeeze(
             self.get_inclusion_prob(pool_final_embeddings, training=training, mask=pool_mask), axis=-1
         )
-        standardized_inclusion_probs = tfp.math.scan_associative(
-            scan_probs,
-            elems=(inclusion_probs, instance_nums > 0),
-            axis=1,
-            max_num_levels=10,
-            name="standardized_inclusion_probs",
+        pool_mask_float = tf.cast(pool_mask, dtype=self.compute_dtype)
+        standardized_inclusion_probs = (
+            tfp.math.scan_associative(
+                scan_probs,
+                elems=(inclusion_probs, instance_nums > 0),
+                axis=1,
+                max_num_levels=math.ceil(math.log2(MAX_DECK_SIZE + 1)),
+                name="standardized_inclusion_probs",
+            )[0]
+            * pool_mask_float
         )
         if len(inputs) == 4:
-            true_deck = tf.cast(inputs[3], dtype=self.compute_dtype, name="true_deck")
-            deck_losses = tf.keras.losses.binary_crossentropy(
-                tf.expand_dims(true_deck, -1),
-                tf.constant(1 - 2 * EPSILON, dtype=self.compute_dtype)
-                * tf.expand_dims(standardized_inclusion_probs, -1)
-                + tf.constant(EPSILON, dtype=self.compute_dtype),
+            true_deck = tf.reshape(tf.cast(inputs[3], dtype=self.compute_dtype, name="true_deck"), (-1, MAX_DECK_SIZE))
+            probs = tf.constant(1 - 2 * EPSILON, dtype=self.compute_dtype) * standardized_inclusion_probs + tf.constant(
+                EPSILON, dtype=self.compute_dtype
             )
-            deck_losses = tf.reduce_sum(deck_losses, axis=-1, name="deck_losses")
+            deck_losses = (
+                -(true_deck * tf.math.log(probs) + (1.0 - true_deck) * tf.math.log(1.0 - probs)) * pool_mask_float
+            )
+            deck_losses = tf.reduce_sum(deck_losses, axis=-1, name="deck_losses") / tf.math.reduce_sum(
+                tf.cast(pool_mask, dtype=tf.float32), axis=-1, name="card_counts"
+            )
             deck_loss = tf.math.reduce_mean(deck_losses)
             loss = deck_loss
             self.add_metric(deck_losses, "deck_loss")

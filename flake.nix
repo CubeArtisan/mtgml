@@ -12,7 +12,7 @@
           inherit system;
           config.allowUnfree = true;
         };
-        pythonPackages = pkgs.python311Packages;
+        pythonPackages = pkgs.python310Packages;
       in
         {
           devShell = pkgs.mkShell {
@@ -58,7 +58,7 @@
               export TF_XLA_FLAGS="--tf_xla_cpu_global_jit --tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
               export TF_GPU_THREAD_MODE=gpu_private
 
-              poetry env use 3.11
+              poetry env use 3.10
               export VENV_DIR=$(poetry env info --path)
               source $VENV_DIR/bin/activate
               poetry install --sync
