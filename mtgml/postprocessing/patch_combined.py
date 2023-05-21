@@ -240,12 +240,14 @@ if __name__ == "__main__":
         generator = CombinedGenerator(
             draftbot_train_generator, recommender_train_generator, deck_adj_mtx_generator, deck_adj_mtx_generator
         )
-        pick_train_example, cube_train_example, *rest = generator[0][0]
+        pick_train_example, cube_train_example, deck_train_example, *rest = generator[0][0]
         pick_train_example = tuple(np.zeros_like(t) for t in pick_train_example[:5])
         cube_train_example = (np.zeros_like(cube_train_example[0]),)
+        deck_train_example = tuple(np.zeros_like(t) for t in deck_train_example[:2])
     example = (
         *pick_train_example,
         *cube_train_example,
+        *deck_train_example,
         *[np.zeros_like(t) for t in rest[0]],
         *[np.zeros_like(t) for t in rest[1]],
     )
@@ -255,12 +257,14 @@ if __name__ == "__main__":
     model(example, training=False)
     model.call_draftbots(*pick_train_example)
     model.call_recommender(cube_train_example[0].astype(np.int16))
+    model.call_deck_builder(*deck_train_example)
     tf.saved_model.save(
         tf.keras.Model(),
         "data/draftbots_tflite_full",
         signatures={
             "call_draftbots": model.call_draftbots.get_concrete_function(),
             "call_recommender": model.call_recommender.get_concrete_function(),
+            "call_deck_builder": model.call_deck_builder.get_concrete_function(),
         },
     )
 
@@ -275,6 +279,7 @@ if __name__ == "__main__":
                 ),
             )
             yield ("call_recommender", {"cube": example[1][0].astype(np.int16)})
+            yield ("call_deck_builder", {"pool": example[2][0], "instance_nums": example[2][1]})
 
     converter = tf.lite.TFLiteConverter.from_saved_model("data/draftbots_tflite_full")
     converter.target_spec.supported_ops = [
@@ -315,3 +320,6 @@ if __name__ == "__main__":
         call_recommender = interpreter.get_signature_runner("call_recommender")
         cube = cube_train_example[0]
         recommender_result = call_recommender(cube=cube.astype(np.int16))
+        call_deck_builder = interpreter.get_signature_runner("call_deck_builder")
+        pool, instance_nums = deck_train_example
+        deck_builder_result = call_deck_builder(pool=pool, instance_nums=instance_nums)

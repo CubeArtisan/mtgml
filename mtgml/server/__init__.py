@@ -26,6 +26,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from mtgml.server.cube_recommender import get_cube_recomendations
+from mtgml.server.deck_builder import get_deck_scores
 from mtgml.server.draftbots import get_draft_scores
 
 Flask = flask.Flask
@@ -164,6 +165,29 @@ def draft_recommendations():
         drafter_state,
         model=model_dict["model"],
         card_to_int=model_dict["card_to_int"],
+        tracer=tracer,
+        original_to_new_index=model_dict["original_to_new_index"],
+    )
+    return results, 200
+
+
+# This is a POST request since it needs to take in a pool object
+@app.route("/deck", methods=["POST"])
+def deck_building_recommendations():
+    json_data = request.get_json()
+    if json_data is None or "deckState" not in json_data:
+        error = "Must have a valid drafter state at the drafterState key in the json body."
+        app.logger.error(error)
+        return {"success": False, "error": error}, 400
+    name = request.args.get("model_type", "prod")
+    trace.get_current_span().set_attribute("model_name", name)
+    deck_state = json_data.get("deckState")
+    model_dict = get_model_dict(name)
+    results = get_deck_scores(
+        deck_state,
+        model=model_dict["model"],
+        card_to_int=model_dict["card_to_int"],
+        int_to_card=model_dict["int_to_card"],
         tracer=tracer,
         original_to_new_index=model_dict["original_to_new_index"],
     )

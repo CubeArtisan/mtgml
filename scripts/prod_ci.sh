@@ -32,16 +32,15 @@ require_clean_work_tree () {
 
 require_clean_work_tree
 
-mkdir -p data/CubeCobra/drafts data/CubeCobra/decks data/CubeCobra/cubes data/maps
+mkdir -p data/CubeCobra/drafts data/CubeCobra/decks data/CubeCobra/cubes data/CubeCobra/picks data/maps
 cd data
 rm -rf maps/int_to_card.json maps/card_to_int.json
 
 if aws s3 ls s3://cubecobra/ > /dev/null; then
-  mkdir -p CubeCobra
-  # aws s3 sync s3://cubecobra/deck_exports CubeCobra/decks
-  aws s3 sync s3://cubecobra/cube_exports CubeCobra/cubes
-  # parallel sed "'s/[$#]:\"/\":\"/g'" -i {} ::: CubeCobra/decks/*.json
-  # parallel sed "'s/\`/\"/g'" -i {} ::: CubeCobra/decks/*.json
+  aws s3 sync s3://cubecobra/decks CubeCobra/decks
+  aws s3 sync s3://cubecobra/picks CubeCobra/picks
+  aws s3 cp s3://cubecobra/cubes.json CubeCobra/cubes/cubes.json
+  aws s3 cp s3://cubecobra/indexToOracleMap.json CubeCobra/indexToOracleMap.json
 else
   echo "You don't have access to the CubeCobra aws bucket. Talk to Dekkaru to get access." 1>2
 fi
@@ -67,11 +66,11 @@ cp $DATE/card_to_int.json maps/card_to_int.json
 
 cd ..
 python -m mtgml.preprocessing.find_used data/$DATE/drafts\;data/$DATE/draftlogs\;data/17lands/complete data/$DATE/cubes data/CubeCobra/cubes
-# if [[ -d data/CubeCobra/decks ]]; then
-#     python -m mtgml.preprocessing.load_decks data/$DATE/decks data/CubeCobra/decks
-# else
-#     python -m mtgml.preprocessing.load_decks data/$DATE/decks
-# fi
+if [[ -d data/CubeCobra/decks ]]; then
+    python -m mtgml.preprocessing.load_decks data/$DATE/decks data/CubeCobra/decks
+else
+    python -m mtgml.preprocessing.load_decks data/$DATE/decks
+fi
 if [[ -d data/CubeCobra/cubes ]]; then
     python -m mtgml.preprocessing.load_cubes data/$DATE/cubes data/CubeCobra/cubes
 else
