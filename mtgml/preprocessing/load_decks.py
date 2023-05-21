@@ -5,25 +5,34 @@ import logging
 import random
 import struct
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from jsonslicer import JsonSlicer
 from tqdm.auto import tqdm
 
-from mtgml.constants import MAX_DECK_SIZE, MAX_SIDEBOARD_SIZE
+from mtgml.constants import MAX_COPIES, MAX_DECK_SIZE
 
 locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
 
 with open("data/maps/card_to_int.json") as fp:
     card_to_int = json.load(fp)
-with open("data/maps/id_to_oracle.json") as fp:
-    id_to_oracle = json.load(fp)
 original_to_new_path = Path("data/maps/original_to_new_index.json")
 if original_to_new_path.exists():
     with original_to_new_path.open("r") as fp:
         original_to_new_index = json.load(fp)
 else:
     original_to_new_index = tuple(range(len(card_to_int) + 1))
+cobra_path = Path("data/CubeCobra/indexToOracleMap.json")
+if cobra_path.exists():
+    with cobra_path.open() as fp:
+        cobra_int_to_oracle = json.load(fp)
+    cobra_to_new_index = [
+        original_to_new_index[card_to_int.get(cobra_int_to_oracle[str(i)], -1) + 1]
+        for i in range(max([int(x) for x in cobra_int_to_oracle.keys()]) + 1)
+    ]
+else:
+    cobra_to_new_index = defaultdict(lambda: -1)
 
 
 def pad(arr, desired_length, value=0):
@@ -57,18 +66,49 @@ def load_all_decks(deck_dirs):
                         initial=num_decks,
                     ):
                         if (
-                            MAX_DECK_SIZE >= len(deck["main"]) >= 20
+                            len(deck["main"]) == 40
                             and all(isinstance(x, int) for x in deck["main"])
-                            and MAX_SIDEBOARD_SIZE >= len(deck["side"]) > 0
+                            and len(deck["side"]) > 0
+                            and len(deck["main"]) + len(deck["side"]) <= MAX_DECK_SIZE
                             and all(isinstance(x, int) for x in deck["side"])
                         ):
                             rand_val = random.randint(0, 9)
                             dest = DESTS[rand_val]
-                            main = tuple(original_to_new_index[x + 1] for x in deck["main"][:MAX_DECK_SIZE])
-                            side = tuple(original_to_new_index[x + 1] for x in deck["side"][:MAX_SIDEBOARD_SIZE])
-                            if all(x > 0 for x in main) and all(x > 0 for x in side):
-                                num_decks += 1
-                                yield (dest, (main, side))
+                            main = [original_to_new_index[x + 1] for x in deck["main"]]
+                            side = [original_to_new_index[x + 1] for x in deck["side"]]
+                            pool = main + side
+                            if all(x > 0 for x in pool):
+                                pool_counter = Counter(pool)
+                                remaining_space = MAX_DECK_SIZE - len(pool)
+                                num_basics = len(deck["basics"])
+                                max_to_add = 0
+                                for i, basic in enumerate([original_to_new_index[x + 1] for x in deck["basics"]]):
+                                    max_to_add = MAX_COPIES - pool_counter.get(basic, 0)
+                                    if max_to_add < 0:
+                                        break
+                                    pool += [
+                                        basic
+                                        for _ in range(
+                                            min(
+                                                max_to_add,
+                                                (i + 1) * remaining_space // num_basics,
+                                            )
+                                        )
+                                    ]
+                                if max_to_add >= 0:
+                                    pool = sorted(pool)
+                                    pool_counter = defaultdict(int)
+                                    copy_counts = []
+                                    for card in pool:
+                                        copy_counts.append(pool_counter[card])
+                                        pool_counter[card] += 1
+                                    indices = {card: i for i, card in list(enumerate(pool))[::-1]}
+                                    target = [0 for _ in pool]
+                                    for card in main:
+                                        target[indices[card]] = 1
+                                        indices[card] += 1
+                                    num_decks += 1
+                                    yield (dest, (pool, copy_counts, target))
             except:
                 logging.exception(f"Error in file {decks_file}")
     print(f"Total decks {num_decks:n}")
@@ -93,37 +133,60 @@ def load_all_old_decks(deck_dirs):
                         initial=num_decks,
                     ):
                         if (
-                            not isinstance(deck, str)
-                            and MAX_DECK_SIZE >= len(deck["main"]) >= 20
-                            and all(x in id_to_oracle for x in deck["main"])
-                            and all(id_to_oracle[x] in card_to_int for x in deck["main"])
-                            and MAX_SIDEBOARD_SIZE >= len(deck["side"]) > 0
-                            and all(x in id_to_oracle for x in deck["side"])
-                            and all(id_to_oracle[x] in card_to_int for x in deck["side"])
+                            len(deck["mainboard"]) == 40
+                            and all(isinstance(x, int) for x in deck["mainboard"])
+                            and len(deck["sideboard"]) > 0
+                            and len(deck["mainboard"]) + len(deck["sideboard"]) <= MAX_DECK_SIZE
+                            and all(isinstance(x, int) for x in deck["sideboard"])
                         ):
                             rand_val = random.randint(0, 9)
                             dest = DESTS[rand_val]
-                            main = tuple(
-                                original_to_new_index[card_to_int[id_to_oracle[x]] + 1]
-                                for x in deck["main"][:MAX_DECK_SIZE]
-                            )
-                            side = tuple(
-                                original_to_new_index[card_to_int[id_to_oracle[x]] + 1]
-                                for x in deck["side"][:MAX_SIDEBOARD_SIZE]
-                            )
-                            if all(x > 0 for x in main) and all(x > 0 for x in side):
-                                num_decks += 1
-                                yield (dest, (main, side))
+                            main = [cobra_to_new_index[x] for x in deck["mainboard"]]
+                            side = [cobra_to_new_index[x] for x in deck["sideboard"]]
+                            pool = main + side
+                            if all(x > 0 for x in pool):
+                                pool_counter = Counter(pool)
+                                remaining_space = MAX_DECK_SIZE - len(pool)
+                                num_basics = len(deck["basics"])
+                                max_to_add = 0
+                                for i, basic in enumerate([cobra_to_new_index[x] for x in deck["basics"]]):
+                                    max_to_add = MAX_COPIES - pool_counter.get(basic, 0)
+                                    if max_to_add < 0:
+                                        break
+                                    pool += [
+                                        basic
+                                        for _ in range(
+                                            min(
+                                                max_to_add,
+                                                (i + 1) * remaining_space // num_basics
+                                                - i * remaining_space // num_basics,
+                                            )
+                                        )
+                                    ]
+                                if max_to_add >= 0:
+                                    pool = sorted(pool)
+                                    pool_counter = defaultdict(int)
+                                    copy_counts = []
+                                    for card in pool:
+                                        copy_counts.append(pool_counter[card])
+                                        pool_counter[card] += 1
+                                    indices = {card: i for i, card in list(enumerate(pool))[::-1]}
+                                    target = [0 for _ in pool]
+                                    for card in main:
+                                        target[indices[card]] = 1
+                                        indices[card] += 1
+                                    num_decks += 1
+                                    yield (dest, (pool, copy_counts, target))
             except:
                 logging.exception(f"Error in file {decks_file}")
     print(f"Total decks {num_decks:n}")
 
 
-PREFIX = struct.Struct(f"{MAX_DECK_SIZE}H{MAX_SIDEBOARD_SIZE}H")
+PREFIX = struct.Struct(f"{MAX_DECK_SIZE}H{MAX_DECK_SIZE}H{MAX_DECK_SIZE}H")
 
 
 def write_deck(deck, output_file):
-    prefix = PREFIX.pack(*pad(deck[0], MAX_DECK_SIZE), *pad(deck[1], MAX_SIDEBOARD_SIZE))
+    prefix = PREFIX.pack(*pad(deck[0], MAX_DECK_SIZE), *pad(deck[1], MAX_DECK_SIZE), *pad(deck[2], MAX_DECK_SIZE))
     output_file.write(prefix)
 
 

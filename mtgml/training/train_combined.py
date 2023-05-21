@@ -18,6 +18,7 @@ from mtgml_native.generators.recommender_generator import RecommenderGenerator
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.constants import OPTIMIZER_CHOICES, set_debug
 from mtgml.generators.combined_generator import CombinedGenerator
+from mtgml.generators.deck_generator import DeckGenerator
 from mtgml.generators.split_generator import SplitGenerator
 from mtgml.models.combined_model import CombinedModel
 from mtgml.tensorboard.callback import TensorBoardFix
@@ -96,6 +97,24 @@ if __name__ == "__main__":
         )
         > 0
     )
+    use_deck_builder = (
+        hyper_config.get_float(
+            "deck_builder_weight", default=1, min=0, max=128, help="The weight to multiply the deck builder loss by."
+        )
+        > 0
+    )
+    pick_batch_size = (
+        hyper_config.get_int(
+            "pick_batch_size",
+            min=8,
+            max=2048,
+            step=8,
+            logdist=True,
+            default=64,
+            help="The number of picks to evaluate at a time",
+        )
+        * strategy.num_replicas_in_sync
+    )
     cube_batch_size = (
         hyper_config.get_int(
             "cube_batch_size",
@@ -108,15 +127,15 @@ if __name__ == "__main__":
         )
         * strategy.num_replicas_in_sync
     )
-    pick_batch_size = (
+    deck_batch_size = (
         hyper_config.get_int(
-            "pick_batch_size",
+            "deck_batch_size",
             min=8,
             max=2048,
             step=8,
             logdist=True,
             default=64,
-            help="The number of picks to evaluate at a time",
+            help="The number of decks to evaluate at a time",
         )
         * strategy.num_replicas_in_sync
     )
@@ -148,6 +167,8 @@ if __name__ == "__main__":
     recommender_validation_generator = RecommenderGenerator(
         "data/validation_cubes.bin", num_cards - 1, cube_batch_size, args.seed + 13, 0, 0
     )
+    deck_train_generator = DeckGenerator("data/train_decks.bin", deck_batch_size, args.seed * 37)
+    deck_validation_generator = DeckGenerator("data/validation_decks.bin", deck_batch_size, args.seed * 37)
     # deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
     # deck_adj_mtx_generator.on_epoch_end()
     deck_adj_mtx_generator = PickAdjMtxGenerator(
@@ -264,7 +285,11 @@ if __name__ == "__main__":
     )
     train_generator = SplitGenerator(
         CombinedGenerator(
-            draftbot_train_generator, recommender_train_generator, deck_adj_mtx_generator, deck_adj_mtx_generator
+            draftbot_train_generator,
+            recommender_train_generator,
+            deck_validation_generator,
+            deck_adj_mtx_generator,
+            deck_adj_mtx_generator,
         ),
         epochs_for_completion,
     )
@@ -272,6 +297,7 @@ if __name__ == "__main__":
         CombinedGenerator(
             draftbot_validation_generator,
             recommender_validation_generator,
+            deck_validation_generator,
             cube_adj_mtx_generator,
             cube_adj_mtx_generator,
         ),
@@ -451,20 +477,23 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
-        if use_draftbots or use_recommender:
-            pick_train_example, cube_train_example, *rest = validation_generator[0][0]
+        if use_draftbots or use_recommender or use_deck_builder:
+            pick_train_example, cube_train_example, deck_train_example, *rest = validation_generator[0][0]
         else:
-            pick_train_example, cube_train_example, *rest = train_generator[0][0]
+            pick_train_example, cube_train_example, deck_train_example, *rest = train_generator[0][0]
         pick_train_example = pick_train_example[:5]
         cube_train_example = cube_train_example[:1]
+        deck_train_example = deck_train_example[:2]
         # Make sure it compiles the correct setup for evaluation
         with strategy.scope():
-            model((pick_train_example, cube_train_example, *rest), training=False)
+            model((pick_train_example, cube_train_example, deck_train_example, *rest), training=False)
             print(model.summary())
             model.fit(
                 train_generator,
-                validation_data=validation_generator if use_draftbots or use_recommender else None,
-                validation_freq=max(epochs_for_completion // 10, 1) if use_draftbots or use_recommender else 0,
+                validation_data=validation_generator if use_draftbots or use_recommender or use_deck_builder else None,
+                validation_freq=max(epochs_for_completion // 10, 1)
+                if use_draftbots or use_recommender or use_deck_builder
+                else 0,
                 epochs=args.epochs,
                 callbacks=callbacks,
                 verbose=0,

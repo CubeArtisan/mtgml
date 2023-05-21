@@ -4,7 +4,7 @@ set -e
 
 # export SET_TYPES=("one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
 # Older sets need different processing
-export SET_TYPES=("one" "bro" "dmu" "snc" "neo")
+export SET_TYPES=("mom", "sir", "one" "bro" "dmu" "snc" "neo")
 export GS_PATH=gs://cubeartisan/exports/
 export DATE=`gsutil ls -lh $GS_PATH\
     | sed 's/^ *//g'\

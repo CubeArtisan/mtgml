@@ -25,10 +25,7 @@
               pkgs.cudaPackages.tensorrt
               pkgs.linuxPackages.nvidia_x11
               pkgs.poetry
-              pkgs.poetryPlugins.poetry-plugin-up
-              pkgs.poetryPlugins.poetry-audit-plugin
               pythonPackages.python
-              pythonPackages.poetry-plugin-export
               pythonPackages.tensorboard-data-server
               pkgs.docker
               pkgs.docker-compose
@@ -38,6 +35,7 @@
               pkgs.yajl
               pkgs.zlib
               pkgs.awscli2
+              pkgs.google-cloud-sdk
             ];
 
             shellHook = ''
@@ -63,7 +61,7 @@
               poetry env use 3.11
               export VENV_DIR=$(poetry env info --path)
               source $VENV_DIR/bin/activate
-              poetry install --sync --with tensorflow
+              poetry install --sync
               python setup.py install --build-type Release
             '';
           };

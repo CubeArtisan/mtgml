@@ -3,6 +3,7 @@ import tensorflow as tf
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.item_embedding import ItemEmbedding
 from mtgml.models.adj_mtx import AdjMtxReconstructor
+from mtgml.models.deck_builder import DeckBuilder
 from mtgml.models.draftbots import DraftBot
 from mtgml.models.recommender import CubeRecommender
 
@@ -30,6 +31,13 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
             ),
             "recommender_weight": hyper_config.get_float(
                 "recommender_weight", default=1, min=0, max=128, help="The weight to multiply the recommender loss by."
+            ),
+            "deck_builder_weight": hyper_config.get_float(
+                "deck_builder_weight",
+                default=1,
+                min=0,
+                max=128,
+                help="The weight to multiply the deck builder loss by.",
             ),
             "deck_adj_mtx_weight": hyper_config.get_float(
                 "deck_adj_mtx_weight",
@@ -66,7 +74,19 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                         sub_layer_type=CubeRecommender,
                         fixed={"num_cards": num_cards},
                         seed_mod=17,
-                        help="The model for the draftbots",
+                        help="The model for the recommending changes to your cube",
+                    ),
+                }
+            )
+        if result["deck_builder_weight"] > 0:
+            result.update(
+                {
+                    "deck_builder": hyper_config.get_sublayer(
+                        "DeckBuilder",
+                        sub_layer_type=DeckBuilder,
+                        fixed={"num_cards": num_cards},
+                        seed_mod=87,
+                        help="The model for recommending how to build a deck out of a pool.",
                     ),
                 }
             )
@@ -102,9 +122,10 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
 
     def call(self, inputs, training=False):
         if not isinstance(inputs[0], tuple):
-            inputs = (tuple(inputs[:5]), (inputs[5],), tuple(inputs[6:8]), tuple(inputs[8:10]))
+            inputs = (tuple(inputs[:5]), (inputs[5],), tuple(inputs[6:8]), tuple(inputs[8:10]), tuple(inputs[10:12]))
         draftbot_loss = tf.constant(0, dtype=tf.float32)
         recommender_loss = tf.constant(0, dtype=tf.float32)
+        deck_builder_loss = tf.constant(0, dtype=tf.float32)
         deck_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
         cube_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
         with tf.experimental.async_scope():
@@ -125,16 +146,28 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                     recommender_loss = self.cube_recommender(
                         (*inputs[1], self.embed_cards.embeddings), training=training
                     )
+            if self.deck_builder_weight:
+                if len(inputs[2]) > 2:
+
+                    deck_builder_loss = self.deck_builder_weight * self.deck_builder(
+                        (*inputs[2][:2], self.embed_cards.embeddings, *inputs[2][2:]),
+                        training=training,
+                    )
+                else:
+                    deck_builder_loss = self.deck_builder(
+                        (*inputs[2], self.embed_cards.embeddings),
+                        training=training,
+                    )
             if self.cube_adj_mtx_weight > 0:
                 cube_adj_mtx_loss = self.cube_adj_mtx_weight * self.cube_adj_mtx_reconstructor(
-                    (*inputs[2], self.embed_cards.embeddings), training=training
+                    (*inputs[3], self.embed_cards.embeddings), training=training
                 )
             if self.deck_adj_mtx_weight > 0:
                 deck_adj_mtx_loss = self.deck_adj_mtx_weight * self.deck_adj_mtx_reconstructor(
-                    (*inputs[3], self.embed_cards.embeddings), training=training
+                    (*inputs[4], self.embed_cards.embeddings), training=training
                 )
         if len(inputs[0]) > 6:
-            loss = draftbot_loss + recommender_loss + deck_adj_mtx_loss + cube_adj_mtx_loss
+            loss = draftbot_loss + recommender_loss + deck_builder_loss + deck_adj_mtx_loss + cube_adj_mtx_loss
             self.add_loss(loss)
             tf.summary.scalar("loss", loss)
         else:
@@ -168,3 +201,10 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
             "decoded_noisy_cube": tf.identity(decoded_noisy_cube, "decoded_noisy_cube"),
             "encoded_noisy_cube": tf.identity(encoded_noisy_cube, "encoded_noisy_cube"),
         }
+
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[1, None], dtype=tf.int16), tf.TensorSpec(shape=[1, None], dtype=tf.int16)]
+    )
+    def call_deck_builder(self, pool, instance_nums):
+        card_scores = self.deck_builder((pool, instance_nums, self.embed_cards.embeddings), training=False)
+        return {"card_scores": tf.identity(card_scores, "card_scores")}
