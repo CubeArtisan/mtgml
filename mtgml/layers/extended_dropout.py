@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from mtgml.constants import is_debug
+from mtgml.constants import should_ensure_shape
 from mtgml.layers.configurable_layer import ConfigurableLayer
 
 
@@ -71,7 +71,7 @@ class ExtendedDropout(ConfigurableLayer):
             )
             noise_mask = noise >= self.rate
             result = tf.cast(noise_mask, dtype=inputs.dtype) * inputs
-        if is_debug():
+        if should_ensure_shape():
             result = tf.ensure_shape(result, self.input_shapes)
         if self.return_mask:
             if self.blank_last_dim:
@@ -80,7 +80,7 @@ class ExtendedDropout(ConfigurableLayer):
                 if tf.rank(mask) < tf.rank(noise_mask):
                     mask = tf.expand_dims(mask, -1)
                 noise_mask = tf.math.logical_and(noise_mask, mask, name="combined_mask")
-            if is_debug():
+            if should_ensure_shape():
                 noise_mask = tf.ensure_shape(noise_mask, self.mask_shape)
             else:
                 noise_mask = tf.reshape(noise_mask, [tf.shape(noise_mask)[i] for i in range(len(self.mask_shape))])

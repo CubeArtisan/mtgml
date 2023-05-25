@@ -86,25 +86,26 @@ class BERT(ConfigurableLayer):
             help="The size of the token embeddings passed between layers.",
         )
         use_bias = hyper_config.get_bool("use_bias", default=True, help="Use bias in the dense layers")
-        attention_output_dims = hyper_config.get_int(
-            "output_dims", min=8, max=1024, default=128, help="The number of output dimensions from this layer."
+        num_heads = hyper_config.get_int(
+            "num_heads", min=1, max=64, default=4, help="The number of separate heads of attention to use."
         )
+        key_dims = hyper_config.get_int(
+            "key_dims", min=1, max=64, default=32, help="Size of the attention head for query and key."
+        )
+        value_dims = hyper_config.get_int(
+            "value_dims", min=1, max=64, default=32, help="Size of the attention head for value."
+        )
+        attention_output_dims = num_heads * value_dims
         attention_props = {
+            "key_dims": key_dims,
+            "num_heads": num_heads,
+            "value_dims": value_dims,
             "dropout": hyper_config.get_float(
                 "attention dropout_rate",
                 min=0,
                 max=1,
                 default=0.25,
                 help="The dropout rate for the attention layers of the transformer blocks.",
-            ),
-            "num_heads": hyper_config.get_int(
-                "num_heads", min=1, max=64, default=4, help="The number of separate heads of attention to use."
-            ),
-            "key_dims": hyper_config.get_int(
-                "key_dims", min=1, max=64, default=32, help="Size of the attention head for query and key."
-            ),
-            "value_dims": hyper_config.get_int(
-                "value_dims", min=1, max=64, default=32, help="Size of the attention head for value."
             ),
             "use_bias": use_bias,
             "output_dims": attention_output_dims,

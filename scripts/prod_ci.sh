@@ -38,7 +38,7 @@ rm -rf maps/int_to_card.json maps/card_to_int.json
 
 if aws s3 ls s3://cubecobra/ > /dev/null; then
   aws s3 sync s3://cubecobra/decks CubeCobra/decks
-  aws s3 sync s3://cubecobra/picks CubeCobra/picks
+  # aws s3 sync s3://cubecobra/picks CubeCobra/picks  # Not quite ready yet.
   aws s3 cp s3://cubecobra/cubes.json CubeCobra/cubes/cubes.json
   aws s3 cp s3://cubecobra/indexToOracleMap.json CubeCobra/indexToOracleMap.json
 else
@@ -84,10 +84,7 @@ export TYPE=prod
 rm -rf ml_files/train_$TYPE
 mkdir -p ml_files/train_$TYPE
 echo $GITHUB_SHA > ml_files/train_$TYPE/git-commit
-# cp examples/$TYPE.pre.yaml ml_files/train_$TYPE/hyper_config.yaml
 cp data/maps/original_to_new_index.json ml_files/train_$TYPE/original_to_new_index.json
-# python -m mtgml.training.train_combined --name train_$TYPE --epochs 8 --seed 268459 || true
-# cp ml_files/train_$TYPE/hyper_config.yaml ml_files/train_$TYPE/hyper_config.pre.yaml
 cp examples/$TYPE.yaml ml_files/train_$TYPE/hyper_config.yaml
 python -m mtgml.training.train_combined --name train_$TYPE --epochs 32 --seed 16809
 

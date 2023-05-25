@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import tensorflow as tf
-import tensorflow_addons as tfa
 import yaml
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 
@@ -305,38 +304,6 @@ if __name__ == "__main__":
                 "sgd_nesterov", default=False, help="Whether to use nesterov momentum for sgd."
             )
             opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum)
-        elif optimizer == "lazyadam":
-            opt = tfa.optimizers.LazyAdam(learning_rate=learning_rate)
-        elif optimizer == "rectadam":
-            weight_decay = hyper_config.get_float(
-                "rectadam_weight_decay",
-                min=1e-08,
-                max=1e-01,
-                default=1e-06,
-                logdist=True,
-                help="The weight decay for rectadam optimization per batch.",
-            )
-            opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=weight_decay)
-        elif optimizer == "novograd":
-            weight_decay = hyper_config.get_float(
-                "novograd_weight_decay",
-                min=1e-08,
-                max=1e-01,
-                default=1e-06,
-                logdist=True,
-                help="The weight decay for novograd optimization per batch.",
-            )
-            opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
-        elif optimizer == "lamb":
-            weight_decay = hyper_config.get_float(
-                "lamb_weight_decay",
-                min=1e-10,
-                max=1e-01,
-                default=1e-06,
-                logdist=True,
-                help="The weight decay for lamb optimization per batch.",
-            )
-            opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
         elif optimizer == "adafactor":
             relative_step = bool(
                 hyper_config.get_bool(
@@ -377,9 +344,6 @@ if __name__ == "__main__":
             )
             callbacks.append(mcp_callback)
             callbacks.append(cp_callback)
-        if args.time_limit > 0:
-            to_callback = tfa.callbacks.TimeStopping(seconds=60 * args.time_limit, verbose=1)
-            callbacks.append(to_callback)
         nan_callback = tf.keras.callbacks.TerminateOnNaN()
         num_batches = len(draftbot_train_generator)
         es_callback = tf.keras.callbacks.EarlyStopping(

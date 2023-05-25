@@ -8,6 +8,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import numpy as np
 from jsonslicer import JsonSlicer
 from tqdm.auto import tqdm
 
@@ -15,6 +16,8 @@ from mtgml.constants import MAX_COPIES, MAX_DECK_SIZE
 
 locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
 
+with open("data/maps/int_to_card.json") as fp:
+    int_to_card = json.load(fp)
 with open("data/maps/card_to_int.json") as fp:
     card_to_int = json.load(fp)
 original_to_new_path = Path("data/maps/original_to_new_index.json")
@@ -23,6 +26,8 @@ if original_to_new_path.exists():
         original_to_new_index = json.load(fp)
 else:
     original_to_new_index = tuple(range(len(card_to_int) + 1))
+new_to_original = {v: i for i, v in enumerate(original_to_new_index)}
+new_to_original[0] = 0
 cobra_path = Path("data/CubeCobra/indexToOracleMap.json")
 if cobra_path.exists():
     with cobra_path.open() as fp:
@@ -33,6 +38,11 @@ if cobra_path.exists():
     ]
 else:
     cobra_to_new_index = defaultdict(lambda: -1)
+
+is_land_old = [False] + ["Land" in card["type"] for card in int_to_card]
+is_land = np.array(
+    [1 if is_land_old[new_to_original[i]] else 0 for i in range(max(original_to_new_index) + 1)], dtype=np.int32
+)
 
 
 def pad(arr, desired_length, value=0):
@@ -77,7 +87,7 @@ def load_all_decks(deck_dirs):
                             main = [original_to_new_index[x + 1] for x in deck["main"]]
                             side = [original_to_new_index[x + 1] for x in deck["side"]]
                             pool = main + side
-                            if all(x > 0 for x in pool):
+                            if all(x > 0 for x in pool) and 15 <= is_land[main].sum() <= 18:
                                 pool_counter = Counter(pool)
                                 remaining_space = MAX_DECK_SIZE - len(pool)
                                 num_basics = len(deck["basics"])
@@ -146,7 +156,7 @@ def load_all_old_decks(deck_dirs):
                             main = [cobra_to_new_index[x] for x in deck["mainboard"]]
                             side = [cobra_to_new_index[x] for x in deck["sideboard"]]
                             pool = main + side
-                            if all(x > 0 for x in pool):
+                            if all(x > 0 for x in pool) and 15 <= is_land[main].sum() <= 18:
                                 pool_counter = Counter(pool)
                                 remaining_space = MAX_DECK_SIZE - len(pool)
                                 num_basics = len(deck["basics"])

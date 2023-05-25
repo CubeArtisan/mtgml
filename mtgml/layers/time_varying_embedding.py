@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.constants import ACTIVATION_CHOICES, is_debug
+from mtgml.constants import ACTIVATION_CHOICES, should_ensure_shape
 from mtgml.layers.configurable_layer import ConfigurableLayer
 
 
@@ -46,7 +46,7 @@ class TimeVaryingEmbedding(ConfigurableLayer):
                 tf.gather_nd(self.embeddings, coords, name="component_embedding_values"), training=training
             )
             result = tf.einsum("...xe,...x->...e", component_embedding_values, coord_weights, name="embedding_values")
-            if is_debug():
+            if should_ensure_shape():
                 result = tf.ensure_shape(result, (None, *coords.shape[1:-2], self.dims))
             return result
         else:

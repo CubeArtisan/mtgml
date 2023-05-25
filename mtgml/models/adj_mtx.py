@@ -1,15 +1,9 @@
 import tensorflow as tf
 
-from mtgml.constants import is_debug
+from mtgml.constants import should_log_histograms
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
 from mtgml.layers.wrapped import WDense
-
-"""
-    - adj_mtx is the adjacency matrix created by create_mtx.py
-    and then updated such that each row sums to 1.
-    - decoded_for_reg is an output of the model
-"""
 
 
 class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
@@ -88,9 +82,9 @@ class AdjMtxReconstructor(ConfigurableLayer, tf.keras.Model):
         true_row_entropy = tf.reduce_sum(adj_row * -tf.math.log(adj_row + 1e-10), axis=-1)
         tf.summary.scalar("pred_row_entropy_mean", tf.reduce_mean(pred_row_entropy))
         tf.summary.scalar("true_row_entropy_mean", tf.reduce_mean(true_row_entropy))
-        if is_debug():
+        tf.summary.scalar(f"{self.name}_loss", tf.reduce_mean(adj_mtx_losses))
+        if should_log_histograms():
             tf.summary.histogram("similarities", similarities)
             tf.summary.histogram("pred_row_entropy", pred_row_entropy)
             tf.summary.histogram("true_row_entropy", true_row_entropy)
-        tf.summary.scalar(f"{self.name}_loss", tf.reduce_mean(adj_mtx_losses))
         return loss

@@ -15,6 +15,7 @@ from tqdm.auto import tqdm, trange
 from mtgml.config.hyper_config import HyperConfig
 from mtgml.constants import set_debug
 from mtgml.generators.combined_generator import CombinedGenerator
+from mtgml.generators.deck_generator import DeckGenerator
 from mtgml.models.combined_model import CombinedModel
 
 
@@ -225,6 +226,7 @@ if __name__ == "__main__":
     pick_batch_size = 1
     seed = 31
     cube_batch_size = 1
+    deck_batch_size = 1
     adj_mtx_batch_size = 1
     noise_mean = 0.5
     noise_std = 0.2
@@ -233,12 +235,17 @@ if __name__ == "__main__":
     recommender_train_generator = RecommenderGenerator(
         "data/train_cubes.bin", max(original_to_new_index), cube_batch_size, seed, noise_mean, noise_std
     )
+    deck_generator = DeckGenerator("data/train_decks.bin", deck_batch_size, seed)
     deck_adj_mtx_generator = PickAdjMtxGenerator(
         "data/train_picks.bin", max(original_to_new_index), adj_mtx_batch_size, seed * 29
     )
     with draftbot_train_generator, recommender_train_generator:
         generator = CombinedGenerator(
-            draftbot_train_generator, recommender_train_generator, deck_adj_mtx_generator, deck_adj_mtx_generator
+            draftbot_train_generator,
+            recommender_train_generator,
+            deck_generator,
+            deck_adj_mtx_generator,
+            deck_adj_mtx_generator,
         )
         pick_train_example, cube_train_example, deck_train_example, *rest = generator[0][0]
         pick_train_example = tuple(np.zeros_like(t) for t in pick_train_example[:5])

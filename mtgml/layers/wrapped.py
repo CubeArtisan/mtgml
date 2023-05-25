@@ -19,7 +19,7 @@ class WMultiHeadAttention(WrappedLayer):
                 "num_heads", min=1, max=64, default=8, help="The number of separate heads of attention to use."
             ),
             "key_dims": hyper_config.get_int(
-                "key_dims", min=1, max=64, default=8, help="Size of the attention head for query and key."
+                "key_dims", min=4, max=64, default=8, step=4, help="Size of the attention head for query and key."
             ),
             "value_dims": hyper_config.get_int(
                 "value_dims", min=1, max=64, default=4, help="Size of the attention head for value."
@@ -29,7 +29,12 @@ class WMultiHeadAttention(WrappedLayer):
             ),
             "use_bias": hyper_config.get_bool("use_bias", default=True, help="Use bias in the dense layers"),
             "output_dims": hyper_config.get_int(
-                "output_dims", min=8, max=512, default=32, help="The number of output dimensions from this layer."
+                "output_dims",
+                min=8,
+                max=1024,
+                default=32,
+                step=8,
+                help="The number of output dimensions from this layer.",
             ),
         }
 

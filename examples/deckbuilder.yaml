@@ -1,0 +1,160 @@
+DeckBuilder: !hcv
+  help: The model for recommending how to build a deck out of a pool.
+  value: !hc
+    EmbedPool: !hcv
+      help: Allow the card embeddings to interact with each other and give final embeddings.
+      value: !hc
+        InitialDropout: !hcv
+          help: The dropout to apply to the tokens before any other operations.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.0
+        attention dropout_rate: !hcv
+          help: The dropout rate for the attention layers of the transformer blocks.
+          value: 0.01
+        dense dropout_rate: !hcv
+          help: The dropout rate for the dense layers of the transformer blocks.
+          value: 0.0
+        dense_activation: !hcv
+          choices:  []
+          help: The activation function on the output of the layer.
+          value: selu
+        key_dims: !hcv
+          help: Size of the attention head for query and key.
+          value: 32
+        num_heads: !hcv
+          help: The number of separate heads of attention to use.
+          value: 8
+        num_hidden_dense: !hcv
+          help: The number of hidden dense layers
+          value: 0
+        num_hidden_layers: !hcv
+          help: Number of transformer blocks.
+          value: 4
+        token_stream_dims: !hcv
+          help: The size of the token embeddings passed between layers.
+          value: 256
+        use_bias: !hcv
+          help: Use bias in the dense layers
+          value: true
+        value_dims: !hcv
+          help: Size of the attention head for value.
+          value: 16
+    InclusionProb: !hcv
+      help: The layer to convert the final embeddings of the cards to probabilities
+        of inclusion.
+      value: !hc
+        use_bias: !hcv
+          help: Whether to use bias on the output.
+          value: true
+    land_count_weight: !hcv
+      help: How much weight to apply to punish it for having land counts other than
+        17.
+      value: 0.01
+    probability_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
+      value: 0.001
+    log_weight: !hcv
+      help: How much weight to apply to the cross entropy loss.
+      value: 0.25
+    margin_weight: !hcv
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
+      value: 100.0
+    scale_correct: !hcv
+      help: How much to scale the penalty for leaving out a correct card.
+      value: 1.0
+    mae_weight: !hcv
+      help: How much weight to apply to the mean absolute error between true predictions and our probability of inclusion.
+      value: 1.0
+    mse_weight: !hcv
+      help: How much weight to apply to the mean squared error between true predictions and our probability of inclusion.
+      value: 0.0
+    total_prob_weight: !hcv
+      help: How much weight to apply to punish it for having total probability away from 40.
+      value: 0.01
+EmbedCards: !hcv
+  help: The embeddings for the card objects.
+  value: !hc
+    dims: !hcv
+      help: The number of dimensions the items should be embedded into.
+      value: 128
+    trainable: !hcv
+      help: Whether the embeddings should be trained.
+      value: true
+ema_overwrite_frequency: !hcv
+  help: The frequency to replace weights with their exponential moving averages. Set to 0 to disable.
+  value: 2048
+adafactor_learning_rate: !hcv
+  help: The learning rate to use for adafactor
+  value: 0.0001
+adafactor_relative_step: !hcv
+  help: Whether to use the built in learning rate scaling of adafactor (min of set
+    rate and 1 / sqrt(step + 1))
+  value: true
+adafactor_weight_decay: !hcv
+  help: The weight decay to use for adafactor
+  value: 1.0e-06
+adj_mtx_batch_size: !hcv
+  help: The number of rows of the adjacency matrices to evaluate at a time.
+  value: 32
+cube_adj_mtx_weight: !hcv
+  help: The weight to multiply the cube adjacency matrix loss by.
+  value: 0
+cube_batch_size: !hcv
+  help: The number of cube samples to evaluate at a time
+  value: 32
+cube_noise_mean: !hcv
+  help: The median of the noise distribution for cubes.
+  value: 0.3
+cube_noise_std: !hcv
+  help: The median of the noise distribution for cubes.
+  value: 0.1
+deck_adj_mtx_weight: !hcv
+  help: The weight to multiply the deck adjacency matrix loss by.
+  value: 0
+deck_batch_size: !hcv
+  help: The number of decks to evaluate at a time
+  value: 64
+deck_builder_weight: !hcv
+  help: The weight to multiply the deck builder loss by.
+  value: 1
+draftbots_weight: !hcv
+  help: The weight to multiply the draftbot loss by.
+  value: 0
+dtype: !hcv
+  choices: !!python/tuple
+  - 16
+  - 32
+  - 64
+  help: The size of the floating point numbers to use for calculations in the model
+  value: 32
+epochs_for_completion: !hcv
+  help: The number of epochs it should take to go through the entire dataset.
+  value: 1
+optimizer: !hcv
+  choices: !!python/tuple
+  - adam
+  - adamax
+  - lazyadam
+  - rectadam
+  - adafactor
+  - lamb
+  - adadelta
+  - nadam
+  - rmsprop
+  - adafactor
+  help: The optimizer type to use for optimization
+  value: adafactor
+pick_batch_size: !hcv
+  help: The number of picks to evaluate at a time
+  value: 128
+recommender_weight: !hcv
+  help: The weight to multiply the recommender loss by.
+  value: 0
+use_async_execution: !hcv
+  help: Whether to enable experimental asynchronous execution.
+  value: true
+use_xla: !hcv
+  help: Whether to use xla to speed up calculations.
+  value: true

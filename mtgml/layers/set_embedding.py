@@ -82,14 +82,6 @@ class AdditiveSetEmbedding(ConfigurableLayer):
 class AttentiveSetEmbedding(ConfigurableLayer):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        decoding_dropout = hyper_config.get_float(
-            "decoding_dropout_rate",
-            min=0,
-            max=0.99,
-            step=0.01,
-            default=0.1,
-            help="The percent of values to dropout from the result of dense layers in the decoding step.",
-        )
         return {
             "encoder": hyper_config.get_sublayer(
                 "Encoder",
@@ -101,15 +93,10 @@ class AttentiveSetEmbedding(ConfigurableLayer):
                         default=False,
                         help="Ensure items only attend to items that came before them.",
                     ),
+                    "InitialDropout": {"blank_last_dim": False},
+                    "use_position_embeds": False,
                 },
                 help="The layers to model interactions between items.",
-            ),
-            "decoder": hyper_config.get_sublayer(
-                "Decoder",
-                sub_layer_type=MLP,
-                seed_mod=17,
-                fixed={"Dropout": {"rate": decoding_dropout}},
-                help="The mapping from the added item embeddings to the embeddings to return.",
             ),
             "zero_masked": ZeroMasked(HyperConfig(seed=hyper_config.seed * 47)),
             "item_dropout": hyper_config.get_sublayer(
@@ -122,6 +109,17 @@ class AttentiveSetEmbedding(ConfigurableLayer):
             "pooling_attention": hyper_config.get_sublayer(
                 "PoolingAttention",
                 sub_layer_type=WMultiHeadAttention,
+                fixed={
+                    "dropout": 0.0,
+                    "output_dims": hyper_config.get_int(
+                        "output_dims",
+                        default=256,
+                        min=1,
+                        max=1024,
+                        logdist=True,
+                        help="The number of dimensions to embed the set into.",
+                    ),
+                },
                 seed_mod=37,
                 help="The attention layer that combines the set elements.",
             ),
@@ -134,17 +132,17 @@ class AttentiveSetEmbedding(ConfigurableLayer):
 
     def call(self, inputs, training=False, mask=None):
         dropped, dropout_mask = self.item_dropout(inputs, training=training, mask=mask)
-        dropout_mask = tf.cast(dropout_mask, tf.bool)
-        dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1)
+        dropout_mask = tf.cast(dropout_mask, tf.bool, name="dropout_mask_full")
+        if len(dropout_mask.shape) >= len(inputs.shape):
+            dropout_mask = tf.math.reduce_any(dropout_mask, axis=-1, name="dropout_mask")
         encoded_item_set = self.encoder(dropped, mask=dropout_mask, training=training)
         encoded_item_set._keras_mask = None
         shape = tf.concat([tf.shape(inputs)[:-2], tf.shape(self.seed_vector)[-2:]], axis=0)
         x = self.seed_vector + tf.zeros(shape, dtype=inputs.dtype)
         x._keras_mask = None
-        encoded_items = tf.squeeze(
+        return tf.squeeze(
             self.pooling_attention(
                 x, encoded_item_set, attention_mask=tf.expand_dims(dropout_mask, -2), training=training
             ),
             -2,
         )
-        return self.decoder(encoded_items, training=training)

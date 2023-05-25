@@ -1,16 +1,10 @@
 import tensorflow as tf
 
-from mtgml.constants import is_debug
+from mtgml.constants import EPSILON, should_log_histograms
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AttentiveSetEmbedding
 from mtgml.layers.wrapped import WDense
-
-"""
-    - adj_mtx is the adjacency matrix created by create_mtx.py
-    and then updated such that each row sums to 1.
-    - decoded_for_reg is an output of the model
-"""
 
 
 class CubeRecommender(ConfigurableLayer, tf.keras.Model):
@@ -34,6 +28,7 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                 fixed={
                     "Decoder": {"Final": {"activation": "linear", "dims": embed_dims}},
                     "ItemDropout": {"rate": 0.0},
+                    "use_causal_mask": False,
                 },
                 help="Combine the card embeddings to get an embedding for the cube.",
             ),
@@ -47,9 +42,9 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                 "cube_recall_at_25": tf.keras.metrics.RecallAtPrecision(0.25, name="cube_recall_at_25"),
                 "cube_recall_at_50": tf.keras.metrics.RecallAtPrecision(0.5, name="cube_recall_at_50"),
                 "cube_recall_at_75": tf.keras.metrics.RecallAtPrecision(0.75, name="cube_recall_at_75"),
-                "cube_precis_at_25": tf.keras.metrics.PrecisionAtRecall(0.25, name="cube_recall_at_25"),
-                "cube_precis_at_50": tf.keras.metrics.PrecisionAtRecall(0.5, name="cube_recall_at_50"),
-                "cube_precis_at_75": tf.keras.metrics.PrecisionAtRecall(0.75, name="cube_recall_at_75"),
+                "cube_precis_at_25": tf.keras.metrics.PrecisionAtRecall(0.25, name="cube_precis_at_25"),
+                "cube_precis_at_50": tf.keras.metrics.PrecisionAtRecall(0.5, name="cube_precis_at_50"),
+                "cube_precis_at_75": tf.keras.metrics.PrecisionAtRecall(0.75, name="cube_precis_at_75"),
                 "cube_abs_error": tf.keras.metrics.MeanAbsoluteError(name="cube_abs_error"),
             },
             "scale_relevant_cards": hyper_config.get_float(
@@ -71,7 +66,16 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
     def build(self, input_shapes):
         super(CubeRecommender, self).build(input_shapes)
         self.temperature = self.add_weight(
-            "temperature", initializer=tf.constant_initializer(5), shape=(), trainable=True
+            "temperature",
+            initializer=tf.constant_initializer(5),
+            shape=(),
+            trainable=True,
+        )
+        self.similarity_offset = self.add_weight(
+            "similarity_offset",
+            initializer=tf.constant_initializer(0.5),
+            shape=(),
+            trainable=True,
         )
 
     def call(self, inputs, training=None):
@@ -104,7 +108,9 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         encoded_noisy_cube_exp = tf.expand_dims(encoded_noisy_cube, -2)
         transformed_cards_exp = tf.expand_dims(transformed_cards, -3)
         similarities = -tf.keras.losses.cosine_similarity(encoded_noisy_cube_exp, transformed_cards_exp, axis=-1)
-        decoded_noisy_cube = tf.nn.sigmoid((similarities - 0.5) * self.temperature, name="decoded_noisy_cube")
+        decoded_noisy_cube = tf.nn.sigmoid(
+            (similarities - self.similarity_offset) * self.temperature, name="decoded_noisy_cube"
+        )
         if len(inputs) == 3:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name="true_cube_arr")
             true_cube = tf.reduce_max(
@@ -112,8 +118,8 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
             )[:, 1:]
             cube_losses = tf.keras.losses.binary_crossentropy(
                 tf.expand_dims(true_cube, -1),
-                tf.constant(1 - 2e-10, dtype=self.compute_dtype) * tf.expand_dims(decoded_noisy_cube, -1)
-                + tf.constant(1e-10, dtype=self.compute_dtype),
+                tf.constant(1 - 2 * EPSILON, dtype=self.compute_dtype) * tf.expand_dims(decoded_noisy_cube, -1)
+                + tf.constant(EPSILON, dtype=self.compute_dtype),
             )
             noisy_cube_spread = tf.reduce_max(
                 tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2
@@ -129,7 +135,7 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
             self.add_metric(cube_losses, "cube_loss")
             self.add_metric(self.temperature, "cube_temperature")
             tf.summary.scalar("cube_loss", tf.reduce_mean(cube_losses))
-            if is_debug():
+            if should_log_histograms():
                 tf.summary.histogram("similarities", similarities)
             for name, metric in self.cube_metrics.items():
                 metric.update_state(true_cube, decoded_noisy_cube)

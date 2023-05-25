@@ -128,6 +128,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
         deck_builder_loss = tf.constant(0, dtype=tf.float32)
         deck_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
         cube_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
+        results = []
         with tf.experimental.async_scope():
             loss = 0
             if self.draftbots_weight > 0:
@@ -136,16 +137,14 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                         (*inputs[0][0:-2], self.embed_cards.embeddings, *inputs[0][-2:]), training=training
                     )
                 else:
-                    draftbot_loss = self.draftbots((*inputs[0], self.embed_cards.embeddings), training=training)
+                    results.append(self.draftbots((*inputs[0], self.embed_cards.embeddings), training=training))
             if self.recommender_weight:
                 if len(inputs[1]) > 1:
                     recommender_loss = self.recommender_weight * self.cube_recommender(
                         (*inputs[1], self.embed_cards.embeddings), training=training
                     )
                 else:
-                    recommender_loss = self.cube_recommender(
-                        (*inputs[1], self.embed_cards.embeddings), training=training
-                    )
+                    results.append(self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training))
             if self.deck_builder_weight:
                 if len(inputs[2]) > 2:
 
@@ -154,9 +153,11 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                         training=training,
                     )
                 else:
-                    deck_builder_loss = self.deck_builder(
-                        (*inputs[2], self.embed_cards.embeddings),
-                        training=training,
+                    results.append(
+                        self.deck_builder(
+                            (*inputs[2], self.embed_cards.embeddings),
+                            training=training,
+                        )
                     )
             if self.cube_adj_mtx_weight > 0:
                 cube_adj_mtx_loss = self.cube_adj_mtx_weight * self.cube_adj_mtx_reconstructor(
@@ -170,9 +171,9 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
             loss = draftbot_loss + recommender_loss + deck_builder_loss + deck_adj_mtx_loss + cube_adj_mtx_loss
             self.add_loss(loss)
             tf.summary.scalar("loss", loss)
+            return loss
         else:
-            loss = tf.constant(0, dtype=tf.float32)
-        return loss
+            return results
 
     @tf.function(
         input_signature=[

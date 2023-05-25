@@ -8,8 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
 import tensorflow as tf
-import tensorflow_addons as tfa
 import yaml
 
 # from mtgml_native.generators.adj_mtx_generator import PickAdjMtxGenerator
@@ -17,7 +17,12 @@ from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.constants import OPTIMIZER_CHOICES, set_debug
+from mtgml.constants import (
+    OPTIMIZER_CHOICES,
+    set_debug,
+    set_ensure_shape,
+    set_log_histograms,
+)
 from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.generators.deck_generator import DeckGenerator
 from mtgml.generators.split_generator import SplitGenerator
@@ -28,7 +33,6 @@ from mtgml.utils.tqdm_callback import TQDMProgressBar
 BATCH_CHOICES = tuple(2**i for i in range(4, 18))
 EMBED_DIMS_CHOICES = tuple(2**i + j for i in range(0, 10) for j in range(2))
 if __name__ == "__main__":
-    set_debug(False)
     locale.setlocale(locale.LC_ALL, "")
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
@@ -40,14 +44,24 @@ if __name__ == "__main__":
         "--seed", type=int, default=37, help="The random seed to initialize things with to improve reproducibility."
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug dumping of tensor stats.")
+    parser.add_argument("--histograms", action="store_true", help="Enable logging histograms while training.")
+    parser.add_argument(
+        "--ensure_shapes",
+        action="store_true",
+        help="Enable forceful checks of the shapes of tensors at various point. Can help with debugging and possibly with execution speed/compilation time.",
+    )
     parser.add_argument(
         "--profile", action="store_true", help="Enable profiling a range of batches from the first epoch."
     )
     parser.add_argument(
         "--deterministic", action="store_true", help="Try to keep the run deterministic so results can be reproduced."
     )
+    parser.add_argument("--breakpoint", action="store_true", help="Trigger a breakpoint for debugging model outputs.")
     parser.set_defaults(float_type=tf.float32, use_xla=True)
     args = parser.parse_args()
+    set_debug(args.debug)
+    set_log_histograms(args.histograms)
+    set_ensure_shape(args.ensure_shapes)
     tf.keras.utils.set_random_seed(args.seed)
     physical_devices = tf.config.list_physical_devices("GPU")
     for device in physical_devices:
@@ -68,6 +82,7 @@ if __name__ == "__main__":
     new_to_original = {v: i for i, v in enumerate(original_to_new_index)}
     new_to_original = [new_to_original[i] - 1 for i in range(1, num_cards)]
     new_cards_json = [cards_json[i] for i in new_to_original]
+    number_to_is_land = [False] + ["Land" in card["type"] for card in new_cards_json]
 
     config_path = Path("ml_files") / args.name / "hyper_config.yaml"
     data = {}
@@ -80,6 +95,7 @@ if __name__ == "__main__":
         data=data,
         fixed={
             "num_cards": num_cards,
+            "DeckBuilder": {"is_land_lookup": np.array(number_to_is_land, dtype=np.float32)},
         },
     )
     tf.config.threading.set_intra_op_parallelism_threads(32)
@@ -268,6 +284,7 @@ if __name__ == "__main__":
     print("Tensor float 32 execution:", tf.config.experimental.tensor_float_32_execution_enabled())
 
     color_name = {"W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green"}
+    number_to_name = ["PlaceholderForNull"] + [card["name"] for card in new_cards_json]
     metadata = os.path.join(log_dir, "metadata.tsv")
     with open(metadata, "w") as f:
         f.write("Index\tName\tColors\tMana Value\tRarity\tSet\tType\n")
@@ -311,7 +328,7 @@ if __name__ == "__main__":
     )
     learning_rate = hyper_config.get_float(
         f"{optimizer}_learning_rate",
-        min=1e-05,
+        min=1e-06,
         max=1.0,
         logdist=True,
         default=1e-03,
@@ -326,7 +343,7 @@ if __name__ == "__main__":
         help=f"The weight decay per batch for optimization  with {optimizer}.",
     )
     ema_frequency = hyper_config.get_int(
-        f"{optimizer}_ema_overwrite_frequency",
+        f"ema_overwrite_frequency",
         default=0,
         min=0,
         max=2**16,
@@ -381,38 +398,6 @@ if __name__ == "__main__":
                 "sgd_nesterov", default=False, help="Whether to use nesterov momentum for sgd."
             )
             opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum)
-        elif optimizer == "lazyadam":
-            opt = tfa.optimizers.LazyAdam(learning_rate=learning_rate)
-        elif optimizer == "rectadam":
-            weight_decay = hyper_config.get_float(
-                "rectadam_weight_decay",
-                min=1e-08,
-                max=1e-01,
-                default=1e-06,
-                logdist=True,
-                help="The weight decay for rectadam optimization per batch.",
-            )
-            opt = tfa.optimizers.RectifiedAdam(learning_rate=learning_rate, weight_decay=weight_decay)
-        elif optimizer == "novograd":
-            weight_decay = hyper_config.get_float(
-                "novograd_weight_decay",
-                min=1e-08,
-                max=1e-01,
-                default=1e-06,
-                logdist=True,
-                help="The weight decay for novograd optimization per batch.",
-            )
-            opt = tfa.optimizers.NovoGrad(learning_rate=learning_rate, weight_decay=weight_decay)
-        elif optimizer == "lamb":
-            weight_decay = hyper_config.get_float(
-                "lamb_weight_decay",
-                min=1e-10,
-                max=1e-01,
-                default=1e-06,
-                logdist=True,
-                help="The weight decay for lamb optimization per batch.",
-            )
-            opt = tfa.optimizers.LAMB(learning_rate=learning_rate, weight_decay_rate=weight_decay)
         elif optimizer == "adafactor":
             relative_step = bool(
                 hyper_config.get_bool(
@@ -433,9 +418,10 @@ if __name__ == "__main__":
             raise Exception("Need to specify a valid optimizer type")
         model.compile(optimizer=opt)
     latest = tf.train.latest_checkpoint(output_dir)
+    loaded = None
     if latest is not None:
         logging.info("Loading Checkpoint.")
-        model.load_weights(latest)
+        loaded = model.load_weights(latest)
 
     logging.info("Starting training")
     with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
@@ -453,9 +439,6 @@ if __name__ == "__main__":
             )
             callbacks.append(mcp_callback)
             callbacks.append(cp_callback)
-        if args.time_limit > 0:
-            to_callback = tfa.callbacks.TimeStopping(seconds=60 * args.time_limit, verbose=1)
-            callbacks.append(to_callback)
         nan_callback = tf.keras.callbacks.TerminateOnNaN()
         num_batches = len(train_generator)
         es_callback = tf.keras.callbacks.EarlyStopping(
@@ -470,7 +453,7 @@ if __name__ == "__main__":
             log_dir=log_dir,
             histogram_freq=0,
             write_graph=True,
-            update_freq=256,
+            update_freq=128,
             embeddings_freq=None,
             profile_batch=0 if args.debug or not args.profile else (128, 135),
         )
@@ -480,17 +463,102 @@ if __name__ == "__main__":
         # callbacks.append(es_callback)
         callbacks.append(tb_callback)
         callbacks.append(tqdm_callback)
-        if use_draftbots or use_recommender or use_deck_builder:
-            pick_train_example, cube_train_example, deck_train_example, *rest = validation_generator[0][0]
-        else:
-            pick_train_example, cube_train_example, deck_train_example, *rest = train_generator[0][0]
-        pick_train_example = pick_train_example[:5]
-        cube_train_example = cube_train_example[:1]
-        deck_train_example = deck_train_example[:2]
+
+        def get_example_input(i: int):
+            if use_draftbots or use_recommender or use_deck_builder:
+                pick_train_example, cube_train_example, deck_train_example, *rest = validation_generator[i][0]
+            else:
+                pick_train_example, cube_train_example, deck_train_example, *rest = train_generator[i][0]
+            pick_train_example_target = pick_train_example[5:]
+            pick_train_example = pick_train_example[:5]
+            cube_train_example_target = cube_train_example[1:]
+            cube_train_example = cube_train_example[:1]
+            deck_train_example_target = deck_train_example[2:]
+            deck_train_example = deck_train_example[:2]
+            return (pick_train_example, cube_train_example, deck_train_example, *rest), (
+                pick_train_example_target,
+                cube_train_example_target,
+                deck_train_example_target,
+            )
+
+        example_input = get_example_input(0)
         # Make sure it compiles the correct setup for evaluation
         with strategy.scope():
-            model((pick_train_example, cube_train_example, deck_train_example, *rest), training=False)
+            print("Evalulating model on test data.")
+            result = model(example_input[0], training=False)
             print(model.summary())
+            if args.breakpoint:
+                import pandas as pd
+
+                def get_dfs(example_input, offset: int = 0):
+                    (pick_train_example, cube_train_example, deck_train_example, *rest) = example_input[0]
+                    (pick_train_example_target, cube_train_example_target, deck_train_example_target) = example_input[1]
+                    result = model(example_input[0], training=False)
+                    deck_df = pd.concat(
+                        [
+                            pd.DataFrame(
+                                [
+                                    (*x, i + offset)
+                                    for x in zip(
+                                        (number_to_name[j] for j in deck_train_example[0][i]),
+                                        deck_train_example[0][i],
+                                        deck_train_example[1][i],
+                                        result[-1][i].numpy(),
+                                        deck_train_example_target[0][i],
+                                        (number_to_is_land[j] for j in deck_train_example[0][i]),
+                                    )
+                                    if x[1] > 0
+                                ],
+                                columns=[
+                                    "name",
+                                    "card_index",
+                                    "instance_num",
+                                    "score",
+                                    "true_score",
+                                    "is_land",
+                                    "index",
+                                ],
+                            ).set_index("index", append=True)
+                            for i in range(deck_train_example[0].shape[0])
+                        ],
+                        axis=0,
+                    )
+                    return {"deck": deck_df}
+
+                example_dfs = get_dfs(example_input)
+                deck_df = example_dfs["deck"]
+
+                small_deck_df = deck_df
+                deck_df = pd.concat(
+                    [small_deck_df]
+                    + [
+                        get_dfs(get_example_input(i), i * deck_batch_size)["deck"]
+                        for i in range(1, len(deck_validation_generator))
+                    ],
+                    axis=0,
+                )
+
+                counts = (
+                    deck_df.groupby("index")
+                    .apply(
+                        lambda x: x.sort_values("score", ascending=False)
+                        .head(40)[["true_score", "is_land", "score"]]
+                        .sum()
+                    )
+                    .sort_values("true_score")
+                )
+                print(counts["true_score"].value_counts().sort_index(), counts["is_land"].value_counts().sort_index())
+
+                true_decks_df = deck_df.loc[deck_df["true_score"] == 1]
+                sideboards_df = deck_df.loc[deck_df["true_score"] == 0]
+                print(
+                    deck_df.loc[deck_df["true_score"] == 1]["score"].mean(),
+                    deck_df.loc[deck_df["true_score"] == 0]["score"].mean(),
+                    deck_df.loc[deck_df["instance_num"] == 0]["score"].mean(),
+                    deck_df["score"].mean(),
+                )
+                breakpoint()
+                sys.exit()
             model.fit(
                 train_generator,
                 validation_data=validation_generator if use_draftbots or use_recommender or use_deck_builder else None,

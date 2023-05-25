@@ -60,7 +60,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 64
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -80,24 +80,6 @@ DraftBots: !hcv
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
                   value: 0.0
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_1: !hcv
-              help: The 1th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_2: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.09
@@ -112,16 +94,13 @@ DraftBots: !hcv
               value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 16
+              value: 4
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
               value: 2
-            output_dims: !hcv
-              help: The number of output dimensions from this layer.
-              value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 128
@@ -130,7 +109,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 16
         ItemDropout: !hcv
           help: Drops out entire items from the set.
           value: !hc
@@ -148,16 +127,13 @@ DraftBots: !hcv
               value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 32
-            output_dims: !hcv
-              help: The number of output dimensions from this layer.
-              value: 256
+              value: 16
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 16
         decoding_dropout_rate: !hcv
           help: The percent of values to dropout from the result of dense layers in
             the decoding step.
@@ -168,13 +144,6 @@ DraftBots: !hcv
         activation: !hcv
           help: The activation to apply before combining the weights.
           value: linear
-    PoolDenseDropout: !hcv
-      help: The layer that drops out part of the card embeddings for the cards in
-        the pool.
-      value: !hc
-        return_mask: !hcv
-          help: Whether to return both the output and the mask for the noise.
-          value: false
     RatingFromPool: !hcv
       help: The layer that rates based on the other cards that have been picked.
       value: !hc
@@ -191,36 +160,6 @@ DraftBots: !hcv
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
                   value: 0.0
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_1: !hcv
-              help: The 1th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_2: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_3: !hcv
-              help: The 3th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_4: !hcv
-              help: The 4th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
               value: 0.04
@@ -242,9 +181,6 @@ DraftBots: !hcv
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
               value: 4
-            output_dims: !hcv
-              help: The number of output dimensions from this layer.
-              value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 128
@@ -253,18 +189,12 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 16
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
           value: !hc
             Dropout_0: !hcv
-              help: The dropout applied after the 1st hidden layer.
-              value: !hc
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.0
-            Dropout_1: !hcv
               help: The dropout applied after the 1st hidden layer.
               value: !hc
                 rate: !hcv
@@ -305,7 +235,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 128
+          value: 64
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -319,34 +249,12 @@ DraftBots: !hcv
             InitialDropout: !hcv
               help: The dropout to apply to the tokens before any other operations.
               value: !hc
-                blank_last_dim: !hcv
-                  help: Apply dropout to the entire last dimension vs choosing for
-                    each element of the last dimension.
-                  value: false
                 rate: !hcv
                   help: The percent of values that get replaced with zero.
                   value: 0.0
-            Transformer_0: !hcv
-              help: The 0th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_1: !hcv
-              help: The 1th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
-            Transformer_2: !hcv
-              help: The 2th transformer layer.
-              value: !hc
-                FinalMLP: !hcv
-                  help: The final transformation.
-                  value: !hc {}
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.04
+              value: 0.00
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
               value: 0.0
@@ -358,25 +266,22 @@ DraftBots: !hcv
               value: 32
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 8
+              value: 2
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
               value: 2
-            output_dims: !hcv
-              help: The number of output dimensions from this layer.
-              value: 64
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 8
+              value: 16
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -401,7 +306,7 @@ DraftBots: !hcv
                   value: selu
                 dims: !hcv
                   help: The number of dimensions in the output of this layer.
-                  value: 64
+                  value: 128
                 use_bias: !hcv
                   help: Whether to use bias on the output.
                   value: true
@@ -422,7 +327,7 @@ DraftBots: !hcv
           value: linear
         measure_dims: !hcv
           help: The number of dimensions to calculate distance in
-          value: 64
+          value: 32
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
           value: false
@@ -530,7 +435,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 48
+  value: 32
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0

@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.constants import ACTIVATION_CHOICES, LARGE_INT, is_debug
+from mtgml.constants import ACTIVATION_CHOICES, LARGE_INT, should_log_histograms
 from mtgml.layers.bert import BERT
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
@@ -46,6 +46,7 @@ class ContextualRating(ConfigurableLayer):
             fixed={"dims": measure_dims, "activation": final_activation},
             help="Project the context embeddings to the space for measuring distance.",
         )
+        # TODO: Add option to use cosine similarity (with temp) or inner product instead of l2 distance.
         return {
             "embed_item": embed_item,
             "embed_context": embed_context,
@@ -71,15 +72,15 @@ class ContextualRating(ConfigurableLayer):
             -1,
             name="squared_distances",
         )
-        large = tf.constant(LARGE_INT, dtype=self.compute_dtype)
         if self.bounded_distance:
             one = tf.constant(1, dtype=self.compute_dtype)
+            large = tf.constant(LARGE_INT, dtype=self.compute_dtype)
             nonlinear_distances = tf.math.divide(
                 large, tf.math.add(one, distances, name="distances_incremented"), name="nonlinear_distances"
             )
         else:
             nonlinear_distances = tf.math.negative(distances, name="reversed_distances")
-        if is_debug():
+        if should_log_histograms():
             tf.summary.histogram("distances", distances)
             if self.bounded_distance:
                 tf.summary.histogram("nonlinear_distances", nonlinear_distances)
