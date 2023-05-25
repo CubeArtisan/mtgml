@@ -82,10 +82,10 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.09
+              value: 0.16
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
+              value: 0.2
             dense_activation: !hcv
               help: The activation function on the output of the layer.
               value: selu
@@ -100,10 +100,10 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 2
+              value: 3
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -162,10 +162,10 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.04
+              value: 0.09
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
+              value: 0.1
             dense_activation: !hcv
               help: The activation function on the output of the layer.
               value: selu
@@ -180,7 +180,7 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 4
+              value: 5
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 128
@@ -254,19 +254,19 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.00
+              value: 0.04
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
+              value: 0.2
             dense_activation: !hcv
               help: The activation function on the output of the layer.
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 64
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 2
+              value: 1
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
@@ -281,7 +281,7 @@ DraftBots: !hcv
               value: true
             value_dims: !hcv
               help: Size of the attention head for value.
-              value: 16
+              value: 32
         EmbedItem: !hcv
           help: Transforms the card embeddings to the embedding used to calculate
             distances.
@@ -330,7 +330,7 @@ DraftBots: !hcv
           value: 32
         use_shifted_causal_mask: !hcv
           help: Don't allow items to attend to themselves
-          value: false
+          value: true
     item_ratings: !hcv
       help: Whether to give each card a rating independent of context.
       value: true
@@ -405,6 +405,9 @@ cube_noise_std: !hcv
   value: 0.1
 deck_adj_mtx_weight: !hcv
   help: The weight to multiply the deck adjacency matrix loss by.
+  value: 0
+deck_builder_weight: !hcv
+  help: The weight to multiply the deck builder loss by.
   value: 0
 draftbots_weight: !hcv
   help: The weight to multiply the draftbot loss by.

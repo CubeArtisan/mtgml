@@ -2,9 +2,10 @@
 
 set -e
 
-# export SET_TYPES=("one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
+# export SET_TYPES=("mom" "sir" "one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
 # Older sets need different processing
-export SET_TYPES=("mom", "sir", "one" "bro" "dmu" "snc" "neo")
+# MOM is left out since something weird is causing the card data to be missing kenrith the returned king
+export SET_TYPES=("sir" "one" "bro" "dmu" "snc" "neo")
 export GS_PATH=gs://cubeartisan/exports/
 export DATE=`gsutil ls -lh $GS_PATH\
     | sed 's/^ *//g'\

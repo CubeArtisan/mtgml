@@ -223,10 +223,10 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.09
+              value: 0.16
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
+              value: 0.2
             dense_activation: !hcv
               choices: []
               help: The activation function on the output of the layer.
@@ -242,10 +242,10 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 2
+              value: 3
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 256
+              value: 128
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -297,10 +297,10 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.04
+              value: 0.09
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
+              value: 0.1
             dense_activation: !hcv
               choices: []
               help: The activation function on the output of the layer.
@@ -392,17 +392,17 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.01
+              value: 0.04
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
+              value: 0.15
             dense_activation: !hcv
               choices: []
               help: The activation function on the output of the layer.
               value: selu
             key_dims: !hcv
               help: Size of the attention head for query and key.
-              value: 32
+              value: 16
             num_heads: !hcv
               help: The number of separate heads of attention to use.
               value: 4
@@ -414,7 +414,7 @@ DraftBots: !hcv
               value: 2
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 128
+              value: 64
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true

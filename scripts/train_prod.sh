@@ -36,9 +36,6 @@ export TAG=${GITHUB_SHA:0:8}
 
 rm -rf ml_files/train_prod
 mkdir -p ml_files/train_prod
-echo $TAG > ml_files/train_prod/git-commit
-cp examples/prod.pre.yaml ml_files/train_prod/hyper_config.yaml
-python -m mtgml.training.train_combined --name train_prod --epochs 8 --seed 268459 || true
-cp ml_files/train_prod/hyper_config.yaml ml_files/train_prod/hyper_config.pre.yaml
+echo $GITHUB_SHA > ml_files/train_prod/git-commit
 cp examples/prod.yaml ml_files/train_prod/hyper_config.yaml
-python -m mtgml.training.train_combined --name train_prod --epochs 2 --seed 16809
+python -m mtgml.training.train_combined --name train_prod --epochs 32 --seed 16809 --log-dir logs/fit/$TYPE-$TAG

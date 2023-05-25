@@ -40,6 +40,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--deterministic", action="store_true", help="Try to keep the run deterministic so results can be reproduced."
     )
+    parser.add_argument("--log-dir", type=Path, default=None, help="The path to store logs in.")
     parser.set_defaults(float_type=tf.float32, use_xla=True)
     args = parser.parse_args()
     tf.keras.utils.set_random_seed(args.seed)
@@ -132,7 +133,16 @@ if __name__ == "__main__":
     print(f"There are {len(draftbot_train_generator)} training pick batches")
     print(f"There are {len(draftbot_validation_generator)} validation pick batches")
     logging.info(f"There are {num_cards:n} cards being trained on.")
-    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    default_log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    if args.log_dir is None:
+        log_dir = default_log_dir
+    else:
+        if args.log_dir.exists():
+            print(f"Logging directory {args.log_dir} already exists defaulting to {default_log_dir} instead.")
+            log_dir = default_log_dir
+        else:
+            log_dir = str(args.log_dir)
+
     if args.debug:
         log_dir = "logs/debug/"
         logging.info("Enabling Debugging")

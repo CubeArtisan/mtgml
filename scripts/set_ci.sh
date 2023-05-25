@@ -66,6 +66,7 @@ do
     export FILENAME=${DRAFT_TYPE}Draft.csv
     if [[ ! -f ${FILENAME}.json ]]
     then
+        echo https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME.gz
         curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME.gz --output $FILENAME.gz \
             && gzip -fd ${FILENAME}.gz \
             || true
@@ -86,6 +87,7 @@ python -m mtgml.preprocessing.find_used data/17lands/$1 nonexistant nonexistant
 python -m mtgml.preprocessing.load_picks data/17lands/$1
 
 export GITHUB_SHA=`git rev-parse HEAD`
+export TAG=${GITHUB_SHA:0:8}
 export TYPE=$1
 
 rm -rf ml_files/train_$TYPE
@@ -94,7 +96,7 @@ echo $GITHUB_SHA > ml_files/train_$TYPE/git-commit
 cp data/maps/int_to_card.json ml_files/train_$TYPE/int_to_card.json
 cp data/maps/original_to_new_index.json ml_files/train_$TYPE/original_to_new_index.json
 cp examples/draftbots.set.yaml ml_files/train_$TYPE/hyper_config.yaml
-python -m mtgml.training.train_draftbots --name train_$TYPE --epochs 1024 --seed 16809
+python -m mtgml.training.train_draftbots --name train_$TYPE --epochs 1024 --seed 16809 --log-dir logs/fit/$TYPE-$TAG
 
 export REPOSITORY=ghcr.io/cubeartisan
 
