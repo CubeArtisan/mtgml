@@ -479,13 +479,13 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 )
                 tf.summary.histogram("score_diffs", score_diffs)
                 tf.summary.histogram("probs", probs)
-                # tf.summary.histogram("log_losses", log_losses)
-                # tf.summary.histogram("triplet_losses", clipped_diffs)
-                # tf.summary.histogram('score_variance', score_variance)
-                # tf.summary.histogram('pool_variance', pool_variance)
-                # tf.summary.histogram('seen_variance', seen_variance)
-                # tf.summary.histogram('rating_variance', rating_variance)
-                # tf.summary.histogram('prob_chosen', probs_correct)
+                tf.summary.histogram("log_losses", log_losses)
+                tf.summary.histogram("triplet_losses", clipped_diffs)
+                tf.summary.histogram("score_variance", score_variance)
+                tf.summary.histogram("pool_variance", pool_variance)
+                tf.summary.histogram("seen_variance", seen_variance)
+                tf.summary.histogram("rating_variance", rating_variance)
+                tf.summary.histogram("prob_chosen", probs_correct)
             loss = tf.cast(
                 triplet_loss_weighted
                 + log_loss_weighted

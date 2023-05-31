@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+
 import numpy as np
 import tensorflow as tf
 import yaml
@@ -289,6 +291,7 @@ if __name__ == "__main__":
             )
         ):
             tf.config.experimental.set_synchronous_execution(False)
+    tf.get_logger().setLevel(logging.WARN)
     print("Synchronous execution:", tf.config.experimental.get_synchronous_execution())
     print("Tensor float 32 execution:", tf.config.experimental.tensor_float_32_execution_enabled())
 
