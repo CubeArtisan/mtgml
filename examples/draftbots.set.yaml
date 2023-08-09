@@ -141,13 +141,13 @@ DraftBots: !hcv
               value: 64
             num_heads: !hcv
               help: The number of separate heads of attention to use.
-              value: 2
+              value: 4
             num_hidden_dense: !hcv
               help: The number of hidden dense layers
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 4
+              value: 3
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 128
@@ -395,7 +395,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 32
+  value: 512
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
