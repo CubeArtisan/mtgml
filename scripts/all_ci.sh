@@ -2,7 +2,8 @@
 
 set -e
 
-export SET_TYPES=("ltr" "mom" "sir" "one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
+# export SET_TYPES=("ltr" "mom" "sir" "one" "bro" "dmu" "snc" "neo" "vow" "mid" "afr" "stx")
+export SET_TYPES=("ltr" "mom" "sir" "one" "bro" "dmu" "snc" "neo")
 # Older sets need different processing
 export GS_PATH=gs://cubeartisan/exports/
 export DATE=`gsutil ls -lh $GS_PATH\
