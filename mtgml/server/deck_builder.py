@@ -6,8 +6,23 @@ from mtgml.constants import MAX_COPIES
 
 
 def get_deck_scores(deck_state, model, card_to_int, int_to_card, tracer, original_to_new_index):
-    pool = [original_to_new_index[card_to_int[card_id]] for card_id in deck_state["pool"]]
-    basics = [original_to_new_index[card_to_int[card_id]] for card_id in deck_state["basics"]]
+    new_to_original_index = {v: k for k, v in enumerate(original_to_new_index)}
+    new_to_original_index = [new_to_original_index.get(i, 0) for i in range(len(int_to_card) + 1)]
+    missing = [
+        card_id
+        for card_id in deck_state["pool"] + deck_state["basics"]
+        if original_to_new_index[card_to_int[card_id]] == 0
+    ]
+    pool = [
+        original_to_new_index[card_to_int[card_id]]
+        for card_id in deck_state["pool"]
+        if original_to_new_index[card_to_int[card_id]] != 0
+    ]
+    basics = [
+        original_to_new_index[card_to_int[card_id]]
+        for card_id in deck_state["basics"]
+        if original_to_new_index[card_to_int[card_id]] != 0
+    ]
     pool = pool + MAX_COPIES * basics
     pool_counter = Counter(pool)
     removed = Counter()
@@ -33,8 +48,9 @@ def get_deck_scores(deck_state, model, card_to_int, int_to_card, tracer, origina
         )
         scores = result["card_scores"][0]
     sorted_scores = sorted(
-        [(int_to_card[card], float(score)) for card, score in zip(pool, scores)]
-        + [(int_to_card[card], 0.0) for card in removed.elements()],
+        [(int_to_card[new_to_original_index[card]], float(score)) for card, score in zip(pool, scores)]
+        + [(int_to_card[new_to_original_index[card]], 0.0) for card in removed.elements()]
+        + [(card, 0.0) for card in missing],
         key=lambda x: x[1],
         reverse=True,
     )

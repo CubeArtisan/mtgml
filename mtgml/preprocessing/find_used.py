@@ -162,7 +162,8 @@ if __name__ == "__main__":
         print(f"We saw {drafts} drafts")
         seen_indices_1 = seen_indices
         start = 1
-        end = drafts * 15 * 24 // len(int_to_card)
+        # Expected number of unique cards seen per draft in 3 pack 14 card drafts
+        end = drafts * 84 * 3 // len(int_to_card)
         cur = start / 2
         interesting = [
             1,
@@ -202,7 +203,7 @@ if __name__ == "__main__":
             num_cut = len(int_to_card) - num_remaining
             print(
                 f"Filtering all cards that show up in less than {cur / end: >8.3%}({cur: >5d}) of expected "
-                f" drafts(360 * |drafts| / |cards|) leaves {num_remaining: >5d}({num_remaining / len(int_to_card): >6.2%})"
+                f" drafts(252 * |drafts| / |cards|) leaves {num_remaining: >5d}({num_remaining / len(int_to_card): >6.2%})"
                 f" cards cutting {num_cut: >5d}({num_cut / len(int_to_card): >6.2%})",
             )
         with open("data/maps/card_draft_counts.json", "w") as fp:
@@ -215,7 +216,9 @@ if __name__ == "__main__":
         seen_indices = seen_indices + seen_indices_1
         with open("data/maps/card_seen_counts.json", "w") as fp:
             json.dump(seen_indices, fp)
-        seen_indices = [k for k, v in seen_indices.items() if v >= min(100, end // 100)]
+        inclusion_threshold = min(32, end // 500)
+        inclusion_threshold = 1
+        seen_indices = [k for k, v in seen_indices.items() if v >= inclusion_threshold]
         new_map = [0 for _ in int_to_card] + [0]
         for new_index, original_index in enumerate(sorted(seen_indices)):
             new_map[original_index] = new_index
@@ -226,5 +229,5 @@ if __name__ == "__main__":
             len(int_to_card) + 1,
             "cards to",
             max(new_map) + 1,
-            "by cutting everything that shows up less than 0.25% of the expected rate.",
+            f"by cutting everything that shows up in less than {inclusion_threshold} drafts.",
         )
