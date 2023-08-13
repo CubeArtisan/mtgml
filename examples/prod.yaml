@@ -587,4 +587,4 @@ use_async_execution: !hcv
   value: true
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: true
+  value: false

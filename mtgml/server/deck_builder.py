@@ -11,17 +11,17 @@ def get_deck_scores(deck_state, model, card_to_int, int_to_card, tracer, origina
     missing = [
         card_id
         for card_id in deck_state["pool"] + deck_state["basics"]
-        if original_to_new_index[card_to_int[card_id]] == 0
+        if original_to_new_index[card_to_int[card_id] + 1] == 0
     ]
     pool = [
-        original_to_new_index[card_to_int[card_id]]
+        original_to_new_index[card_to_int[card_id] + 1]
         for card_id in deck_state["pool"]
-        if original_to_new_index[card_to_int[card_id]] != 0
+        if original_to_new_index[card_to_int[card_id] + 1] != 0
     ]
     basics = [
-        original_to_new_index[card_to_int[card_id]]
+        original_to_new_index[card_to_int[card_id] + 1]
         for card_id in deck_state["basics"]
-        if original_to_new_index[card_to_int[card_id]] != 0
+        if original_to_new_index[card_to_int[card_id] + 1] != 0
     ]
     pool = pool + MAX_COPIES * basics
     pool_counter = Counter(pool)
@@ -48,13 +48,9 @@ def get_deck_scores(deck_state, model, card_to_int, int_to_card, tracer, origina
         )
         scores = result["card_scores"][0]
     sorted_scores = sorted(
-        [(int_to_card[new_to_original_index[card]], float(score)) for card, score in zip(pool, scores)]
-        + [(int_to_card[new_to_original_index[card]], 0.0) for card in removed.elements()]
-        + [(card, 0.0) for card in missing],
+        [(int_to_card[new_to_original_index[card] - 1], float(score)) for card, score in zip(pool, scores)]
+        + [(int_to_card[new_to_original_index[card] - 1], 0.0) for card in removed.elements()],
         key=lambda x: x[1],
         reverse=True,
     )
-    return {
-        "main": sorted_scores[:40],
-        "side": sorted_scores[40:],
-    }
+    return {"main": sorted_scores[:40], "side": sorted_scores[40:], "unknown": missing}

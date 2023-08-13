@@ -93,8 +93,6 @@ export REPOSITORY=ghcr.io/cubeartisan
 
 rm -rf ml_files/latest ml_files/testing_tflite
 mkdir -p ml_files/latest
-cp -r data/maps/int_to_card.json ml_files/latest
-cp data/maps/original_to_new_index.json ml_files/latest
 cp ml_files/train_$TYPE/* ml_files/latest
 python -m mtgml.postprocessing.patch_combined $TYPE
 docker buildx build --platform linux/arm64/v8,linux/amd64 --tag $REPOSITORY/mtgml:$TYPE-$DATE --tag $REPOSITORY/mtgml:$TYPE-latest . -f .docker/Dockerfile.$TYPE --push
