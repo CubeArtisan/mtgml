@@ -67,9 +67,9 @@ cp $DATE/card_to_int.json maps/card_to_int.json
 cd ..
 python -m mtgml.preprocessing.find_used data/$DATE/drafts\;data/$DATE/draftlogs\;data/17lands/complete data/$DATE/cubes data/CubeCobra/cubes
 if [[ -d data/CubeCobra/decks ]]; then
-    python -m mtgml.preprocessing.load_decks data/$DATE/decks data/CubeCobra/decks
+    python -m mtgml.preprocessing.load_decks data/$DATE/decks\;data/$DATE/external_decks data/CubeCobra/decks
 else
-    python -m mtgml.preprocessing.load_decks data/$DATE/decks
+    python -m mtgml.preprocessing.load_decks data/$DATE/decks\;data/$DATE/external_decks
 fi
 if [[ -d data/CubeCobra/cubes ]]; then
     python -m mtgml.preprocessing.load_cubes data/$DATE/cubes data/CubeCobra/cubes

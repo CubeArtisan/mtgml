@@ -58,8 +58,9 @@ DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
 
 
 def load_all_decks(deck_dirs):
-    num_decks = 0
     for deck_dir in deck_dirs.split(";"):
+        total_decks = 0
+        num_decks = 0
         for decks_file in tqdm(
             glob.glob(f"{deck_dir}/*.json"), leave=False, dynamic_ncols=True, unit="file", unit_scale=1
         ):
@@ -75,6 +76,7 @@ def load_all_decks(deck_dirs):
                         smoothing=0.001,
                         initial=num_decks,
                     ):
+                        total_decks += 1
                         if (
                             len(deck["main"]) == 40
                             and all(isinstance(x, int) for x in deck["main"])
@@ -87,7 +89,8 @@ def load_all_decks(deck_dirs):
                             main = [original_to_new_index[x + 1] for x in deck["main"]]
                             side = [original_to_new_index[x + 1] for x in deck["side"]]
                             pool = main + side
-                            if all(x > 0 for x in pool) and 15 <= is_land[main].sum() <= 18:
+                            land_count = is_land[main].sum()
+                            if all(x > 0 for x in pool) and 15 <= land_count <= 18:
                                 pool_counter = Counter(pool)
                                 remaining_space = MAX_DECK_SIZE - len(pool)
                                 num_basics = len(deck["basics"])
@@ -112,7 +115,7 @@ def load_all_decks(deck_dirs):
                                     for card in pool:
                                         copy_counts.append(pool_counter[card])
                                         pool_counter[card] += 1
-                                    if max(pool_counter.values()) >= MAX_COPIES:
+                                    if max(pool_counter.values()) > MAX_COPIES:
                                         continue
                                     indices = {card: i for i, card in list(enumerate(pool))[::-1]}
                                     target = [0 for _ in pool]
@@ -123,12 +126,13 @@ def load_all_decks(deck_dirs):
                                     yield (dest, (pool, copy_counts, target))
             except:
                 logging.exception(f"Error in file {decks_file}")
-    print(f"Total decks {num_decks:n}")
+        print(f"Total decks {num_decks:n} out of {total_decks:n}")
 
 
 def load_all_old_decks(deck_dirs):
-    num_decks = 0
     for deck_dir in deck_dirs.split(";"):
+        num_decks = 0
+        total_decks = 0
         for decks_file in tqdm(
             glob.glob(f"{deck_dir}/*.json"), leave=False, dynamic_ncols=True, unit="file", unit_scale=1
         ):
@@ -144,6 +148,7 @@ def load_all_old_decks(deck_dirs):
                         smoothing=0.001,
                         initial=num_decks,
                     ):
+                        total_decks += 1
                         if (
                             len(deck["mainboard"]) == 40
                             and all(isinstance(x, int) for x in deck["mainboard"])
@@ -189,7 +194,7 @@ def load_all_old_decks(deck_dirs):
                                     yield (dest, (pool, copy_counts, target))
             except:
                 logging.exception(f"Error in file {decks_file}")
-    print(f"Total decks {num_decks:n}")
+        print(f"Total decks {num_decks:n} out of {total_decks:n}")
 
 
 PREFIX = struct.Struct(f"{MAX_DECK_SIZE}H{MAX_DECK_SIZE}H{MAX_DECK_SIZE}H")
@@ -210,5 +215,6 @@ if __name__ == "__main__":
         output_files = [train_file, validation_file, evaluation_file]
         for dest, deck in load_all_decks(sys.argv[1]):
             write_deck(deck, output_files[dest])
-        for dest, deck in load_all_old_decks(sys.argv[2]):
-            write_deck(deck, output_files[dest])
+        if len(sys.argv) > 2:
+            for dest, deck in load_all_old_decks(sys.argv[2]):
+                write_deck(deck, output_files[dest])
