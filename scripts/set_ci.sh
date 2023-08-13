@@ -59,32 +59,40 @@ cp $DATE/card_to_int.json maps/card_to_int.json
 mkdir -p 17lands/$1
 cd 17lands/$1
 
-export FILENAME_BASE=draft_data_public.${1^^}
-export DRAFT_TYPES=("Trad" "Premier")
-for DRAFT_TYPE in ${DRAFT_TYPES[@]}
+export DRAFT_TYPES=("TradDraft" "PremierDraft" "Sealed" "TradSealed")
+export DOWNLOAD_TYPES=("draft" "game")
+export EXTENSIONS=("csv" "tar")
+for DOWNLOAD_TYPE in ${DOWNLOAD_TYPES[@]}
 do
-    export FILENAME=${DRAFT_TYPE}Draft.csv
-    if [[ ! -f ${FILENAME}.json ]]
-    then
-        echo https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME.gz
-        curl https://17lands-public.s3.amazonaws.com/analysis_data/draft_data/$FILENAME_BASE.$FILENAME.gz --output $FILENAME.gz \
-            && gzip -fd ${FILENAME}.gz \
-            || true
-    fi
+    mkdir -p $DOWNLOAD_TYPE
+    export PREFIX=${DOWNLOAD_TYPE}_
+    export BASE_PREFIXES=("${DOWNLOAD_TYPE}_data_public" "${DOWNLOAD_TYPE}-data")
+    for DRAFT_TYPE in ${DRAFT_TYPES[@]}
+    do
+        export FILENAME=${DOWNLOAD_TYPE}/${DRAFT_TYPE}.csv
+        if [[ ! -f ${FILENAME}.json ]]
+        then
+            for EXT in ${EXTENSIONS[@]}
+            do
+                for BASE_PREFIX in ${BASE_PREFIXES[@]}
+                do
+                    export URL=https://17lands-public.s3.amazonaws.com/analysis_data/${DOWNLOAD_TYPE}_data/$BASE_PREFIX.${1^^}.$DRAFT_TYPE.$EXT.gz
+                    echo $URL
+                    curl $URL --output ${FILENAME}.gz && gzip -fd ${FILENAME}.gz && break 2 || rm ${FILENAME}.gz
+                done
+            done
+        fi
+    done
 done
 
 cd ../../../
 
-for DRAFT_TYPE in ${DRAFT_TYPES[@]}
+for fname in data/17lands/$1/*/*.csv
 do
-    if [[ -f data/17lands/$1/${DRAFT_TYPE}Draft.csv ]]
-    then
-        python -m mtgml.preprocessing.17lands_to_json data/17lands/$1/${DRAFT_TYPE}Draft.csv
-        rm data/17lands/$1/${DRAFT_TYPE}Draft.csv
-    fi
+    python -m mtgml.preprocessing.17lands_to_json $fname && rm $fname
 done
-python -m mtgml.preprocessing.find_used data/17lands/$1 nonexistant nonexistant
-python -m mtgml.preprocessing.load_picks data/17lands/$1
+python -m mtgml.preprocessing.find_used data/17lands/draft/$1 nonexistant nonexistant
+python -m mtgml.preprocessing.load_picks data/17lands/draft/$1
 
 export GITHUB_SHA=`git rev-parse HEAD`
 export TAG=${GITHUB_SHA:0:8}
