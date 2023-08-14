@@ -100,6 +100,21 @@ CubeRecommender: !hcv
     temperature_reg_weight: !hcv
       help: The amount to scale the squared temperature by for loss.
       value: 0.001
+    probability_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
+      value: 0.001
+    log_weight: !hcv
+      help: How much weight to apply to the cross entropy loss.
+      value: 1.0
+    margin_weight: !hcv
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
+      value: 100.0
+    mae_weight: !hcv
+      help: How much weight to apply to the mean absolute error between true predictions and our probability of inclusion.
+      value: 0.0
+    mse_weight: !hcv
+      help: How much weight to apply to the mean squared error between true predictions and our probability of inclusion.
+      value: 0.0
 DeckBuilder: !hcv
   help: The model for recommending how to build a deck out of a pool.
   value: !hc
@@ -545,7 +560,7 @@ deck_adj_mtx_weight: !hcv
   value: 0
 deck_batch_size: !hcv
   help: The number of decks to evaluate at a time
-  value: 32
+  value: 64
 deck_builder_weight: !hcv
   help: The weight to multiply the deck builder loss by.
   value: 1
@@ -578,7 +593,7 @@ optimizer: !hcv
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 32
+  value: 48
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 1

@@ -207,25 +207,33 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
             card_weights = tf.where(
                 true_deck > 0,
                 tf.cast(1 + instance_nums, dtype=self.compute_dtype) + self.scale_correct + 8.0 * is_land,
-                pool_mask_float + is_land,
+                pool_mask_float,
                 name="card_weights",
             )
-            total_sample_weights = tf.math.reduce_sum(card_weights, axis=1, name="total_sample_weights")
+            # total_sample_weights = tf.math.reduce_sum(card_weights, axis=1, name="total_sample_weights")
+            # total_sample_counts = tf.math.reduce_sum(pool_mask_float, axis=1, name="total_sample_counts")
             card_losses = {
-                "log": -(true_deck * tf.math.log(probs) + (1.0 - true_deck) * tf.math.log(1.0 - probs)),
+                "log": tf.keras.losses.binary_crossentropy(
+                    tf.expand_dims(true_deck, -1),
+                    tf.constant(1 - 2 * EPSILON, dtype=self.compute_dtype) * tf.expand_dims(probs, -1)
+                    + tf.constant(EPSILON, dtype=self.compute_dtype),
+                ),
                 "mse": tf.math.squared_difference(true_deck, probs, name="mse_card_losses"),
                 "mae": tf.math.abs(true_deck - probs, name="mae_card_losses"),
                 "extremeness": tf.maximum(
                     tf.math.abs(0.5 - standardized_inclusion_probs) - 0.5 + self.margin, 0.0, name="extremeness_losses"
                 ),
             }
-            true_land_counts = tf.math.reduce_sum(is_land * true_deck, axis=1, name="true_land_counts")
+            true_land_counts = tf.einsum("bc,bc->b", is_land, true_deck, name="true_land_counts")
             sample_losses = {
-                k: tf.math.reduce_sum(card_weights * v, axis=1, name=f"sample_{k}_losses") / total_sample_weights
-                for k, v in card_losses.items()
+                k: tf.einsum(
+                    "bc,bc->b", card_weights, per_card_loss, name=f"sample_{k}_losses"
+                )  # / total_sample_weights
+                for k, per_card_loss in card_losses.items()
             } | {
-                "land_count": tf.math.square(
-                    tf.math.abs(tf.math.reduce_sum(is_land * standardized_inclusion_probs, axis=1) - true_land_counts),
+                "land_count": tf.math.squared_difference(
+                    tf.einsum("bc,bc->b", is_land, standardized_inclusion_probs),
+                    true_land_counts,
                     name="land_count_losses",
                 ),
                 "total_prob": tf.math.squared_difference(
@@ -233,7 +241,7 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                 ),
             }
             losses = {k: tf.math.reduce_mean(v) for k, v in sample_losses.items()}
-            loss = sum(self.lambdas[k] * v for k, v in losses.items())
+            loss = tf.add_n([self.lambdas[k] * raw_loss for k, raw_loss in losses.items()], name="loss")
             for k, v in sample_losses.items():
                 self.add_metric(v, f"{k}_loss")
                 tf.summary.scalar(f"{k}_loss", losses[k])

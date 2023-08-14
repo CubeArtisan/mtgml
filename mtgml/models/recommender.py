@@ -45,22 +45,58 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                 "cube_precis_at_25": tf.keras.metrics.PrecisionAtRecall(0.25, name="cube_precis_at_25"),
                 "cube_precis_at_50": tf.keras.metrics.PrecisionAtRecall(0.5, name="cube_precis_at_50"),
                 "cube_precis_at_75": tf.keras.metrics.PrecisionAtRecall(0.75, name="cube_precis_at_75"),
-                "cube_abs_error": tf.keras.metrics.MeanAbsoluteError(name="cube_abs_error"),
             },
             "scale_relevant_cards": hyper_config.get_float(
                 "scale_relevant_cards",
                 min=0,
                 max=100.0,
                 default=5,
-                help="The amount to scale the loss on the cards in the noisy cube and the true cube.",
+                help="The amount to scale the loss on the cards in the input cube and the true cube.",
             ),
-            "temperature_reg_weight": hyper_config.get_float(
-                "temperature_reg_weight",
-                min=0,
-                max=10,
-                default=0.01,
-                help="The amount to scale the squared temperature by for loss.",
+            "margin": hyper_config.get_float(
+                "probability_margin",
+                default=0.001,
+                min=0.0,
+                max=0.5,
+                help="The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.",
             ),
+            "lambdas": {
+                "log": hyper_config.get_float(
+                    "log_weight",
+                    min=0.0,
+                    max=10.0,
+                    default=1.0,
+                    help="The amount to scale the log/crossentropy loss for the cubes.",
+                ),
+                "mse": hyper_config.get_float(
+                    "log_weight",
+                    min=0.0,
+                    max=10.0,
+                    default=0.0,
+                    help="The amount to scale the log/crossentropy loss for the cubes.",
+                ),
+                "mae": hyper_config.get_float(
+                    "log_weight",
+                    min=0.0,
+                    max=10.0,
+                    default=0.0,
+                    help="The amount to scale the log/crossentropy loss for the cubes.",
+                ),
+                "temperature_reg": hyper_config.get_float(
+                    "temperature_reg_weight",
+                    min=0,
+                    max=10,
+                    default=0.01,
+                    help="The amount to scale the squared temperature by for loss.",
+                ),
+                "extremeness": hyper_config.get_float(
+                    "margin_weight",
+                    default=1.0,
+                    min=0.0,
+                    max=1000,
+                    help="The multiplier to scale the probability margin loss by. Suggested is 1 / probability_margin.",
+                ),
+            },
         }
 
     def build(self, input_shapes):
@@ -95,50 +131,64 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         embedded in the recommendations. As the individual items must pull towards items
         represented strongly within the graph.
         """
-        noisy_cube = tf.cast(inputs[0], dtype=tf.int32, name="noisy_cube")
+        input_cube = tf.cast(inputs[0], dtype=tf.int32, name="input_cube")
         if len(inputs) == 3:
             card_embeddings = tf.cast(inputs[2], dtype=self.compute_dtype, name="card_embeddings")
         else:
             card_embeddings = tf.cast(inputs[1], dtype=self.compute_dtype, name="card_embeddings")
-        embed_noisy_cube = tf.gather(card_embeddings, noisy_cube, name="embed_noisy_cube")
-        encoded_noisy_cube = tf.identity(
-            self.embed_cube(embed_noisy_cube, training=training), name="encoded_noisy_cube"
+        embed_input_cube = tf.gather(card_embeddings, input_cube, name="embed_input_cube")
+        encoded_input_cube = tf.identity(
+            self.embed_cube(embed_input_cube, training=training), name="encoded_input_cube"
         )
         transformed_cards = self.transform_cards(card_embeddings[1:], training=training)
-        encoded_noisy_cube_exp = tf.expand_dims(encoded_noisy_cube, -2)
+        encoded_input_cube_exp = tf.expand_dims(encoded_input_cube, -2)
         transformed_cards_exp = tf.expand_dims(transformed_cards, -3)
-        similarities = -tf.keras.losses.cosine_similarity(encoded_noisy_cube_exp, transformed_cards_exp, axis=-1)
-        decoded_noisy_cube = tf.nn.sigmoid(
-            (similarities - self.similarity_offset) * self.temperature, name="decoded_noisy_cube"
+        similarities = -tf.keras.losses.cosine_similarity(encoded_input_cube_exp, transformed_cards_exp, axis=-1)
+        decoded_input_cube = tf.nn.sigmoid(
+            (similarities - self.similarity_offset) * self.temperature, name="decoded_input_cube"
         )
         if len(inputs) == 3:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name="true_cube_arr")
             true_cube = tf.reduce_max(
                 tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype), axis=-2
             )[:, 1:]
-            cube_losses = tf.keras.losses.binary_crossentropy(
-                tf.expand_dims(true_cube, -1),
-                tf.constant(1 - 2 * EPSILON, dtype=self.compute_dtype) * tf.expand_dims(decoded_noisy_cube, -1)
-                + tf.constant(EPSILON, dtype=self.compute_dtype),
+            card_losses = {
+                "log": tf.keras.losses.binary_crossentropy(
+                    tf.expand_dims(true_cube, -1),
+                    tf.constant(1 - 2 * EPSILON, dtype=self.compute_dtype) * tf.expand_dims(decoded_input_cube, -1)
+                    + tf.constant(EPSILON, dtype=self.compute_dtype),
+                ),
+                "mse": tf.math.squared_difference(true_cube, decoded_input_cube, name="mse_card_losses"),
+                "mae": tf.math.abs(true_cube - decoded_input_cube, name="mae_card_losses"),
+                "extremeness": tf.maximum(
+                    tf.math.abs(0.5 - decoded_input_cube) - 0.5 + self.margin, 0.0, name="extremeness_losses"
+                ),
+            }
+            input_cube_spread = tf.reduce_max(
+                tf.one_hot(input_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2
             )
-            noisy_cube_spread = tf.reduce_max(
-                tf.one_hot(noisy_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2
-            )
-            scaled_cubes = (noisy_cube_spread + true_cube) * tf.constant(
-                self.scale_relevant_cards, dtype=self.compute_dtype
-            )
-            true_cube_card_ratio = (
-                tf.constant(1, dtype=self.compute_dtype) - true_cube - noisy_cube_spread
-            ) + scaled_cubes
-            cube_losses = tf.reduce_mean(cube_losses * true_cube_card_ratio, axis=-1)
-            loss = tf.math.reduce_mean(cube_losses) + self.temperature * self.temperature * self.temperature_reg_weight
-            self.add_metric(cube_losses, "cube_loss")
+            combined_cube = input_cube_spread + true_cube
+            scaled_cubes = combined_cube * tf.constant(self.scale_relevant_cards - 1, dtype=self.compute_dtype)
+            card_weights = tf.constant(1, dtype=self.compute_dtype) + scaled_cubes
+            sample_losses = {
+                k: tf.einsum("bc,bc->b", card_weights, per_card_loss, name=f"sample_{k}_losses")
+                for k, per_card_loss in card_losses.items()
+            }
+            losses = {k: tf.math.reduce_mean(per_sample_loss) for k, per_sample_loss in sample_losses.items()} | {
+                "temperature_reg": tf.square(self.temperature, name="l2_temp")
+            }
+            loss = tf.add_n([self.lambdas[k] * raw_loss for k, raw_loss in losses.items()], name="loss")
+            for k, v in losses.items():
+                if k in sample_losses:
+                    self.add_metric(sample_losses[k], f"{k}_loss")
+                tf.summary.scalar(f"{k}_loss", v)
             self.add_metric(self.temperature, "cube_temperature")
-            tf.summary.scalar("cube_loss", tf.reduce_mean(cube_losses))
             if should_log_histograms():
                 tf.summary.histogram("similarities", similarities)
+                for name, values in sample_losses.items():
+                    tf.summary.histogram(f"{name}_losses", values)
             for name, metric in self.cube_metrics.items():
-                metric.update_state(true_cube, decoded_noisy_cube)
+                metric.update_state(true_cube, decoded_input_cube)
                 tf.summary.scalar(name, metric.result())
             return loss
-        return decoded_noisy_cube, encoded_noisy_cube
+        return decoded_input_cube, encoded_input_cube
