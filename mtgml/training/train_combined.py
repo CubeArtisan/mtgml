@@ -13,8 +13,6 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 import numpy as np
 import tensorflow as tf
 import yaml
-
-# from mtgml_native.generators.adj_mtx_generator import PickAdjMtxGenerator
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 from mtgml_native.generators.recommender_generator import RecommenderGenerator
 
@@ -123,6 +121,7 @@ if __name__ == "__main__":
         )
         > 0
     )
+    print("Num replicas:", strategy.num_replicas_in_sync)
     pick_batch_size = (
         hyper_config.get_int(
             "pick_batch_size",
@@ -159,18 +158,6 @@ if __name__ == "__main__":
         )
         * strategy.num_replicas_in_sync
     )
-    adj_mtx_batch_size = (
-        hyper_config.get_int(
-            "adj_mtx_batch_size",
-            min=8,
-            max=2048,
-            step=8,
-            logdist=True,
-            default=8,
-            help="The number of rows of the adjacency matrices to evaluate at a time.",
-        )
-        * strategy.num_replicas_in_sync
-    )
     noise_mean = hyper_config.get_float(
         "cube_noise_mean", min=0, max=1, default=0.7, help="The median of the noise distribution for cubes."
     )
@@ -187,26 +174,12 @@ if __name__ == "__main__":
     )
     deck_train_generator = DeckGenerator("data/train_decks.bin", deck_batch_size, args.seed * 37)
     deck_validation_generator = DeckGenerator("data/validation_decks.bin", deck_batch_size, args.seed * 37)
-    # deck_adj_mtx_generator = DeckAdjMtxGenerator('data/train_decks.bin', len(cards_json), adj_mtx_batch_size, args.seed)
-    # deck_adj_mtx_generator.on_epoch_end()
-    deck_adj_mtx_generator = deck_validation_generator
-    # deck_adj_mtx_generator = PickAdjMtxGenerator(
-    #     "data/train_picks.bin", num_cards - 1, adj_mtx_batch_size, args.seed * 29
-    # )
-    # deck_adj_mtx_generator.on_epoch_end()
-    # cube_adj_mtx_generator = PickAdjMtxGenerator(
-    #     "data/train_picks.bin", num_cards - 1, 8 * adj_mtx_batch_size, args.seed * 23
-    # )
-    # cube_adj_mtx_generator.on_epoch_end()
-    cube_adj_mtx_generator = deck_validation_generator
     print(f"There are {len(draftbot_train_generator)} training pick batches")
     print(f"There are {len(draftbot_validation_generator)} validation pick batches")
     print(f"There are {len(recommender_train_generator)} training recommender batches")
     print(f"There are {len(recommender_validation_generator)} validation recommender batches")
     print(f"There are {len(deck_train_generator)} training deck batches")
     print(f"There are {len(deck_validation_generator)} validation deck batches")
-    print(f"There are {len(deck_adj_mtx_generator)} adjacency matrix batches")
-    print(f"There are {len(cube_adj_mtx_generator)} validation adjacency matrix batches")
     logging.info(f"There are {num_cards:n} cards being trained on.")
     default_log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if args.log_dir is None:
@@ -319,9 +292,7 @@ if __name__ == "__main__":
         CombinedGenerator(
             draftbot_train_generator,
             recommender_train_generator,
-            deck_validation_generator,
-            deck_adj_mtx_generator,
-            deck_adj_mtx_generator,
+            deck_train_generator,
         ),
         epochs_for_completion,
     )
@@ -330,8 +301,6 @@ if __name__ == "__main__":
             draftbot_validation_generator,
             recommender_validation_generator,
             deck_validation_generator,
-            cube_adj_mtx_generator,
-            cube_adj_mtx_generator,
         ),
         1,
     )
@@ -478,16 +447,16 @@ if __name__ == "__main__":
 
         def get_example_input(i: int):
             if use_draftbots or use_recommender or use_deck_builder:
-                pick_train_example, cube_train_example, deck_train_example, *rest = validation_generator[i][0]
+                pick_train_example, cube_train_example, deck_train_example = validation_generator[i][0]
             else:
-                pick_train_example, cube_train_example, deck_train_example, *rest = train_generator[i][0]
+                pick_train_example, cube_train_example, deck_train_example = train_generator[i][0]
             pick_train_example_target = pick_train_example[5:]
             pick_train_example = pick_train_example[:5]
             cube_train_example_target = cube_train_example[1:]
             cube_train_example = cube_train_example[:1]
             deck_train_example_target = deck_train_example[2:]
             deck_train_example = deck_train_example[:2]
-            return (pick_train_example, cube_train_example, deck_train_example, *rest), (
+            return (pick_train_example, cube_train_example, deck_train_example), (
                 pick_train_example_target,
                 cube_train_example_target,
                 deck_train_example_target,
@@ -503,7 +472,7 @@ if __name__ == "__main__":
                 import pandas as pd
 
                 def get_dfs(example_input, offset: int = 0):
-                    (pick_train_example, cube_train_example, deck_train_example, *rest) = example_input[0]
+                    (pick_train_example, cube_train_example, deck_train_example) = example_input[0]
                     (pick_train_example_target, cube_train_example_target, deck_train_example_target) = example_input[1]
                     result = model(example_input[0], training=False)
                     deck_df = pd.concat(

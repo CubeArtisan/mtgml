@@ -123,34 +123,37 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
     def call(self, inputs, training=False):
         if not isinstance(inputs[0], tuple):
             inputs = (tuple(inputs[:5]), (inputs[5],), tuple(inputs[6:8]), tuple(inputs[8:10]), tuple(inputs[10:12]))
-        draftbot_loss = tf.constant(0, dtype=tf.float32)
-        recommender_loss = tf.constant(0, dtype=tf.float32)
-        deck_builder_loss = tf.constant(0, dtype=tf.float32)
-        deck_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
-        cube_adj_mtx_loss = tf.constant(0, dtype=tf.float32)
+        losses = []
         results = []
         with tf.experimental.async_scope():
             loss = 0
             if self.draftbots_weight > 0:
                 if len(inputs[0]) > 6:
-                    draftbot_loss = self.draftbots_weight * self.draftbots(
-                        (*inputs[0][0:-2], self.embed_cards.embeddings, *inputs[0][-2:]), training=training
+                    losses.append(
+                        self.draftbots_weight
+                        * self.draftbots(
+                            (*inputs[0][0:-2], self.embed_cards.embeddings, *inputs[0][-2:]), training=training
+                        )
                     )
                 else:
                     results.append(self.draftbots((*inputs[0], self.embed_cards.embeddings), training=training))
             if self.recommender_weight:
                 if len(inputs[1]) > 1:
-                    recommender_loss = self.recommender_weight * self.cube_recommender(
-                        (*inputs[1], self.embed_cards.embeddings), training=training
+                    losses.append(
+                        self.recommender_weight
+                        * self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training)
                     )
                 else:
                     results.append(self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training))
             if self.deck_builder_weight:
                 if len(inputs[2]) > 2:
 
-                    deck_builder_loss = self.deck_builder_weight * self.deck_builder(
-                        (*inputs[2][:2], self.embed_cards.embeddings, *inputs[2][2:]),
-                        training=training,
+                    losses.append(
+                        self.deck_builder_weight
+                        * self.deck_builder(
+                            (*inputs[2][:2], self.embed_cards.embeddings, *inputs[2][2:]),
+                            training=training,
+                        )
                     )
                 else:
                     results.append(
@@ -160,15 +163,21 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                         )
                     )
             if self.cube_adj_mtx_weight > 0:
-                cube_adj_mtx_loss = self.cube_adj_mtx_weight * self.cube_adj_mtx_reconstructor(
-                    (*inputs[3], self.embed_cards.embeddings), training=training
+                losses.append(
+                    self.cube_adj_mtx_weight
+                    * self.cube_adj_mtx_reconstructor((*inputs[3], self.embed_cards.embeddings), training=training)
                 )
             if self.deck_adj_mtx_weight > 0:
-                deck_adj_mtx_loss = self.deck_adj_mtx_weight * self.deck_adj_mtx_reconstructor(
-                    (*inputs[4], self.embed_cards.embeddings), training=training
+                losses.append(
+                    self.deck_adj_mtx_weight
+                    * self.deck_adj_mtx_reconstructor((*inputs[4], self.embed_cards.embeddings), training=training)
                 )
         if len(inputs[0]) > 6:
-            loss = draftbot_loss + recommender_loss + deck_builder_loss + deck_adj_mtx_loss + cube_adj_mtx_loss
+            loss = (
+                tf.math.add_n(losses, name="loss")
+                if len(losses) > 0
+                else tf.constant(0.0, dtype=self.compute_dtype, name="loss")
+            )
             self.add_loss(loss)
             tf.summary.scalar("loss", loss)
             return loss
