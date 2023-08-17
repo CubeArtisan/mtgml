@@ -147,7 +147,6 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                     results.append(self.cube_recommender((*inputs[1], self.embed_cards.embeddings), training=training))
             if self.deck_builder_weight:
                 if len(inputs[2]) > 2:
-
                     losses.append(
                         self.deck_builder_weight
                         * self.deck_builder(
@@ -179,7 +178,7 @@ class CombinedModel(ConfigurableLayer, tf.keras.models.Model):
                 else tf.constant(0.0, dtype=self.compute_dtype, name="loss")
             )
             self.add_loss(loss)
-            tf.summary.scalar("loss", loss)
+            self.log_metrics({}, {"loss": loss}, {}, set())
             return loss
         else:
             return results

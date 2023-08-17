@@ -34,10 +34,10 @@ CubeRecommender: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 4
+              value: 5
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
-              value: 512
+              value: 256
             use_bias: !hcv
               help: Use bias in the dense layers
               value: true
@@ -97,12 +97,12 @@ CubeRecommender: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
       value: 8
-    temperature_reg_weight: !hcv
-      help: The amount to scale the squared temperature by for loss.
-      value: 0.001
+    similarity_variance_weight: !hcv
+      help: The weight to apply to how large the standard deviation of the cosine similarities should be.
+      value: 1.0
     probability_margin: !hcv
       help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
-      value: 0.001
+      value: 0.01
     log_weight: !hcv
       help: How much weight to apply to the cross entropy loss.
       value: 1.0
@@ -148,7 +148,7 @@ DeckBuilder: !hcv
           value: 0
         num_hidden_layers: !hcv
           help: Number of transformer blocks.
-          value: 4
+          value: 5
         token_stream_dims: !hcv
           help: The size of the token embeddings passed between layers.
           value: 256
@@ -157,7 +157,7 @@ DeckBuilder: !hcv
           value: true
         value_dims: !hcv
           help: Size of the attention head for value.
-          value: 32
+          value: 64
     InclusionProb: !hcv
       help: The layer to convert the final embeddings of the cards to probabilities
         of inclusion.
@@ -168,16 +168,16 @@ DeckBuilder: !hcv
     land_count_weight: !hcv
       help: How much weight to apply to punish it for having land counts other than
         17.
-      value: 0.01
+      value: 0.1
     probability_margin: !hcv
       help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
       value: 0.001
     log_weight: !hcv
       help: How much weight to apply to the cross entropy loss.
-      value: 0.25
+      value: 0.5
     margin_weight: !hcv
       help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
-      value: 100.0
+      value: 10.0
     scale_correct: !hcv
       help: How much to scale the penalty for leaving out a correct card.
       value: 1.0
@@ -189,7 +189,7 @@ DeckBuilder: !hcv
       value: 0.0
     total_prob_weight: !hcv
       help: How much weight to apply to punish it for having total probability away from 40.
-      value: 0.01
+      value: 0.1
 DraftBots: !hcv
   help: The model for the draftbots
   value: !hc
@@ -241,7 +241,7 @@ DraftBots: !hcv
               value: 0.09
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.1
+              value: 0.15
             dense_activation: !hcv
               choices: []
               help: The activation function on the output of the layer.
@@ -257,7 +257,7 @@ DraftBots: !hcv
               value: 0
             num_hidden_layers: !hcv
               help: Number of transformer blocks.
-              value: 2
+              value: 3
             token_stream_dims: !hcv
               help: The size of the token embeddings passed between layers.
               value: 128
@@ -407,10 +407,10 @@ DraftBots: !hcv
                   value: 0.0
             attention dropout_rate: !hcv
               help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.01
+              value: 0.00
             dense dropout_rate: !hcv
               help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.1
+              value: 0.00
             dense_activation: !hcv
               choices: []
               help: The activation function on the output of the layer.
@@ -491,11 +491,20 @@ DraftBots: !hcv
       help: Whether to give each card a rating independent of context.
       value: true
     log_loss_weight: !hcv
-      help: The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight
+      help: The weight given to probability log loss.
       value: 0.8
+    triplet_loss_weight: !hcv
+      help: The weight given to the triplet separation loss.
+      value: 0.2
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 1
+    extremeness_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
+      value: 0.01
+    extremeness_weight: !hcv
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
+      value: 1.0
     pool_context_ratings: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
@@ -505,16 +514,19 @@ DraftBots: !hcv
       value: 0.001
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
-      value: 0.0001
+      value: 0.0
     score_variance_weight: !hcv
       help: The weight given to the variance of the combined scores.
       value: 0.0
+    sublayer_weights_l2_weight: !hcv
+      help: The multiplier to scale the loss on the square of the sublayer weights.
+      value: 0.001
     seen_context_ratings: !hcv
       help: Whether to rate cards based on the packs seen so far.
       value: true
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
-      value: 128
+      value: 64
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
       value: 0.01

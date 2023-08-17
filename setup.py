@@ -9,10 +9,10 @@ setup(
     author_email="support@cubeartisan.net",
     version="0.0.2",
     description="A faster threaded generators for loading mtgml training data.",
-    license="AGPL",
+    # license="AGPL",
     packages=["mtgml/" + x for x in find_packages(where="mtgml")],
     cmake_install_dir="mtgml_native/generators",
     include_package_data=True,
-    python_requires=">=3.8",
+    # python_requires=">=3.8",
     zip_safe=False,
 )

@@ -72,16 +72,15 @@ class ContextualRating(ConfigurableLayer):
             -1,
             name="squared_distances",
         )
+        float_metrics = {"distances": distances}
         if self.bounded_distance:
             one = tf.constant(1, dtype=self.compute_dtype)
             large = tf.constant(LARGE_INT, dtype=self.compute_dtype)
             nonlinear_distances = tf.math.divide(
                 large, tf.math.add(one, distances, name="distances_incremented"), name="nonlinear_distances"
             )
+            float_metrics["nonlinear_distances"] = nonlinear_distances
         else:
             nonlinear_distances = tf.math.negative(distances, name="reversed_distances")
-        if should_log_histograms():
-            tf.summary.histogram("distances", distances)
-            if self.bounded_distance:
-                tf.summary.histogram("nonlinear_distances", nonlinear_distances)
+        self.log_metrics({}, float_metrics, {}, set(), items_mask)
         return nonlinear_distances

@@ -402,7 +402,7 @@ if __name__ == "__main__":
     loaded = None
     if latest is not None:
         logging.info("Loading Checkpoint.")
-        loaded = model.load_weights(latest)
+        loaded = model.load_weights(latest).expect_partial()
 
     logging.info("Starting training")
     with draftbot_train_generator, recommender_train_generator, draftbot_validation_generator, recommender_validation_generator:
@@ -465,7 +465,7 @@ if __name__ == "__main__":
         example_input = get_example_input(0)
         # Make sure it compiles the correct setup for evaluation
         with strategy.scope():
-            print("Evalulating model on test data.")
+            print("Evaluating model on test data.")
             result = model(example_input[0], training=False)
             print(model.summary())
             if args.breakpoint:

@@ -1,85 +1,9 @@
-import math
-
 import tensorflow as tf
 
-from mtgml.constants import (
-    EPSILON,
-    LARGE_INT,
-    MAX_COPIES,
-    MAX_DECK_SIZE,
-    should_log_histograms,
-)
+from mtgml.constants import EPSILON, MAX_COPIES
 from mtgml.layers.bert import BERT
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.wrapped import WDense
-from mtgml.tensorboard.timeseries import log_integer_histogram
-
-
-def smooth_stepper(order: int = 1):
-    coefficients = [
-        (-(1**i)) * math.comb(order + i, i) * math.comb(2 * order + 1, order - i) for i in range(order + 1)
-    ]
-
-    @tf.function
-    def smoothstep(x: tf.Tensor, name: str | None = None):
-        with tf.name_scope(name or f"SmoothStep{order}") as scope:
-            x = tf.clip_by_value(x, EPSILON, 1.0, name="clipped")
-            powers = tf.math.pow(
-                x,
-                tf.constant(
-                    [order + i + 1 for i in range(order + 1)],
-                    shape=(order + 1, *[1 for _ in range(len(x.shape))]),
-                    dtype=x.dtype,
-                    name="exponents",
-                ),
-                name="powers",
-            )
-            return tf.einsum(
-                "n,n...->...", tf.constant(coefficients, dtype=x.dtype, name="coefficients"), x, name=scope
-            )
-
-    return smoothstep
-
-
-@tf.function
-def normalize_probabilities_sum(probabilities, mask, desired_sum: float = 40, name: str | None = None):
-    with tf.name_scope(name or "NormalizeProbabilitiesSum") as scope:
-        max_x = tf.math.reduce_logsumexp(
-            probabilities
-            - (1 - tf.cast(mask, dtype=probabilities.dtype)) * tf.constant(LARGE_INT, dtype=probabilities.dtype),
-            axis=1,
-            keepdims=True,
-            name="max_value",
-        )
-        sum_x = tf.math.reduce_sum(
-            probabilities * tf.cast(mask, dtype=probabilities.dtype), axis=1, keepdims=True, name="sum_x"
-        )
-        numerator = tf.nn.softplus(
-            tf.constant(desired_sum, dtype=probabilities.dtype, name="desired_sum") * max_x - sum_x, name="unscaled"
-        )
-        offset = tf.math.divide(
-            numerator,
-            tf.math.reduce_sum(tf.cast(mask, dtype=tf.float32), axis=1, keepdims=True) - desired_sum + EPSILON,
-            name="offset",
-        )
-        shifted = probabilities + offset
-        return tf.math.multiply(
-            tf.constant(desired_sum, dtype=probabilities.dtype),
-            shifted / tf.math.reduce_sum(shifted, axis=1, keepdims=True, name="total_shifted"),
-            name=scope,
-        )
-
-
-@tf.function
-def normalize_probabilities_sum_weak(probabilities, mask, desired_sum: float = 40, name: str | None = None):
-    with tf.name_scope(name or "NormalizeProbabilitiesMaxSum") as scope:
-        sum_x = (
-            tf.math.reduce_sum(
-                probabilities * tf.cast(mask, dtype=probabilities.dtype), axis=1, keepdims=True, name="sum_x"
-            )
-            + EPSILON
-        )
-        return tf.where(sum_x > desired_sum, desired_sum * probabilities / sum_x, probabilities, name=scope)
 
 
 class DeckBuilder(ConfigurableLayer, tf.keras.Model):
@@ -210,8 +134,7 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                 pool_mask_float,
                 name="card_weights",
             )
-            # total_sample_weights = tf.math.reduce_sum(card_weights, axis=1, name="total_sample_weights")
-            # total_sample_counts = tf.math.reduce_sum(pool_mask_float, axis=1, name="total_sample_counts")
+            true_land_counts = tf.einsum("bc,bc->b", is_land, true_deck, name="true_land_counts")
             card_losses = {
                 "log": tf.keras.losses.binary_crossentropy(
                     tf.expand_dims(true_deck, -1),
@@ -224,13 +147,7 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                     tf.math.abs(0.5 - standardized_inclusion_probs) - 0.5 + self.margin, 0.0, name="extremeness_losses"
                 ),
             }
-            true_land_counts = tf.einsum("bc,bc->b", is_land, true_deck, name="true_land_counts")
             sample_losses = {
-                k: tf.einsum(
-                    "bc,bc->b", card_weights, per_card_loss, name=f"sample_{k}_losses"
-                )  # / total_sample_weights
-                for k, per_card_loss in card_losses.items()
-            } | {
                 "land_count": tf.math.squared_difference(
                     tf.einsum("bc,bc->b", is_land, standardized_inclusion_probs),
                     true_land_counts,
@@ -240,13 +157,7 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                     40.0, tf.math.reduce_sum(probs, axis=1, name="total_probs"), name="total_prob_losses"
                 ),
             }
-            losses = {k: tf.math.reduce_mean(v) for k, v in sample_losses.items()}
-            loss = tf.add_n([self.lambdas[k] * raw_loss for k, raw_loss in losses.items()], name="loss")
-            for k, v in sample_losses.items():
-                self.add_metric(v, f"{k}_loss")
-                tf.summary.scalar(f"{k}_loss", losses[k])
-
-            # Tensorboard logging
+            _, loss = self.collapse_losses(((card_losses, card_weights), sample_losses, {}))
             for name, metric in self.deck_metrics.items():
                 metric.update_state(true_deck, standardized_inclusion_probs)
                 tf.summary.scalar(name, metric.result())
@@ -267,31 +178,23 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                     name="accuracy_counts",
                 ),
             }
+            ranges = {
+                "extremeness_loss": (0, self.margin),
+                "land_counts": (12, 21),
+                "land_count_errors": (0, 5),
+                "accuracy_counts": (23, 37),
+                "probability": (0, 1),
+            }
+            saturate_keys = {"land_counts", "land_count_errors", "accuracy_counts"}
             float_metrics = {
                 "top_40_total_prob": tf.math.reduce_sum(top_40_probs, axis=1, name="top_40_total_probs"),
                 "total_prob": tf.math.reduce_sum(standardized_inclusion_probs, axis=1, name="total_prob"),
                 "total_land_prob": tf.math.reduce_sum(
                     standardized_inclusion_probs * is_land, axis=1, name="total_land_prob"
                 ),
-            }
-            metrics = int_metrics | float_metrics
-            for name, values in metrics.items():
-                tf.summary.scalar(f"mean_{name}", tf.math.reduce_mean(values))
-                self.add_metric(values, name)
-            if should_log_histograms():
-                tf.summary.histogram("probabilities", standardized_inclusion_probs)
-                for name, values in float_metrics.items():
-                    tf.summary.histogram(name, values)
-                log_integer_histogram(
-                    "land_counts", int_metrics["land_counts"], start_index=12, max_index=21, saturate=True
-                )
-                log_integer_histogram(
-                    "land_count_errors", int_metrics["land_count_errors"], start_index=0, max_index=5, saturate=True
-                )
-                log_integer_histogram(
-                    "accuracy_counts", int_metrics["accuracy_counts"], start_index=26, max_index=40, saturate=True
-                )
-                for name, values in sample_losses.items():
-                    tf.summary.histogram(f"{name}_losses", values)
+                "probability": standardized_inclusion_probs,
+                "loss": loss,
+            } | {f"{k}_loss": v for k, v in (card_losses | sample_losses).items()}
+            self.log_metrics(int_metrics, float_metrics, ranges, saturate_keys)
             return loss
         return standardized_inclusion_probs

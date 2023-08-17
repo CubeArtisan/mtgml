@@ -19,19 +19,28 @@ from mtgml.layers.extended_dropout import ExtendedDropout
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AttentiveSetEmbedding
 from mtgml.layers.time_varying_embedding import TimeVaryingEmbedding
-from mtgml.utils.masked import reduce_mean_masked, reduce_variance_masked
+from mtgml.utils.masked import (
+    reduce_max_masked,
+    reduce_mean_masked,
+    reduce_min_masked,
+    reduce_sum_masked,
+    reduce_variance_masked,
+)
 
 POOL_ORACLE_METADATA = {
     "title": "Pool Synergy",
     "tooltip": "How well the card goes with the cards that have already been picked.",
+    "name": "pool",
 }
 SEEN_ORACLE_METADATA = {
     "title": "Seen Synergy",
     "tooltip": "How well the card goes with the cards that have already been seen, looking for things like openness and combos.",
+    "name": "seen",
 }
 RATING_ORACLE_METADATA = {
     "title": "Card Rating",
     "tooltip": "How good the card is in a vacuum.",
+    "name": "rating",
 }
 
 
@@ -142,50 +151,72 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
             if item_ratings
             else None,
-            "log_loss_weight": hyper_config.get_float(
-                "log_loss_weight",
-                min=0,
-                max=1,
-                step=0.01,
-                default=0.5,
-                help="The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight",
-            ),
-            "score_variance_weight": hyper_config.get_float(
-                "score_variance_weight",
-                min=-1,
-                max=1,
-                default=1e-03,
-                help="The weight given to the variance of the combined scores.",
-            )
-            if item_ratings
-            else 0,
-            "rating_variance_weight": hyper_config.get_float(
-                "rating_variance_weight",
-                min=-1,
-                max=1,
-                default=1e-03,
-                help="The weight given to the variance of the card ratings.",
-            )
-            if item_ratings
-            else 0,
-            "seen_variance_weight": hyper_config.get_float(
-                "seen_variance_weight",
-                min=-1,
-                max=1,
-                default=1e-02,
-                help="The weight given to the variance of the seen contextual ratings.",
-            )
-            if seen_context_ratings
-            else 0,
-            "pool_variance_weight": hyper_config.get_float(
-                "pool_variance_weight",
-                min=-1,
-                max=1,
-                default=1e-02,
-                help="The weight given to the variance of the pool contextual ratings.",
-            )
-            if pool_context_ratings
-            else 0,
+            "lambdas": {
+                "log": hyper_config.get_float(
+                    "log_loss_weight",
+                    min=0,
+                    max=1,
+                    step=0.01,
+                    default=0.5,
+                    help="The weight given to probability log loss.",
+                ),
+                "triplet": hyper_config.get_float(
+                    "triplet_loss_weight",
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
+                    default=0.2,
+                    help="The weight given to the triplet separation loss.",
+                ),
+                "score_variance": hyper_config.get_float(
+                    "score_variance_weight",
+                    min=-1,
+                    max=1,
+                    default=1e-03,
+                    help="The weight given to the variance of the combined scores.",
+                ),
+                "rating_variance": hyper_config.get_float(
+                    "rating_variance_weight",
+                    min=-1,
+                    max=1,
+                    default=1e-03,
+                    help="The weight given to the variance of the card ratings.",
+                )
+                if item_ratings
+                else 0,
+                "seen_variance": hyper_config.get_float(
+                    "seen_variance_weight",
+                    min=-1,
+                    max=1,
+                    default=1e-02,
+                    help="The weight given to the variance of the seen contextual ratings.",
+                )
+                if seen_context_ratings
+                else 0,
+                "pool_variance": hyper_config.get_float(
+                    "pool_variance_weight",
+                    min=-1,
+                    max=1,
+                    default=1e-02,
+                    help="The weight given to the variance of the pool contextual ratings.",
+                )
+                if pool_context_ratings
+                else 0,
+                "extremeness": hyper_config.get_float(
+                    "extremeness_weight",
+                    default=1.0,
+                    min=0.0,
+                    max=1000,
+                    help="The multiplier to scale the probability margin loss by. Suggested is 1 / probability_margin.",
+                ),
+                "sublayer_weights_l2": hyper_config.get_float(
+                    "sublayer_weights_l2_weight",
+                    default=0.001,
+                    min=0.0,
+                    max=1.0,
+                    help="The multiplier to scale the loss on the square of the sublayer weights.",
+                ),
+            },
             "margin": hyper_config.get_float(
                 "margin",
                 min=0,
@@ -193,6 +224,13 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 step=0.1,
                 default=2,
                 help="The margin by which we want the correct choice to beat the incorrect choices.",
+            ),
+            "extremeness_margin": hyper_config.get_float(
+                "probability_margin",
+                default=0.01,
+                min=0.0,
+                max=0.5,
+                help="The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.",
             ),
             "sublayer_weights": hyper_config.get_sublayer(
                 "SubLayerWeights",
@@ -208,6 +246,10 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         }
 
     def call(self, inputs, training=False):
+        batch_size = tf.shape(inputs[1])[0]
+        max_picked = tf.shape(inputs[1])[1]
+        max_seen_packs = tf.shape(inputs[2])[1]
+        max_cards_in_pack = tf.shape(inputs[2])[2]
         if should_ensure_shape():
             # basics = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='basics'), (None, MAX_BASICS))
             pool = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name="pool"), (None, MAX_PICKED))
@@ -224,10 +266,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 tf.cast(inputs[5], dtype=self.compute_dtype, name="card_embeddings"), (self.num_cards + 1, None)
             )
         else:
-            batch_size = tf.shape(inputs[1])[0]
-            max_picked = tf.shape(inputs[1])[1]
-            max_seen_packs = tf.shape(inputs[2])[1]
-            max_cards_in_pack = tf.shape(inputs[2])[2]
             # basics = tf.cast(inputs[0], dtype=tf.int32, name='basics')
             pool = tf.cast(tf.reshape(inputs[1], (batch_size, max_picked)), dtype=tf.int32, name="pool")
             seen_packs = tf.cast(
@@ -244,256 +282,157 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 name="seen_coord_weights",
             )
             card_embeddings = tf.cast(inputs[5], dtype=self.compute_dtype, name="card_embeddings")
-        loss_dtype = tf.float32
-        sublayer_scores = []
+        sublayer_scores_list = []
         bool_mask = seen_packs > 0
+        pack_mask = tf.reduce_any(bool_mask, -1)
         mask = tf.cast(bool_mask, dtype=self.compute_dtype, name="pack_mask")
         # Shift pool right by 1
         pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
         pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
         seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name="seen_pack_embeds")
-        if self.rate_off_pool or self.rate_off_seen:
-            if self.rate_off_pool:
-                pool_embeds_dropped = self.dropout_pool_embeds(pool_embeds, training=training)
-                mask_pair = (tf.cast(mask, tf.bool), pool > 0)
-                sublayer_scores.append(
-                    self.rate_off_pool((seen_pack_embeds, pool_embeds_dropped), training=training, mask=mask_pair)
-                )
-            if self.rate_off_seen:
-                mask_pair = (bool_mask, tf.reduce_any(bool_mask, -1))
-                flat_seen_pack_embeds = tf.reshape(
-                    seen_pack_embeds,
-                    (-1, tf.shape(seen_pack_embeds)[-2], tf.shape(seen_pack_embeds)[-1]),
-                    name="flat_seen_pack_embeds",
-                )
-                flat_seen_pack_mask = tf.reshape(
-                    bool_mask,
-                    (-1, tf.shape(seen_pack_embeds)[-2]),
-                    name="flat_seen_pack_embeds",
-                )
-                flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training, mask=flat_seen_pack_mask)
-                pack_embeds = tf.reshape(
-                    flat_pack_embeds,
-                    (-1, tf.shape(seen_pack_embeds)[1], tf.shape(flat_pack_embeds)[-1]),
-                    name="pack_embeds_no_pos",
-                )
-                position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
-                pack_embeds = pack_embeds + position_embeds / tf.constant(
-                    math.sqrt(self.seen_pack_dims), dtype=self.compute_dtype
-                )
-                pack_embeds._keras_mask = mask_pair[1]
-                sublayer_scores.append(
-                    self.rate_off_seen((seen_pack_embeds, pack_embeds), training=training, mask=mask_pair)
-                )
+        card_dims = tf.shape(seen_pack_embeds)[-1]
+        if self.rate_off_pool:
+            pool_embeds_dropped = self.dropout_pool_embeds(pool_embeds, training=training)
+            pool_scores = self.rate_off_pool(
+                (seen_pack_embeds, pool_embeds_dropped), training=training, mask=(tf.cast(mask, tf.bool), pool > 0)
+            )
+            sublayer_scores_list.append(pool_scores)
+        if self.rate_off_seen:
+            flat_seen_pack_embeds = tf.reshape(
+                seen_pack_embeds, (-1, max_cards_in_pack, card_dims), name="flat_seen_pack_embeds"
+            )
+            flat_seen_pack_mask = tf.reshape(bool_mask, (-1, max_cards_in_pack), name="flat_seen_pack_embeds")
+            flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training, mask=flat_seen_pack_mask)
+            pack_embeds = tf.reshape(
+                flat_pack_embeds, (-1, max_seen_packs, self.seen_pack_dims), name="pack_embeds_pre"
+            )
+            position_embeds = self.embed_pack_position((seen_coords, seen_coord_weights), training=training)
+            pack_embeds = pack_embeds + position_embeds / tf.constant(
+                math.sqrt(self.seen_pack_dims), dtype=self.compute_dtype
+            )
+            pack_embeds._keras_mask = bool_mask
+            seen_scores = self.rate_off_seen(
+                (seen_pack_embeds, pack_embeds), training=training, mask=(bool_mask, pack_mask)
+            )
+            sublayer_scores_list.append(seen_scores)
         if self.rate_card:
             all_card_ratings = tf.squeeze(self.rate_card(card_embeddings[1:], training=training), axis=-1)
             card_ratings = tf.gather(all_card_ratings, seen_packs, name="pack_card_ratings")
-            sublayer_scores.append(card_ratings)
+            sublayer_scores_list.append(card_ratings)
             if should_log_histograms():
                 tf.summary.histogram("card_ratings", all_card_ratings)
-        sublayer_scores = tf.stack(sublayer_scores, axis=-1, name="stacked_sublayer_scores")
+        sublayer_scores = tf.stack(sublayer_scores_list, axis=0, name="stacked_sublayer_scores")
         sublayer_weights = tf.math.softplus(self.sublayer_weights((seen_coords, seen_coord_weights), training=training))
         sublayer_scores = tf.cast(sublayer_scores, dtype=self.compute_dtype, name="sublayer_scores")
         sublayer_weights = tf.cast(sublayer_weights, dtype=self.compute_dtype, name="sublayer_weights")
-        scores = tf.einsum("...ps,...s->...p", sublayer_scores, sublayer_weights, name="scores")
+        sublayers_weighted = tf.einsum(
+            "s...p,...s->s...p", sublayer_scores, sublayer_weights, name="sublayers_weighted"
+        )
+        scores = tf.reduce_sum(sublayers_weighted, axis=0, name="scores")
         if len(inputs) > 6:
+            loss_dtype = tf.float32
             mask = tf.cast(mask, dtype=loss_dtype)
             if should_ensure_shape():
-                y_idx = tf.ensure_shape(tf.cast(inputs[6], dtype=tf.int32, name="y_idx"), (None, None))
+                y_idx = tf.ensure_shape(tf.cast(inputs[6], dtype=tf.int32, name="y_idx"), (None, MAX_SEEN_PACKS))
                 riskiness = tf.ensure_shape(
-                    tf.cast(inputs[7], dtype=tf.float32, name="riskiness"), (None, None, MAX_CARDS_IN_PACK)
+                    tf.cast(inputs[7], dtype=tf.float32, name="riskiness"), (None, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK)
                 )
             else:
-                y_idx = tf.cast(inputs[6], dtype=tf.int32, name="y_idx")
-                riskiness = tf.cast(inputs[7], dtype=tf.float32, name="riskiness")
+                y_idx = tf.cast(tf.reshape(inputs[6], (batch_size, max_seen_packs)), dtype=tf.int32, name="y_idx")
+                riskiness = tf.cast(
+                    tf.reshape(inputs[7], (batch_size, max_seen_packs, max_cards_in_pack)),
+                    dtype=tf.float32,
+                    name="riskiness",
+                )
             num_in_pack = tf.math.reduce_sum(mask, axis=-1, name="num_in_pack")
-            mask_freebies_1 = num_in_pack > 1.0
-            pos_scores = (
-                tf.cast(scores, dtype=loss_dtype, name="cast_scores") + tf.constant(LARGE_INT, dtype=loss_dtype)
+            pos_mask = tf.cast(tf.expand_dims(y_idx == 0, -1), dtype=loss_dtype) * tf.constant(
+                2, dtype=loss_dtype
+            ) - tf.constant(1.0, dtype=loss_dtype)
+            scores = (
+                pos_mask * tf.cast(scores, dtype=loss_dtype, name="cast_scores")
+                + tf.constant(LARGE_INT, dtype=loss_dtype)
             ) * mask
-            neg_scores = (
-                tf.constant(LARGE_INT, dtype=loss_dtype) - tf.cast(scores, dtype=loss_dtype, name="cast_scores")
-            ) * mask
-            pos_mask = tf.expand_dims(y_idx == 0, -1)
-            scores = tf.where(pos_mask, pos_scores, neg_scores, name="scores_after_y_idx")
             probs = tf.nn.softmax(scores, axis=-1, name="probs")
-            probs_correct = probs[:, :, 0]
             probs_for_loss = tf.concat(
-                [probs[:, :, :1], tf.constant(1, dtype=self.compute_dtype) - probs[:, :, 1:]], axis=-1
+                [probs[:, :, :1], tf.constant(1, dtype=self.compute_dtype) - probs[:, :, 1:]], axis=2
             )
-            log_losses = tf.negative(
-                tf.math.log((1 - 2 * EPSILON) * probs_for_loss + EPSILON, name="log_probs"), name="log_loss"
+            score_diffs = tf.subtract(
+                tf.add(tf.constant(self.margin, dtype=scores.dtype), scores[:, :, 1:]),
+                scores[:, :, :1],
+                name="score_diffs",
             )
-            loss_mask = tf.cast(tf.expand_dims(mask_freebies_1, -1), dtype=loss_dtype) * mask
-            log_losses = riskiness * log_losses
-            log_loss = reduce_mean_masked(log_losses, mask=loss_mask, axis=[0, 1, 2], name="log_loss")
-            # tf.summary.scalar("log_loss", log_loss)
-            log_loss_weighted = tf.math.multiply(
-                log_loss,
-                tf.constant(self.log_loss_weight, dtype=loss_dtype, name="log_loss_weight"),
-                name="log_loss_weighted",
+            clipped_diffs = tf.concat(
+                [
+                    tf.zeros_like(score_diffs[:, :, :1]),
+                    tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name="clipped_score_diffs"),
+                ],
+                axis=2,
             )
-            self.add_metric(log_losses, "pick_log_loss")
-            score_diffs = (
-                tf.subtract(
-                    tf.add(tf.constant(self.margin, dtype=scores.dtype), scores[:, :, 1:]),
-                    scores[:, :, :1],
-                    name="score_diffs",
+            card_losses = {
+                "log": -tf.math.log((1 - 2 * EPSILON) * probs_for_loss + EPSILON, name="log_probs"),
+                "triplet": clipped_diffs,
+                "extremeness": tf.maximum(
+                    tf.math.abs(0.5 - probs) - 0.5 + self.extremeness_margin, 0.0, name="extremeness_losses"
+                ),
+            }
+            card_weights = riskiness * tf.cast(tf.expand_dims(num_in_pack > 1.0, -1), dtype=loss_dtype) * mask
+            pack_losses = {
+                f"{name}_variance": reduce_variance_masked(values, mask=mask, axis=-1, name=f"{name}_variance")
+                for name, values in zip(
+                    [meta["name"] for meta in self.sublayer_metadata] + ["score"],
+                    tf.unstack(sublayers_weighted, num=len(sublayer_scores), axis=0) + [scores],
                 )
-                * loss_mask[:, :, 1:]
+            } | {"sublayer_weights_l2": tf.reduce_sum(tf.square(sublayer_weights), axis=-1, name="weights_l2")}
+            pack_weights = tf.cast(pack_mask, loss_dtype)
+            _, loss = self.collapse_losses(((card_losses, card_weights), (pack_losses, pack_weights), {}, {}))
+            mask_freebies_1 = num_in_pack > 1.0
+            max_score = reduce_max_masked(scores, mask=mask, axis=2, name="max_score")
+            min_score = reduce_min_masked(scores, mask=mask, axis=2, name="min_score")
+            position = reduce_sum_masked(
+                tf.cast(scores[:, :, 1:] >= scores[:, :, :1], dtype=tf.float32), mask=mask[:, :, 1:], axis=2
             )
-            clipped_diffs = (
-                tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name="clipped_score_diffs")
-                * riskiness[:, :, 1:]
-            )
-            triplet_losses = reduce_mean_masked(clipped_diffs, loss_mask[:, :, 1:], axis=[0, 1, 2], name="triplet_loss")
-            # tf.summary.scalar("triplet_loss", triplet_losses)
-            triplet_loss_weighted = tf.math.multiply(
-                triplet_losses,
-                tf.constant(1 - self.log_loss_weight, dtype=loss_dtype, name="triplet_loss_weight"),
-                name="triplet_loss_weighted",
-            )
-            self.add_metric(triplet_losses, "triplet_loss")
-            mask = tf.cast(mask, dtype=self.compute_dtype)
-            variances = reduce_variance_masked(
-                sublayer_scores * tf.expand_dims(sublayer_weights, -2),
-                mask=tf.expand_dims(loss_mask, -1),
-                axis=-2,
-                name="oracle_pack_variances",
-            )
-            score_variance = reduce_variance_masked(scores, mask=loss_mask, axis=-1, name="score_variances")
-            i = 0
-            variance_mask = tf.reduce_any(loss_mask > 0, axis=-1)
-            if self.rate_off_pool:
-                pool_variance = variances[:, :, i]
-                i += 1
-            else:
-                pool_variance = tf.zeros_like(score_variance)
-            if self.rate_off_seen:
-                seen_variance = variances[:, :, i]
-                i += 1
-            else:
-                seen_variance = tf.zeros_like(score_variance)
-            if self.rate_card:
-                rating_variance = variances[:, :, i]
-                i += 1
-            else:
-                rating_variance = tf.zeros_like(score_variance)
-            score_variance_loss = reduce_mean_masked(
-                score_variance, mask=variance_mask, axis=[0, 1], name="score_variance_loss"
-            )
-            score_variance_loss_weighted = tf.math.multiply(
-                score_variance_loss,
-                tf.constant(self.score_variance_weight, dtype=loss_dtype, name="score_variance_weight"),
-                name="score_variance_loss_weighted",
-            )
-            score_stddev = tf.math.sqrt(score_variance_loss, name="score_stddev")
-            self.add_metric(score_stddev, "score_stddev")
-            tf.summary.scalar("score_stddev", score_stddev)
-            pool_variance_loss = reduce_mean_masked(
-                pool_variance, mask=variance_mask, axis=[0, 1], name="pool_variance_loss"
-            )
-            pool_variance_loss_weighted = tf.math.multiply(
-                pool_variance_loss,
-                tf.constant(self.pool_variance_weight, dtype=loss_dtype, name="pool_variance_weight"),
-                name="pool_variance_loss_weighted",
-            )
-            if self.rate_off_pool:
-                pool_stddev = tf.math.sqrt(pool_variance_loss, name="pool_stddev")
-                self.add_metric(pool_stddev, "pool_stddev")
-                tf.summary.scalar("pool_stddev", pool_stddev)
-            seen_variance_loss = reduce_mean_masked(
-                seen_variance, mask=variance_mask, axis=[0, 1], name="seen_variance_loss"
-            )
-            seen_variance_loss_weighted = tf.math.multiply(
-                seen_variance_loss,
-                tf.constant(self.seen_variance_weight, dtype=loss_dtype, name="seen_variance_weight"),
-                name="seen_variance_loss_weighted",
-            )
-            if self.rate_off_seen:
-                seen_stddev = tf.math.sqrt(seen_variance_loss, name="seen_stddev")
-                self.add_metric(seen_stddev, "seen_stddev")
-                tf.summary.scalar("seen_stddev", seen_stddev)
-            rating_variance_loss = reduce_mean_masked(
-                rating_variance, mask=variance_mask, axis=[0, 1], name="rating_variance_loss"
-            )
-            rating_variance_loss_weighted = tf.math.multiply(
-                rating_variance_loss,
-                tf.constant(self.rating_variance_weight, dtype=loss_dtype, name="rating_variance_weight"),
-                name="rating_variance_loss_weighted",
-            )
-            if self.rate_card:
-                rating_stddev = tf.math.sqrt(rating_variance_loss, name="rating_stddev")
-                self.add_metric(rating_stddev, "rating_stddev")
-                tf.summary.scalar("rating_stddev", rating_stddev)
-            max_scores = tf.reduce_logsumexp(scores - tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
-            max_scores = max_scores + tf.stop_gradient(tf.reduce_max(scores - LARGE_INT, axis=-1) - max_scores)
-            min_scores = -tf.reduce_logsumexp(-scores + mask * tf.constant(LARGE_INT, dtype=loss_dtype), axis=-1)
-            min_scores = min_scores + tf.stop_gradient(
-                tf.reduce_min(scores + (1 - 2 * mask) * LARGE_INT, axis=-1) - min_scores
-            )
-            chosen_idx = tf.zeros_like(y_idx)
-            scores = tf.cast(scores, dtype=tf.float32)
-            chosen_idx = tf.reshape(chosen_idx, (-1,))
-            scores = tf.reshape(scores, (-1, tf.shape(scores)[-1]))
-            mask_freebies_1 = tf.reshape(mask_freebies_1, (-1,))
-            mask_freebies_2 = tf.reshape(num_in_pack > 2.0, (-1,))
-            mask_freebies_3 = tf.reshape(num_in_pack > 3.0, (-1,))
-            top_1_accuracy = reduce_mean_masked(
-                tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 1),
-                mask=mask_freebies_1,
-                name="accuracy_top_1",
-            )
-            top_2_accuracy = reduce_mean_masked(
-                tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 2),
-                mask=mask_freebies_2,
-                name="accuracy_top_2",
-            )
-            top_3_accuracy = reduce_mean_masked(
-                tf.keras.metrics.sparse_top_k_categorical_accuracy(chosen_idx, scores, 3),
-                mask=mask_freebies_3,
-                name="accuracy_top_3",
-            )
-            scores = tf.cast(scores, dtype=self.compute_dtype)
-            # Logging for Tensorboard
-            self.add_metric(top_1_accuracy, "accuracy_top_1")
-            self.add_metric(top_2_accuracy, "accuracy_top_2")
-            self.add_metric(top_3_accuracy, "accuracy_top_3")
-            probs_correct_mean = reduce_mean_masked(
-                tf.reshape(probs_correct, (-1,)), mask=mask_freebies_1, name="mean_prob_correct"
-            )
-            self.add_metric(probs_correct_mean, "prob_correct")
-            tf.summary.scalar("accuracy_top_1", top_1_accuracy)
-            tf.summary.scalar("accuracy_top_2", top_2_accuracy)
-            tf.summary.scalar("accuracy_top_3", top_3_accuracy)
-            tf.summary.scalar(
-                "prob_correct",
-                reduce_mean_masked(tf.reshape(probs_correct, (-1,)), mask=mask_freebies_1, name="mean_prob_correct"),
-            )
-            if should_log_histograms():
-                tf.summary.histogram("max_diff_scores", max_scores - min_scores)
-                mask = tf.reshape(mask, (-1, tf.shape(mask)[-1]))
-                tf.summary.histogram("scores", (scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)
-                tf.summary.histogram(
-                    "scores_0", ((scores - tf.constant(LARGE_INT, dtype=self.compute_dtype)) * mask)[:, :1]
-                )
-                tf.summary.histogram("score_diffs", score_diffs)
-                tf.summary.histogram("probs", probs)
-                tf.summary.histogram("log_losses", log_losses)
-                tf.summary.histogram("triplet_losses", clipped_diffs)
-                tf.summary.histogram("score_variance", score_variance)
-                tf.summary.histogram("pool_variance", pool_variance)
-                tf.summary.histogram("seen_variance", seen_variance)
-                tf.summary.histogram("rating_variance", rating_variance)
-                tf.summary.histogram("prob_chosen", probs_correct)
-            loss = tf.cast(
-                triplet_loss_weighted
-                + log_loss_weighted
-                + pool_variance_loss_weighted
-                + seen_variance_loss_weighted
-                + rating_variance_loss_weighted
-                + score_variance_loss_weighted,
-                dtype=self.compute_dtype,
+            int_metrics = {"position": position}
+            float_metrics = {
+                "top_1_accuracy": reduce_mean_masked(
+                    tf.cast(position < 1.0, dtype=tf.float32),
+                    mask=mask_freebies_1,
+                    axis=None,
+                    name="accuracy_top_1",
+                ),
+                "top_2_accuracy": reduce_mean_masked(
+                    tf.cast(position < 2.0, dtype=tf.float32),
+                    mask=num_in_pack > 2.0,
+                    axis=None,
+                    name="accuracy_top_2",
+                ),
+                "top_3_accuracy": reduce_mean_masked(
+                    tf.cast(position < 3.0, dtype=tf.float32),
+                    mask=num_in_pack > 3.0,
+                    axis=None,
+                    name="accuracy_top_3",
+                ),
+                "max_score": max_score,
+                "min_score": min_score,
+                "max_score_diffs": max_score - min_score,
+                "prob_correct": probs[:, :, 0],
+                "score_0": scores[:, :, 0],
+                "loss": loss,
+            } | {f"{k}_loss": v for k, v in pack_losses.items()}
+            ranges = {
+                "position": (1, 15),
+                "prob_correct": (0, 1),
+                "probs": (0, 1),
+                "extremeness_loss": (0.0, self.extremeness_margin),
+            }
+            saturates = {"position"}
+            self.log_metrics(int_metrics, float_metrics, ranges, saturates, mask_freebies_1)
+            card_float_metrics = {"scores": scores, "probs": probs} | {f"{k}_loss": v for k, v in card_losses.items()}
+            self.log_metrics(
+                {},
+                card_float_metrics,
+                ranges,
+                saturates,
+                mask * tf.cast(tf.expand_dims(mask_freebies_1, 2), mask.dtype),
             )
             return loss
         return sublayer_scores, sublayer_weights

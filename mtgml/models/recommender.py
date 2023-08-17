@@ -5,6 +5,8 @@ from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.mlp import MLP
 from mtgml.layers.set_embedding import AttentiveSetEmbedding
 from mtgml.layers.wrapped import WDense
+from mtgml.tensorboard.timeseries import log_integer_histogram
+from mtgml.utils.masked import reduce_sum_masked
 
 
 class CubeRecommender(ConfigurableLayer, tf.keras.Model):
@@ -82,19 +84,19 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                     default=0.0,
                     help="The amount to scale the log/crossentropy loss for the cubes.",
                 ),
-                "temperature_reg": hyper_config.get_float(
-                    "temperature_reg_weight",
-                    min=0,
-                    max=10,
-                    default=0.01,
-                    help="The amount to scale the squared temperature by for loss.",
-                ),
                 "extremeness": hyper_config.get_float(
                     "margin_weight",
                     default=1.0,
                     min=0.0,
-                    max=1000,
+                    max=1000.0,
                     help="The multiplier to scale the probability margin loss by. Suggested is 1 / probability_margin.",
+                ),
+                "similarity_variance": -hyper_config.get_float(
+                    "similarity_variance_weight",
+                    default=0.001,
+                    min=0.0,
+                    max=1.0,
+                    help="The weight to apply to how large the standard deviation of the cosine similarities should be.",
                 ),
             },
         }
@@ -150,8 +152,17 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
         if len(inputs) == 3:
             true_cube = tf.cast(inputs[1], dtype=tf.int32, name="true_cube_arr")
             true_cube = tf.reduce_max(
-                tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype), axis=-2
-            )[:, 1:]
+                tf.one_hot(true_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype)[:, :, 1:],
+                axis=1,
+                name="true_cube",
+            )
+            noisy_cube = tf.reduce_max(
+                tf.one_hot(input_cube, depth=self.num_cards, axis=-1, dtype=self.compute_dtype)[:, :, 1:],
+                axis=1,
+                name="noisy_cube",
+            )
+            combined_cube = noisy_cube + true_cube
+            scaled_cubes = combined_cube * tf.constant(self.scale_relevant_cards - 1, dtype=self.compute_dtype)
             card_losses = {
                 "log": tf.keras.losses.binary_crossentropy(
                     tf.expand_dims(true_cube, -1),
@@ -160,35 +171,42 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                 ),
                 "mse": tf.math.squared_difference(true_cube, decoded_input_cube, name="mse_card_losses"),
                 "mae": tf.math.abs(true_cube - decoded_input_cube, name="mae_card_losses"),
-                "extremeness": tf.maximum(
-                    tf.math.abs(0.5 - decoded_input_cube) - 0.5 + self.margin, 0.0, name="extremeness_losses"
+                "extremeness": tf.square(
+                    tf.maximum(
+                        tf.math.abs(0.5 - decoded_input_cube) - 0.5 + self.margin, 0.0, name="extremeness_losses"
+                    )
                 ),
             }
-            input_cube_spread = tf.reduce_max(
-                tf.one_hot(input_cube, depth=self.num_cards - 1, axis=-1, dtype=self.compute_dtype), axis=-2
-            )
-            combined_cube = input_cube_spread + true_cube
-            scaled_cubes = combined_cube * tf.constant(self.scale_relevant_cards - 1, dtype=self.compute_dtype)
             card_weights = tf.constant(1, dtype=self.compute_dtype) + scaled_cubes
             sample_losses = {
-                k: tf.einsum("bc,bc->b", card_weights, per_card_loss, name=f"sample_{k}_losses")
-                for k, per_card_loss in card_losses.items()
+                # Max variance for a distribution with range n is n**2 / n so for range 2 that's 4 / 2 = 2
+                "similarity_variance": 2.0
+                - tf.math.reduce_variance(similarities, axis=-1, name="similarity_variance_loss")
             }
-            losses = {k: tf.math.reduce_mean(per_sample_loss) for k, per_sample_loss in sample_losses.items()} | {
-                "temperature_reg": tf.square(self.temperature, name="l2_temp")
-            }
-            loss = tf.add_n([self.lambdas[k] * raw_loss for k, raw_loss in losses.items()], name="loss")
-            for k, v in losses.items():
-                if k in sample_losses:
-                    self.add_metric(sample_losses[k], f"{k}_loss")
-                tf.summary.scalar(f"{k}_loss", v)
-            self.add_metric(self.temperature, "cube_temperature")
-            if should_log_histograms():
-                tf.summary.histogram("similarities", similarities)
-                for name, values in sample_losses.items():
-                    tf.summary.histogram(f"{name}_losses", values)
+            _, loss = self.collapse_losses(((card_losses, card_weights), sample_losses, {}))
             for name, metric in self.cube_metrics.items():
                 metric.update_state(true_cube, decoded_input_cube)
                 tf.summary.scalar(name, metric.result())
+            int_metrics = {}
+            float_metrics = {
+                "temperature": self.temperature,
+                "similarities": similarities,
+                "probs": decoded_input_cube,
+                "total_prob": tf.math.reduce_sum(decoded_input_cube, axis=1, name="total_sample_prod"),
+                "loss": loss,
+            } | {f"{k}_loss": v for k, v in (card_losses | sample_losses).items()}
+            ranges = {
+                "probs": (0, 1),
+                "similarities": (-1, 1),
+                "extremeness_loss": (0, self.margin**2),
+                "true_probs": (0, 1),
+                "cut_probs": (0, 1),
+                "add_probs": (0, 1),
+            }
+            saturates = set()
+            self.log_metrics(int_metrics, float_metrics, ranges, saturates)
+            self.log_metrics({}, {"true_probs": decoded_input_cube}, ranges, saturates, true_cube)
+            self.log_metrics({}, {"cut_probs": decoded_input_cube}, ranges, saturates, (1 - true_cube) * noisy_cube)
+            self.log_metrics({}, {"add_probs": decoded_input_cube}, ranges, saturates, true_cube * (1 - noisy_cube))
             return loss
         return decoded_input_cube, encoded_input_cube
