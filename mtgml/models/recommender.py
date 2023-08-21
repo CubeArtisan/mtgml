@@ -91,7 +91,7 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                     max=1000.0,
                     help="The multiplier to scale the probability margin loss by. Suggested is 1 / probability_margin.",
                 ),
-                "similarity_variance": -hyper_config.get_float(
+                "similarity_variance": hyper_config.get_float(
                     "similarity_variance_weight",
                     default=0.001,
                     min=0.0,
@@ -171,16 +171,14 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
                 ),
                 "mse": tf.math.squared_difference(true_cube, decoded_input_cube, name="mse_card_losses"),
                 "mae": tf.math.abs(true_cube - decoded_input_cube, name="mae_card_losses"),
-                "extremeness": tf.square(
-                    tf.maximum(
-                        tf.math.abs(0.5 - decoded_input_cube) - 0.5 + self.margin, 0.0, name="extremeness_losses"
-                    )
+                "extremeness": tf.maximum(
+                    tf.math.abs(0.5 - decoded_input_cube) - 0.5 + self.margin, 0.0, name="extremeness_losses"
                 ),
             }
             card_weights = tf.constant(1, dtype=self.compute_dtype) + scaled_cubes
             sample_losses = {
-                # Max variance for a distribution with range n is n**2 / n so for range 2 that's 4 / 2 = 2
-                "similarity_variance": 2.0
+                # Max variance for a distribution with range n is n**2 / 4 so for range 2 that's 4 / 4 = 1
+                "similarity_variance": 1.0
                 - tf.math.reduce_variance(similarities, axis=-1, name="similarity_variance_loss")
             }
             _, loss = self.collapse_losses(((card_losses, card_weights), sample_losses, {}))
@@ -198,7 +196,7 @@ class CubeRecommender(ConfigurableLayer, tf.keras.Model):
             ranges = {
                 "probs": (0, 1),
                 "similarities": (-1, 1),
-                "extremeness_loss": (0, self.margin**2),
+                "extremeness_loss": (0, self.margin),
                 "true_probs": (0, 1),
                 "cut_probs": (0, 1),
                 "add_probs": (0, 1),

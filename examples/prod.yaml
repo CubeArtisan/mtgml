@@ -99,10 +99,10 @@ CubeRecommender: !hcv
       value: 8
     similarity_variance_weight: !hcv
       help: The weight to apply to how large the standard deviation of the cosine similarities should be.
-      value: 1.0
+      value: 0.01
     probability_margin: !hcv
       help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
-      value: 0.01
+      value: 0.002
     log_weight: !hcv
       help: How much weight to apply to the cross entropy loss.
       value: 1.0

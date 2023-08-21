@@ -223,19 +223,17 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
                         ),
                         name=f"assign_clear_{name}_buckets",
                     )
-                    mean = f"mean_"
-            else:
-                mask = None
+                mean = f"_mean"
             summed = self.metrics_storage["sum"][name] + reduce_sum_masked(
-                value, mask=mask, name=f"{name}_summed", axis=None
+                value, mask=None if is_scalar[name] else mask, name=f"{name}_summed", axis=None
             )
             value_count = self.metrics_storage["value_count"][name] + tf.cast(
-                tf.reduce_sum(get_mask_for(value, mask), name=f"{name}_value_count_sum"),
+                tf.reduce_sum(get_mask_for(value, None if is_scalar[name] else mask), name=f"{name}_value_count_sum"),
                 tf.int32,
-                name + "value_count_update",
+                name=f"{name}_value_count_update",
             )
             tf.summary.scalar(
-                f"{mean}{name}",
+                f"{name}{mean}",
                 tf.math.divide_no_nan(
                     summed,
                     tf.cast(value_count, summed.dtype, name=f"{name}_cast_value_count"),

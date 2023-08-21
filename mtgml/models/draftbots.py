@@ -344,15 +344,12 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     dtype=tf.float32,
                     name="riskiness",
                 )
-            num_in_pack = tf.math.reduce_sum(mask, axis=-1, name="num_in_pack")
             pos_mask = tf.cast(tf.expand_dims(y_idx == 0, -1), dtype=loss_dtype) * tf.constant(
                 2, dtype=loss_dtype
             ) - tf.constant(1.0, dtype=loss_dtype)
-            scores = (
-                pos_mask * tf.cast(scores, dtype=loss_dtype, name="cast_scores")
-                + tf.constant(LARGE_INT, dtype=loss_dtype)
-            ) * mask
-            probs = tf.nn.softmax(scores, axis=-1, name="probs")
+            additive_mask = mask * tf.constant(LARGE_INT, dtype=loss_dtype)
+            scores = pos_mask * tf.cast(scores, dtype=loss_dtype, name="cast_scores")
+            probs = tf.nn.softmax(scores + additive_mask, axis=-1, name="probs")
             probs_for_loss = tf.concat(
                 [probs[:, :, :1], tf.constant(1, dtype=self.compute_dtype) - probs[:, :, 1:]], axis=2
             )
@@ -375,17 +372,22 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     tf.math.abs(0.5 - probs) - 0.5 + self.extremeness_margin, 0.0, name="extremeness_losses"
                 ),
             }
-            card_weights = riskiness * tf.cast(tf.expand_dims(num_in_pack > 1.0, -1), dtype=loss_dtype) * mask
+            num_in_pack = tf.math.reduce_sum(mask, axis=-1, name="num_in_pack")
+            mask_freebies_1 = num_in_pack > 1.0
+            card_weights = riskiness * tf.cast(tf.expand_dims(mask_freebies_1, -1), dtype=loss_dtype) * mask
             pack_losses = {
                 f"{name}_variance": reduce_variance_masked(values, mask=mask, axis=-1, name=f"{name}_variance")
                 for name, values in zip(
                     [meta["name"] for meta in self.sublayer_metadata] + ["score"],
                     tf.unstack(sublayers_weighted, num=len(sublayer_scores), axis=0) + [scores],
                 )
-            } | {"sublayer_weights_l2": tf.reduce_sum(tf.square(sublayer_weights), axis=-1, name="weights_l2")}
+            } | {
+                "sublayer_weights_l2": reduce_sum_masked(
+                    tf.square(sublayer_weights), axis=-1, mask=tf.expand_dims(mask_freebies_1, -1), name="weights_l2"
+                )
+            }
             pack_weights = tf.cast(pack_mask, loss_dtype)
             _, loss = self.collapse_losses(((card_losses, card_weights), (pack_losses, pack_weights), {}, {}))
-            mask_freebies_1 = num_in_pack > 1.0
             max_score = reduce_max_masked(scores, mask=mask, axis=2, name="max_score")
             min_score = reduce_min_masked(scores, mask=mask, axis=2, name="min_score")
             position = reduce_sum_masked(
@@ -419,20 +421,19 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 "loss": loss,
             } | {f"{k}_loss": v for k, v in pack_losses.items()}
             ranges = {
-                "position": (1, 15),
+                "position": (0, 14),
                 "prob_correct": (0, 1),
                 "probs": (0, 1),
                 "extremeness_loss": (0.0, self.extremeness_margin),
             }
             saturates = {"position"}
             self.log_metrics(int_metrics, float_metrics, ranges, saturates, mask_freebies_1)
-            card_float_metrics = {"scores": scores, "probs": probs} | {f"{k}_loss": v for k, v in card_losses.items()}
             self.log_metrics(
                 {},
-                card_float_metrics,
+                {"scores": scores, "probs": probs} | {f"{k}_loss": v for k, v in card_losses.items()},
                 ranges,
                 saturates,
-                mask * tf.cast(tf.expand_dims(mask_freebies_1, 2), mask.dtype),
+                mask * tf.cast(tf.expand_dims(mask_freebies_1, -1), mask.dtype),
             )
             return loss
         return sublayer_scores, sublayer_weights

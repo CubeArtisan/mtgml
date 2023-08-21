@@ -194,7 +194,8 @@ class DeckBuilder(ConfigurableLayer, tf.keras.Model):
                 ),
                 "probability": standardized_inclusion_probs,
                 "loss": loss,
-            } | {f"{k}_loss": v for k, v in (card_losses | sample_losses).items()}
+            } | {f"{k}_loss": v for k, v in sample_losses.items()}
             self.log_metrics(int_metrics, float_metrics, ranges, saturate_keys)
+            self.log_metrics({}, {f"{k}_loss": v for k, v in card_losses.items()}, ranges, saturate_keys, pool_mask)
             return loss
         return standardized_inclusion_probs
