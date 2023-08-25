@@ -126,35 +126,38 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
                 buckets = tf.cast(buckets, tf.float32, name="cast_buckets")
             if name not in self.metrics_storage["sum"]:
                 if not is_scalar[name] and should_log_histograms():
-                    self.metrics_storage["counts"][name] = tf.Variable(
+                    self.metrics_storage["counts"][name] = self.add_weight(
                         name=f"{name}_counts",
-                        initial_value=tf.zeros_like(buckets[0]),
+                        initializer=lambda *_1, **_2: tf.zeros_like(buckets[0]),
                         shape=(None,),
                         trainable=False,
+                        collections=[],
                         aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA,
                     )
-                    self.metrics_storage["buckets"][name] = tf.Variable(
+                    self.metrics_storage["buckets"][name] = self.add_weight(
                         name=f"{name}_buckets",
-                        initial_value=buckets,
+                        initializer=lambda *_1, **_2: buckets,
+                        collections=[],
                         shape=(2, None),
                         trainable=False,
                         aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA,
                     )
-                self.metrics_storage["sum"][name] = tf.Variable(
+                self.metrics_storage["sum"][name] = self.add_weight(
                     name=f"{name}_summed",
-                    initial_value=0.0,
+                    initializer=lambda *_1, **_2: 0.0,
+                    collections=[],
                     dtype=value.dtype,
                     trainable=False,
                     aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA,
                 )
-                self.metrics_storage["value_count"][name] = tf.Variable(
+                self.metrics_storage["value_count"][name] = self.add_weight(
                     name=f"{name}_value_count",
-                    initial_value=0,
+                    initializer=lambda *_1, **_2: 0,
+                    collections=[],
                     dtype=tf.int32,
                     trainable=False,
                     aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA,
                 )
-            mean = ""
             if not is_scalar[name]:
                 if should_log_histograms():
                     cur_buckets = self.metrics_storage["buckets"][name]
@@ -205,25 +208,25 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
                             step=None,
                             metadata=create_summary_metadata(name, None),
                         )
-                    self.metrics_storage["counts"][name].assign(
-                        tf.cond(
-                            tf.summary.should_record_summaries(),
-                            lambda: tf.zeros_like(buckets[0]),
-                            lambda: counts,
-                            name=f"maybe_clear_{name}_counts",
-                        ),
-                        name=f"assign_clear_{name}_counts",
-                    )
-                    self.metrics_storage["buckets"][name].assign(
-                        tf.cond(
-                            tf.summary.should_record_summaries(),
-                            lambda: buckets,
-                            lambda: self.metrics_storage["buckets"][name].read_value(),
-                            name=f"maybe_clear_{name}_buckets",
-                        ),
-                        name=f"assign_clear_{name}_buckets",
-                    )
-                mean = f"_mean"
+                    if isinstance(self.metrics_storage["counts"][name], tf.Variable):
+                        self.metrics_storage["counts"][name].assign(
+                            tf.cond(
+                                tf.summary.should_record_summaries(),
+                                lambda: tf.zeros_like(buckets[0]),
+                                lambda: counts,
+                                name=f"maybe_clear_{name}_counts",
+                            ),
+                            name=f"assign_clear_{name}_counts",
+                        )
+                        self.metrics_storage["buckets"][name].assign(
+                            tf.cond(
+                                tf.summary.should_record_summaries(),
+                                lambda: buckets,
+                                lambda: self.metrics_storage["buckets"][name].read_value(),
+                                name=f"maybe_clear_{name}_buckets",
+                            ),
+                            name=f"assign_clear_{name}_buckets",
+                        )
             summed = self.metrics_storage["sum"][name] + reduce_sum_masked(
                 value, mask=None if is_scalar[name] else mask, name=f"{name}_summed", axis=None
             )
@@ -233,28 +236,29 @@ class ConfigurableLayer(tf.keras.layers.Layer, metaclass=abc.ABCMeta):
                 name=f"{name}_value_count_update",
             )
             tf.summary.scalar(
-                f"{name}{mean}",
+                f"{name}{'' if is_scalar[name] else '_mean'}",
                 tf.math.divide_no_nan(
                     summed,
                     tf.cast(value_count, summed.dtype, name=f"{name}_cast_value_count"),
-                    name=f"{name}_mean",
+                    name=f"{name}{'' if is_scalar[name] else '_mean'}",
                 ),
             )
-            self.metrics_storage["sum"][name].assign(
-                tf.cond(
-                    tf.summary.should_record_summaries(),
-                    lambda: tf.zeros_like(summed),
-                    lambda: summed,
-                    name=f"maybe_clear_{name}_sum",
-                ),
-                name=f"assign_clear_{name}_sum",
-            )
-            self.metrics_storage["value_count"][name].assign(
-                tf.cond(
-                    tf.summary.should_record_summaries(),
-                    lambda: tf.zeros_like(value_count),
-                    lambda: value_count,
-                    name=f"maybe_clear_{name}_value_count",
-                ),
-                name=f"assign_clear_{name}_value_count",
-            )
+            if isinstance(self.metrics_storage["sum"][name], tf.Variable):
+                self.metrics_storage["sum"][name].assign(
+                    tf.cond(
+                        tf.summary.should_record_summaries(),
+                        lambda: tf.zeros_like(summed),
+                        lambda: summed,
+                        name=f"maybe_clear_{name}_sum",
+                    ),
+                    name=f"assign_clear_{name}_sum",
+                )
+                self.metrics_storage["value_count"][name].assign(
+                    tf.cond(
+                        tf.summary.should_record_summaries(),
+                        lambda: tf.zeros_like(value_count),
+                        lambda: value_count,
+                        name=f"maybe_clear_{name}_value_count",
+                    ),
+                    name=f"assign_clear_{name}_value_count",
+                )
