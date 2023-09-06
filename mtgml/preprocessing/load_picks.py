@@ -72,6 +72,7 @@ def picks_from_draft(draft):
                     and len(seen) < MAX_SEEN_PACKS
                     and picked_idx is not None
                     and 0 <= picked_idx < len(pick["cardsInPack"])
+                    and "pickedIdx" in pick
                 ):
                     break
                 # if len(pick['cardsInPack']) <= 1: continue

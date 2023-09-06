@@ -13,6 +13,7 @@ from mtgml.constants import (
     should_ensure_shape,
     should_log_histograms,
 )
+from mtgml.layers.bert import BERT, Transformer
 from mtgml.layers.configurable_layer import ConfigurableLayer
 from mtgml.layers.contextual_rating import ContextualRating
 from mtgml.layers.extended_dropout import ExtendedDropout
@@ -42,23 +43,37 @@ RATING_ORACLE_METADATA = {
     "tooltip": "How good the card is in a vacuum.",
     "name": "rating",
 }
+MASTER_ORACLE_METADATA = {
+    "title": "Master",
+    "tooltip": "How good the card is considering all factors.",
+    "name": "master",
+}
 
 
 class DraftBot(ConfigurableLayer, tf.keras.Model):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        pool_context_ratings = hyper_config.get_bool(
-            "pool_context_ratings",
-            default=True,
-            help="Whether to rate cards based on how the go with the other cards in the pool so far.",
+        pool_context_ratings = (
+            hyper_config.get_bool(
+                "pool_context_ratings",
+                default=True,
+                help="Whether to rate cards based on how the go with the other cards in the pool so far.",
+            )
+            and False
         )
-        seen_context_ratings = hyper_config.get_bool(
-            "seen_context_ratings", default=True, help="Whether to rate cards based on the packs seen so far."
+        seen_context_ratings = (
+            hyper_config.get_bool(
+                "seen_context_ratings", default=True, help="Whether to rate cards based on the packs seen so far."
+            )
+            and False
         )
-        item_ratings = hyper_config.get_bool(
-            "item_ratings", default=True, help="Whether to give each card a rating independent of context."
+        item_ratings = (
+            hyper_config.get_bool(
+                "item_ratings", default=True, help="Whether to give each card a rating independent of context."
+            )
+            and False
         )
-        sublayer_metadatas = []
+        sublayer_metadatas = [MASTER_ORACLE_METADATA]
         if pool_context_ratings:
             sublayer_metadatas.append(POOL_ORACLE_METADATA)
         if seen_context_ratings:
@@ -84,7 +99,8 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             default=None,
             help="The number of items that must be embedded. Should be 1 + the max index expected to see.",
         )
-        sublayer_count = len([x for x in (pool_context_ratings, seen_context_ratings, item_ratings) if x])
+        card_embed_dims = input_shapes[5][-1] if input_shapes is not None else 1
+        sublayer_count = len([x for x in (pool_context_ratings, seen_context_ratings, item_ratings) if x]) + 1
         return {
             "seen_pack_dims": seen_pack_dims,
             "num_cards": num_cards - 1,
@@ -151,6 +167,65 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
             if item_ratings
             else None,
+            "master_score": hyper_config.get_sublayer(
+                "MasterScore",
+                sub_layer_type=MLP,
+                seed_mod=13,
+                fixed={"Final": {"dims": 1, "activation": "linear"}},
+                help="Translates embeddings into linear ratings.",
+            ),
+            "master_score_seen": [
+                hyper_config.get_sublayer(
+                    f"SelfAttend_{i}",
+                    sub_layer_type=Transformer,
+                    seed_mod=137 + i,
+                    fixed={
+                        "Attention": {
+                            "attention_axes": (1, 2),
+                            "key_dims": 64,
+                            "num_heads": 4,
+                            "value_dims": 64,
+                            "dropout": 0.0,
+                            "use_bias": True,
+                            "output_dims": card_embed_dims,
+                        },
+                        "use_causal_mask": False,
+                        "dense_dropout": 0.0,
+                        "FinalMLP": {
+                            "num_hidden": 0,
+                            "Final": {"dims": card_embed_dims, "use_bias": True, "activation": "selu"},
+                        },
+                    },
+                    help="The layer to add the seen pack information into the card embeddings.",
+                )
+                for i in range(4)
+            ],
+            "master_score_picked": [
+                hyper_config.get_sublayer(
+                    f"PickedAttend_{i}",
+                    sub_layer_type=Transformer,
+                    seed_mod=197 + i,
+                    fixed={
+                        "Attention": {
+                            "attention_axes": (1, 2),
+                            "key_dims": 64,
+                            "num_heads": 4,
+                            "value_dims": 64,
+                            "dropout": 0.0,
+                            "use_bias": True,
+                            "output_dims": card_embed_dims,
+                        },
+                        "use_causal_mask": False,
+                        "dense_dropout": 0.0,
+                        "FinalMLP": {
+                            "num_hidden": 0,
+                            "Final": {"dims": card_embed_dims, "use_bias": True, "activation": "selu"},
+                        },
+                    },
+                    help="The layer to add the seen pack information into the card embeddings.",
+                )
+                for i in range(4)
+            ],
             "lambdas": {
                 "log": hyper_config.get_float(
                     "log_loss_weight",
@@ -168,6 +243,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     default=0.2,
                     help="The weight given to the triplet separation loss.",
                 ),
+                "master_variance": 0.0001,
                 "score_variance": hyper_config.get_float(
                     "score_variance_weight",
                     min=-1,
@@ -290,6 +366,28 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
         pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
         seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name="seen_pack_embeds")
+        master_embeds = seen_pack_embeds
+        # We have seen of (batch x max_seen_packs x max_cards_in_pack x embed_dims)
+        # Want to do attention attending on all previous packs
+        # So mask is inclusive_causal_mask(max_seen_packs)[None, :, None, :, None]
+        # This mask is tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)[None, :, None, :, None]
+        # which is (batch x max_seen_packs x 1 x max_seen_packs x 1)
+        # Then do self attention
+        # We also have picked (batch x max_seen_packs x embed_dims)
+        # This mask is (tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0) & ~tf.eye(max_seen_packs, dtype=tf.bool))[None, :, None, :, None]
+        # do attention(embeddings, picked[:, :, None], attention_mask=attention_mask)
+        # Repeat n times
+        mask_1 = tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)[
+            None, :, None, :, None
+        ]
+        mask_2 = (
+            tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)
+            & ~tf.eye(max_seen_packs, dtype=tf.bool)
+        )[None, :, None, :, None]
+        for seen_layer, picked_layer in zip(self.master_score_seen, self.master_score_picked):
+            master_embeds = seen_layer(master_embeds, mask_1, training=training, mask=None)
+            master_embeds = picked_layer(master_embeds, pool_embeds[:, :, None], mask_2, training=training, mask=None)
+        sublayer_scores_list.append(tf.squeeze(self.master_score(card_embeddings[1:], training=training), axis=-1))
         card_dims = tf.shape(seen_pack_embeds)[-1]
         if self.rate_off_pool:
             pool_embeds_dropped = self.dropout_pool_embeds(pool_embeds, training=training)

@@ -52,7 +52,7 @@ class Transformer(ConfigurableLayer):
             attended = self.attention(
                 tokens, tokens, training=training, mask=mask, use_causal_mask=self.use_causal_mask
             )
-        else:
+        elif len(inputs) == 2:
             tokens, attention_mask = inputs
             tokens._keras_mask = None
             attended = self.attention(
@@ -63,6 +63,20 @@ class Transformer(ConfigurableLayer):
                 training=training,
                 mask=mask,
             )
+        elif len(inputs) == 3:
+            tokens, query, attention_mask = inputs
+            tokens._keras_mask = None
+            query._keras_mask = None
+            attended = self.attention(
+                tokens,
+                query,
+                attention_mask=attention_mask,
+                use_causal_mask=self.use_causal_mask,
+                training=training,
+                mask=mask,
+            )
+        else:
+            raise ValueError("Invalid number of inputs.")
         transformed = self.final_mlp(attended, training=training, mask=mask)
         transformed = self.final_dropout(transformed, training=training, mask=mask)
         return self.layer_norm(transformed + tokens, training=training)
