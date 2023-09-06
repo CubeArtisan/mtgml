@@ -89,10 +89,10 @@ cd ../../../
 
 for fname in data/17lands/$1/*/*.csv
 do
-    python -m mtgml.preprocessing.17lands_to_json $fname && rm $fname
+    python -m mtgml.preprocessing.17lands_to_json $fname && rm $fname || true
 done
-python -m mtgml.preprocessing.find_used data/17lands/draft/$1 nonexistant nonexistant
-python -m mtgml.preprocessing.load_picks data/17lands/draft/$1
+python -m mtgml.preprocessing.find_used data/17lands/$1/draft nonexistant nonexistant
+python -m mtgml.preprocessing.load_picks data/17lands/$1/draft
 
 export GITHUB_SHA=`git rev-parse HEAD`
 export TAG=${GITHUB_SHA:0:8}
