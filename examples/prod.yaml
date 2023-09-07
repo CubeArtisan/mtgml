@@ -59,6 +59,9 @@ CubeRecommender: !hcv
             value_dims: !hcv
               help: Size of the attention head for value.
               value: 64
+        output_dims: !hcv
+          help: The number of dimensions to embed the set into.
+          value: 256
     TransformCards: !hcv
       help: Transform card embeddings to a different orientation
       value: !hc
@@ -93,28 +96,33 @@ CubeRecommender: !hcv
     embed_dims: !hcv
       help: The number of dimensions for similarity comparisons
       value: 256
+    log_weight: !hcv
+      help: How much weight to apply to the cross entropy loss.
+      value: 1.0
+    mae_weight: !hcv
+      help: How much weight to apply to the mean absolute error between true predictions
+        and our probability of inclusion.
+      value: 0.0
+    margin_weight: !hcv
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01
+        / probability_margin.
+      value: 100.0
+    mse_weight: !hcv
+      help: How much weight to apply to the mean squared error between true predictions
+        and our probability of inclusion.
+      value: 0.0
+    probability_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted
+        probability back towards 0.5.
+      value: 0.002
     scale_relevant_cards: !hcv
       help: The amount to scale the loss on the cards in the noisy cube and the true
         cube.
       value: 8
     similarity_variance_weight: !hcv
-      help: The weight to apply to how large the standard deviation of the cosine similarities should be.
+      help: The weight to apply to how large the standard deviation of the cosine
+        similarities should be.
       value: 0.01
-    probability_margin: !hcv
-      help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
-      value: 0.002
-    log_weight: !hcv
-      help: How much weight to apply to the cross entropy loss.
-      value: 1.0
-    margin_weight: !hcv
-      help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
-      value: 100.0
-    mae_weight: !hcv
-      help: How much weight to apply to the mean absolute error between true predictions and our probability of inclusion.
-      value: 0.0
-    mse_weight: !hcv
-      help: How much weight to apply to the mean squared error between true predictions and our probability of inclusion.
-      value: 0.0
 DeckBuilder: !hcv
   help: The model for recommending how to build a deck out of a pool.
   value: !hc
@@ -134,7 +142,7 @@ DeckBuilder: !hcv
           help: The dropout rate for the dense layers of the transformer blocks.
           value: 0.0
         dense_activation: !hcv
-          choices:  []
+          choices: []
           help: The activation function on the output of the layer.
           value: selu
         key_dims: !hcv
@@ -169,48 +177,93 @@ DeckBuilder: !hcv
       help: How much weight to apply to punish it for having land counts other than
         17.
       value: 0.1
-    probability_margin: !hcv
-      help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
-      value: 0.001
     log_weight: !hcv
       help: How much weight to apply to the cross entropy loss.
       value: 0.5
+    mae_weight: !hcv
+      help: How much weight to apply to the mean absolute error between true predictions
+        and our probability of inclusion.
+      value: 1.0
     margin_weight: !hcv
-      help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01
+        / probability_margin.
       value: 10.0
+    mse_weight: !hcv
+      help: How much weight to apply to the mean squared error between true predictions
+        and our probability of inclusion.
+      value: 0.0
+    probability_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted
+        probability back towards 0.5.
+      value: 0.001
     scale_correct: !hcv
       help: How much to scale the penalty for leaving out a correct card.
       value: 1.0
-    mae_weight: !hcv
-      help: How much weight to apply to the mean absolute error between true predictions and our probability of inclusion.
-      value: 1.0
-    mse_weight: !hcv
-      help: How much weight to apply to the mean squared error between true predictions and our probability of inclusion.
-      value: 0.0
     total_prob_weight: !hcv
-      help: How much weight to apply to punish it for having total probability away from 40.
+      help: How much weight to apply to punish it for having total probability away
+        from 40.
       value: 0.1
 DraftBots: !hcv
   help: The model for the draftbots
   value: !hc
+    MasterScore: !hcv
+      help: Translates embeddings into linear ratings.
+      value: !hc
+        Dropout_0: !hcv
+          help: The dropout applied after the 1st hidden layer.
+          value: !hc
+            rate: !hcv
+              help: The percent of values that get replaced with zero.
+              value: 0.2
+        Final: !hcv
+          help: The last dense layer in the MLP.
+          value: !hc
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        Hidden_0: !hcv
+          help: The 1st hidden layer.
+          value: !hc
+            activation: !hcv
+              choices: !!python/tuple
+              - elu
+              - selu
+              - relu
+              - tanh
+              - sigmoid
+              - linear
+              - swish
+              help: The activation function on the output of the layer.
+              value: selu
+            dims: !hcv
+              help: The number of dimensions in the output of this layer.
+              value: 32
+            use_bias: !hcv
+              help: Whether to use bias on the output.
+              value: true
+        num_hidden: !hcv
+          help: The number of hidden layers in the MLP.
+          value: 1
+    extremeness_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted
+        probability back towards 0.5.
+      value: 0.001
+    extremeness_weight: !hcv
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01
+        / probability_margin.
+      value: 10.0
     item_ratings: !hcv
       help: Whether to give each card a rating independent of context.
       value: false
     log_loss_weight: !hcv
       help: The weight given to probability log loss.
       value: 0.8
-    triplet_loss_weight: !hcv
-      help: The weight given to the triplet separation loss.
-      value: 0.2
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 1
-    extremeness_margin: !hcv
-      help: The distance from the endpoints (0, 1) at which to start pushing the predicted probability back towards 0.5.
-      value: 0.001
-    extremeness_weight: !hcv
-      help: The multiplier to scale the probability margin loss by. Suggested is 0.01 / probability_margin.
-      value: 10.0
+    num_super_layers: !hcv
+      help: Number of layers in the super oracle.
+      value: 4
     pool_context_ratings: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
@@ -218,15 +271,16 @@ DraftBots: !hcv
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
       value: 0.001
+    probability_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted
+        probability back towards 0.5.
+      value: 0.01
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
       value: 0.0
     score_variance_weight: !hcv
       help: The weight given to the variance of the combined scores.
       value: 0.0
-    sublayer_weights_l2_weight: !hcv
-      help: The multiplier to scale the loss on the square of the sublayer weights.
-      value: 0.001
     seen_context_ratings: !hcv
       help: Whether to rate cards based on the packs seen so far.
       value: false
@@ -236,6 +290,30 @@ DraftBots: !hcv
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
       value: 0.01
+    sublayer_weights_l2_weight: !hcv
+      help: The multiplier to scale the loss on the square of the sublayer weights.
+      value: 0.001
+    super_attention_dropout: !hcv
+      help: The percentage of attention weights to drop.
+      value: 0.01
+    super_final_dropout: !hcv
+      help: The percentage of values to drop.
+      value: 0.04
+    super_key_dims: !hcv
+      help: Number of key dimensions per head for the super layers.
+      value: 64
+    super_layer: !hcv
+      help: Whether to give a rating with full context.
+      value: true
+    super_num_heads: !hcv
+      help: Number of heads per layer for the super layers.
+      value: 8
+    super_value_dims: !hcv
+      help: Number of value dimensions per head for the super layers.
+      value: 64
+    triplet_loss_weight: !hcv
+      help: The weight given to the triplet separation loss.
+      value: 0.2
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
@@ -245,9 +323,6 @@ EmbedCards: !hcv
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
-ema_overwrite_frequency: !hcv
-  help: The frequency to replace weights with their exponential moving averages. Set to 0 to disable.
-  value: 2048
 adafactor_learning_rate: !hcv
   help: The learning rate to use for adafactor
   value: 0.0001
@@ -266,7 +341,7 @@ cube_adj_mtx_weight: !hcv
   value: 0
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 1
+  value: 2
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.25
@@ -278,7 +353,7 @@ deck_adj_mtx_weight: !hcv
   value: 0
 deck_batch_size: !hcv
   help: The number of decks to evaluate at a time
-  value: 32
+  value: 16
 deck_builder_weight: !hcv
   help: The weight to multiply the deck builder loss by.
   value: 1
@@ -292,9 +367,13 @@ dtype: !hcv
   - 64
   help: The size of the floating point numbers to use for calculations in the model
   value: 32
+ema_overwrite_frequency: !hcv
+  help: The frequency to replace weights with their exponential moving averages. Set
+    to 0 to disable.
+  value: 2048
 epochs_for_completion: !hcv
   help: The number of epochs it should take to go through the entire dataset.
-  value: 1
+  value: 8
 optimizer: !hcv
   choices: !!python/tuple
   - adam

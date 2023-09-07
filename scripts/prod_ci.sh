@@ -87,7 +87,7 @@ echo $GITHUB_SHA > ml_files/train_$TYPE/git-commit
 cp data/maps/int_to_card.json ml_files/train_$TYPE/int_to_card.json
 cp data/maps/original_to_new_index.json ml_files/train_$TYPE/original_to_new_index.json
 cp examples/$TYPE.yaml ml_files/train_$TYPE/hyper_config.yaml
-python -m mtgml.training.train_combined --name train_$TYPE --epochs 32 --seed 16809
+python -m mtgml.training.train_combined --name train_$TYPE --epochs 32 --seed 16809 --histograms
 
 export REPOSITORY=ghcr.io/cubeartisan
 

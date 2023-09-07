@@ -8,7 +8,6 @@ from mtgml.constants import (
     EPSILON,
     LARGE_INT,
     MAX_CARDS_IN_PACK,
-    MAX_PICKED,
     MAX_SEEN_PACKS,
     should_ensure_shape,
     should_log_histograms,
@@ -382,12 +381,12 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
 
     def call(self, inputs, training=False):
         batch_size = tf.shape(inputs[1])[0]
-        max_picked = tf.shape(inputs[1])[1]
         max_seen_packs = tf.shape(inputs[2])[1]
         max_cards_in_pack = tf.shape(inputs[2])[2]
+        card_embed_dims = tf.shape(inputs[5])[1]
         if should_ensure_shape():
             # basics = tf.ensure_shape(tf.cast(inputs[0], dtype=tf.int32, name='basics'), (None, MAX_BASICS))
-            pool = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name="pool"), (None, MAX_PICKED))
+            pool = tf.ensure_shape(tf.cast(inputs[1], dtype=tf.int32, name="pool"), (None, MAX_SEEN_PACKS))
             seen_packs = tf.ensure_shape(
                 tf.cast(inputs[2], dtype=tf.int32, name="seen_packs"), (None, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK)
             )
@@ -402,7 +401,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
         else:
             # basics = tf.cast(inputs[0], dtype=tf.int32, name='basics')
-            pool = tf.cast(tf.reshape(inputs[1], (batch_size, max_picked)), dtype=tf.int32, name="pool")
+            pool = tf.cast(tf.reshape(inputs[1], (batch_size, max_seen_packs)), dtype=tf.int32, name="pool")
             seen_packs = tf.cast(
                 tf.reshape(inputs[2], (batch_size, max_seen_packs, max_cards_in_pack)),
                 dtype=tf.int32,
@@ -421,33 +420,28 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         bool_mask = seen_packs > 0
         pack_mask = tf.reduce_any(bool_mask, -1)
         mask = tf.cast(bool_mask, dtype=self.compute_dtype, name="pack_mask")
-        # Shift pool right by 1
-        pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
         pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
         seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name="seen_pack_embeds")
         super_embeds = seen_pack_embeds
-        # We have seen of (batch x max_seen_packs x max_cards_in_pack x embed_dims)
-        # Want to do attention attending on all previous packs
-        # So mask is inclusive_causal_mask(max_seen_packs)[None, :, None, :, None]
-        # This mask is tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)[None, :, None, :, None]
-        # which is (batch x max_seen_packs x 1 x max_seen_packs x 1)
-        # Then do self attention
-        # We also have picked (batch x max_seen_packs x embed_dims)
-        # This mask is (tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0) & ~tf.eye(max_seen_packs, dtype=tf.bool))[None, :, None, :, None]
-        # do attention(embeddings, picked[:, :, None], attention_mask=attention_mask)
-        # Repeat n times
-        mask_1 = tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)[
-            None, :, None, :, None
-        ]
-        mask_2 = (
-            tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)
-            & ~tf.eye(max_seen_packs, dtype=tf.bool)
-        )[None, :, None, :, None]
+        bands = tf.reshape(
+            tf.reshape(tf.range(max_seen_packs), (1, max_seen_packs))
+            - tf.reshape(tf.range(max_seen_packs), (max_seen_packs, 1)),
+            (1, max_seen_packs, 1, max_seen_packs, 1),
+        )
+        mask_1 = bands <= 0
+        mask_2 = bands < 0
         for seen_layer, picked_layer in zip(self.super_score_seen, self.super_score_picked):
             super_embeds = seen_layer((super_embeds, mask_1), training=training, mask=None)
-            super_embeds = picked_layer((super_embeds, pool_embeds[:, :, None], mask_2), training=training, mask=None)
+            super_embeds = picked_layer(
+                (super_embeds, tf.reshape(pool_embeds, (batch_size, max_seen_packs, 1, card_embed_dims)), mask_2),
+                training=training,
+                mask=None,
+            )
         sublayer_scores_list.append(tf.squeeze(self.super_score(super_embeds, training=training), axis=-1))
         card_dims = tf.shape(seen_pack_embeds)[-1]
+        # Shift pool right by 1
+        pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
+        pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
         if self.rate_off_pool:
             pool_embeds_dropped = self.dropout_pool_embeds(pool_embeds, training=training)
             pool_scores = self.rate_off_pool(

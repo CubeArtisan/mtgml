@@ -134,7 +134,7 @@ ALL_PICKS = tuple(0 for _ in range(MAX_SEEN_PACKS))
 #             yield (default_basics, value, seen, seen_coords, seen_coord_weights, ALL_PICKS)
 
 
-DESTS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
+DESTS = [0] * 38 + [1, 2]
 
 
 def load_all_drafts(pool, *args):
@@ -366,7 +366,7 @@ if __name__ == "__main__":
         output_files = [train_file, validation_file, evaluation_file]
         for picks in load_all_drafts(read_pool, *sys.argv[1:]):
             for i in range(len(picks) // BUFFER_SIZE):
-                rand_val = random.randint(0, 9)
+                rand_val = random.randint(0, len(DESTS) - 1)
                 dest = DESTS[rand_val]
                 write_pool.apply(write_picks, (picks[i * BUFFER_SIZE : (i + 1) * BUFFER_SIZE], output_files[dest]))
                 num_picks += BUFFER_SIZE
