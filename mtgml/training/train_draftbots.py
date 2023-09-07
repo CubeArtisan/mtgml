@@ -15,7 +15,7 @@ import yaml
 from mtgml_native.generators.draftbot_generator import DraftbotGenerator
 
 from mtgml.config.hyper_config import HyperConfig
-from mtgml.constants import OPTIMIZER_CHOICES, set_debug
+from mtgml.constants import OPTIMIZER_CHOICES, set_debug, set_log_histograms
 from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.models.combined_model import CombinedModel
 from mtgml.tensorboard.callback import TensorBoardFix
@@ -43,8 +43,10 @@ if __name__ == "__main__":
         "--deterministic", action="store_true", help="Try to keep the run deterministic so results can be reproduced."
     )
     parser.add_argument("--log-dir", type=Path, default=None, help="The path to store logs in.")
+    parser.add_argument("--histograms", action="store_true", help="Enable logging histograms while training.")
     parser.set_defaults(float_type=tf.float32, use_xla=True)
     args = parser.parse_args()
+    set_log_histograms(args.histograms)
     tf.keras.utils.set_random_seed(args.seed)
     physical_devices = tf.config.list_physical_devices("GPU")
     for device in physical_devices:

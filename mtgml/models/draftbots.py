@@ -43,37 +43,33 @@ RATING_ORACLE_METADATA = {
     "tooltip": "How good the card is in a vacuum.",
     "name": "rating",
 }
-MASTER_ORACLE_METADATA = {
+SUPER_ORACLE_METADATA = {
     "title": "Master",
     "tooltip": "How good the card is considering all factors.",
-    "name": "master",
+    "name": "super",
 }
 
 
 class DraftBot(ConfigurableLayer, tf.keras.Model):
     @classmethod
     def get_properties(cls, hyper_config, input_shapes=None):
-        pool_context_ratings = (
-            hyper_config.get_bool(
-                "pool_context_ratings",
-                default=True,
-                help="Whether to rate cards based on how the go with the other cards in the pool so far.",
-            )
-            and False
+        pool_context_ratings = hyper_config.get_bool(
+            "pool_context_ratings",
+            default=True,
+            help="Whether to rate cards based on how the go with the other cards in the pool so far.",
         )
-        seen_context_ratings = (
-            hyper_config.get_bool(
-                "seen_context_ratings", default=True, help="Whether to rate cards based on the packs seen so far."
-            )
-            and False
+        seen_context_ratings = hyper_config.get_bool(
+            "seen_context_ratings", default=True, help="Whether to rate cards based on the packs seen so far."
         )
-        item_ratings = (
-            hyper_config.get_bool(
-                "item_ratings", default=True, help="Whether to give each card a rating independent of context."
-            )
-            and False
+        item_ratings = hyper_config.get_bool(
+            "item_ratings", default=True, help="Whether to give each card a rating independent of context."
         )
-        sublayer_metadatas = [MASTER_ORACLE_METADATA]
+        super_layer = hyper_config.get_bool(
+            "super_layer", default=True, help="Whether to give a rating with full context."
+        )
+        sublayer_metadatas = []
+        if super_layer:
+            sublayer_metadatas.append(SUPER_ORACLE_METADATA)
         if pool_context_ratings:
             sublayer_metadatas.append(POOL_ORACLE_METADATA)
         if seen_context_ratings:
@@ -98,6 +94,60 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             max=None,
             default=None,
             help="The number of items that must be embedded. Should be 1 + the max index expected to see.",
+        )
+        num_super_layers = (
+            hyper_config.get_int(
+                "num_super_layers", default=4, min=1, max=8, help="Number of layers in the super oracle."
+            )
+            if super_layer
+            else 0
+        )
+        super_key_dims = (
+            hyper_config.get_int(
+                "super_key_dims",
+                min=8,
+                max=128,
+                default=64,
+                help="Number of key dimensions per head for the super layers.",
+            )
+            if super_layer
+            else 8
+        )
+        super_value_dims = (
+            hyper_config.get_int(
+                "super_value_dims",
+                min=8,
+                max=128,
+                default=64,
+                help="Number of value dimensions per head for the super layers.",
+            )
+            if super_layer
+            else 8
+        )
+        super_num_heads = (
+            hyper_config.get_int(
+                "super_num_heads", min=1, max=32, default=8, help="Number of heads per layer for the super layers."
+            )
+            if super_layer
+            else 1
+        )
+        super_attention_dropout = (
+            hyper_config.get_float(
+                "super_attention_dropout",
+                min=0.0,
+                max=1.0,
+                default=0.01,
+                help="The percentage of attention weights to drop.",
+            )
+            if super_layer
+            else 0.0
+        )
+        super_final_dropout = (
+            hyper_config.get_float(
+                "super_final_dropout", min=0.0, max=1.0, default=0.04, help="The percentage of values to drop."
+            )
+            if super_layer
+            else 0.0
         )
         card_embed_dims = input_shapes[5][-1] if input_shapes is not None else 1
         sublayer_count = len([x for x in (pool_context_ratings, seen_context_ratings, item_ratings) if x]) + 1
@@ -167,14 +217,17 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
             if item_ratings
             else None,
-            "master_score": hyper_config.get_sublayer(
+            "super_layer": super_layer,
+            "super_score": hyper_config.get_sublayer(
                 "MasterScore",
                 sub_layer_type=MLP,
                 seed_mod=13,
                 fixed={"Final": {"dims": 1, "activation": "linear"}},
                 help="Translates embeddings into linear ratings.",
-            ),
-            "master_score_seen": [
+            )
+            if super_layer
+            else None,
+            "super_score_seen": [
                 hyper_config.get_sublayer(
                     f"SelfAttend_{i}",
                     sub_layer_type=Transformer,
@@ -182,25 +235,28 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     fixed={
                         "Attention": {
                             "attention_axes": (1, 2),
-                            "key_dims": 64,
-                            "num_heads": 4,
-                            "value_dims": 64,
-                            "dropout": 0.0,
+                            "key_dims": super_key_dims,
+                            "num_heads": super_num_heads,
+                            "value_dims": super_value_dims,
+                            "dropout": super_attention_dropout,
                             "use_bias": True,
                             "output_dims": card_embed_dims,
                         },
                         "use_causal_mask": False,
-                        "dense_dropout": 0.0,
+                        "dense_dropout": super_final_dropout,
                         "FinalMLP": {
                             "num_hidden": 0,
                             "Final": {"dims": card_embed_dims, "use_bias": True, "activation": "selu"},
                         },
+                        "FinalDropout": {"rate": super_final_dropout},
                     },
                     help="The layer to add the seen pack information into the card embeddings.",
                 )
-                for i in range(4)
-            ],
-            "master_score_picked": [
+                for i in range(num_super_layers)
+            ]
+            if super_layer
+            else None,
+            "super_score_picked": [
                 hyper_config.get_sublayer(
                     f"PickedAttend_{i}",
                     sub_layer_type=Transformer,
@@ -208,24 +264,27 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     fixed={
                         "Attention": {
                             "attention_axes": (1, 2),
-                            "key_dims": 64,
-                            "num_heads": 4,
-                            "value_dims": 64,
-                            "dropout": 0.0,
+                            "key_dims": super_key_dims,
+                            "num_heads": super_num_heads,
+                            "value_dims": super_value_dims,
+                            "dropout": super_attention_dropout,
                             "use_bias": True,
                             "output_dims": card_embed_dims,
                         },
                         "use_causal_mask": False,
-                        "dense_dropout": 0.0,
+                        "dense_dropout": super_final_dropout,
                         "FinalMLP": {
                             "num_hidden": 0,
                             "Final": {"dims": card_embed_dims, "use_bias": True, "activation": "selu"},
                         },
+                        "FinalDropout": {"rate": super_final_dropout},
                     },
                     help="The layer to add the seen pack information into the card embeddings.",
                 )
-                for i in range(4)
-            ],
+                for i in range(num_super_layers)
+            ]
+            if super_layer
+            else None,
             "lambdas": {
                 "log": hyper_config.get_float(
                     "log_loss_weight",
@@ -243,7 +302,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     default=0.2,
                     help="The weight given to the triplet separation loss.",
                 ),
-                "master_variance": 0.0001,
+                "super_variance": 0.0001,
                 "score_variance": hyper_config.get_float(
                     "score_variance_weight",
                     min=-1,
@@ -366,7 +425,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
         pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
         seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name="seen_pack_embeds")
-        master_embeds = seen_pack_embeds
+        super_embeds = seen_pack_embeds
         # We have seen of (batch x max_seen_packs x max_cards_in_pack x embed_dims)
         # Want to do attention attending on all previous packs
         # So mask is inclusive_causal_mask(max_seen_packs)[None, :, None, :, None]
@@ -384,10 +443,10 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             tf.linalg.band_part(tf.ones((max_seen_packs, max_seen_packs), dtype=tf.bool), -1, 0)
             & ~tf.eye(max_seen_packs, dtype=tf.bool)
         )[None, :, None, :, None]
-        for seen_layer, picked_layer in zip(self.master_score_seen, self.master_score_picked):
-            master_embeds = seen_layer(master_embeds, mask_1, training=training, mask=None)
-            master_embeds = picked_layer(master_embeds, pool_embeds[:, :, None], mask_2, training=training, mask=None)
-        sublayer_scores_list.append(tf.squeeze(self.master_score(card_embeddings[1:], training=training), axis=-1))
+        for seen_layer, picked_layer in zip(self.super_score_seen, self.super_score_picked):
+            super_embeds = seen_layer((super_embeds, mask_1), training=training, mask=None)
+            super_embeds = picked_layer((super_embeds, pool_embeds[:, :, None], mask_2), training=training, mask=None)
+        sublayer_scores_list.append(tf.squeeze(self.super_score(super_embeds, training=training), axis=-1))
         card_dims = tf.shape(seen_pack_embeds)[-1]
         if self.rate_off_pool:
             pool_embeds_dropped = self.dropout_pool_embeds(pool_embeds, training=training)
