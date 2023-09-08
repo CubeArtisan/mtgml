@@ -198,6 +198,32 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
             if seen_context_ratings
             else None,
+            "embed_card_pack_position": hyper_config.get_sublayer(
+                "EmbedCardPackPosition",
+                sub_layer_type=TimeVaryingEmbedding,
+                fixed={
+                    "dims": card_embed_dims,
+                    "time_shape": (DEFAULT_PACKS_PER_PLAYER, DEFAULT_PICKS_PER_PACK),
+                    "activation": "linear",
+                },
+                seed_mod=23,
+                help="The embedding for the position in the draft",
+            )
+            if super_layer
+            else None,
+            "embed_pool_position": hyper_config.get_sublayer(
+                "EmbedPoolPosition",
+                sub_layer_type=TimeVaryingEmbedding,
+                fixed={
+                    "dims": card_embed_dims,
+                    "time_shape": (DEFAULT_PACKS_PER_PLAYER, DEFAULT_PICKS_PER_PACK),
+                    "activation": "linear",
+                },
+                seed_mod=23,
+                help="The embedding for the position in the draft",
+            )
+            if super_layer
+            else None,
             "rate_off_seen": hyper_config.get_sublayer(
                 "RatingFromSeen",
                 sub_layer_type=ContextualRating,
@@ -301,7 +327,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     default=0.2,
                     help="The weight given to the triplet separation loss.",
                 ),
-                "super_variance": 0.0001,
+                "super_variance": 0.0,
                 "score_variance": hyper_config.get_float(
                     "score_variance_weight",
                     min=-1,
@@ -420,25 +446,39 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
         bool_mask = seen_packs > 0
         pack_mask = tf.reduce_any(bool_mask, -1)
         mask = tf.cast(bool_mask, dtype=self.compute_dtype, name="pack_mask")
-        pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
         seen_pack_embeds = tf.gather(card_embeddings, seen_packs, name="seen_pack_embeds")
-        super_embeds = seen_pack_embeds
-        bands = tf.reshape(
-            tf.reshape(tf.range(max_seen_packs), (1, max_seen_packs))
-            - tf.reshape(tf.range(max_seen_packs), (max_seen_packs, 1)),
-            (1, max_seen_packs, 1, max_seen_packs, 1),
-        )
-        mask_1 = bands <= 0
-        mask_2 = bands < 0
-        for seen_layer, picked_layer in zip(self.super_score_seen, self.super_score_picked):
-            super_embeds = seen_layer((super_embeds, mask_1), training=training, mask=None)
-            super_embeds = picked_layer(
-                (super_embeds, tf.reshape(pool_embeds, (batch_size, max_seen_packs, 1, card_embed_dims)), mask_2),
-                training=training,
-                mask=None,
+        if self.super_layer:
+            seen_position_embeds = tf.reshape(
+                self.embed_card_pack_position((seen_coords, seen_coord_weights), training=training),
+                (batch_size, max_seen_packs, 1, card_embed_dims),
             )
-        sublayer_scores_list.append(tf.squeeze(self.super_score(super_embeds, training=training), axis=-1))
-        card_dims = tf.shape(seen_pack_embeds)[-1]
+            pool_position_embeds = tf.reshape(
+                self.embed_pool_position((seen_coords, seen_coord_weights), training=training),
+                (batch_size, max_seen_packs, card_embed_dims),
+            )
+            super_embeds = seen_pack_embeds + seen_position_embeds / tf.math.sqrt(
+                tf.cast(card_embed_dims, dtype=self.compute_dtype)
+            )
+            pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds") + pool_position_embeds / tf.math.sqrt(
+                tf.cast(card_embed_dims, dtype=self.compute_dtype)
+            )
+            bands = tf.reshape(
+                tf.reshape(tf.range(max_seen_packs), (1, max_seen_packs))
+                - tf.reshape(tf.range(max_seen_packs), (max_seen_packs, 1)),
+                (1, max_seen_packs, 1, max_seen_packs, 1),
+            )
+            for seen_layer, picked_layer in zip(self.super_score_seen, self.super_score_picked):
+                super_embeds = seen_layer((super_embeds, bands <= 0), training=training, mask=None)
+                super_embeds = picked_layer(
+                    (
+                        super_embeds,
+                        tf.reshape(pool_embeds, (batch_size, max_seen_packs, 1, card_embed_dims)),
+                        bands < 0,
+                    ),
+                    training=training,
+                    mask=None,
+                )
+            sublayer_scores_list.append(tf.squeeze(self.super_score(super_embeds, training=training), axis=-1))
         # Shift pool right by 1
         pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
         pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
@@ -450,7 +490,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             sublayer_scores_list.append(pool_scores)
         if self.rate_off_seen:
             flat_seen_pack_embeds = tf.reshape(
-                seen_pack_embeds, (-1, max_cards_in_pack, card_dims), name="flat_seen_pack_embeds"
+                seen_pack_embeds, (-1, max_cards_in_pack, card_embed_dims), name="flat_seen_pack_embeds"
             )
             flat_seen_pack_mask = tf.reshape(bool_mask, (-1, max_cards_in_pack), name="flat_seen_pack_embeds")
             flat_pack_embeds = self.embed_pack(flat_seen_pack_embeds, training=training, mask=flat_seen_pack_mask)
