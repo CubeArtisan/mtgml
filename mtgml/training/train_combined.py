@@ -58,7 +58,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--log-dir", type=Path, default=None, help="The path to store logs in.")
     parser.add_argument("--breakpoint", action="store_true", help="Trigger a breakpoint for debugging model outputs.")
-    parser.set_defaults(float_type=tf.float32, use_xla=True)
+    parser.set_defaults(float_type=tf.float32)
     args = parser.parse_args()
     set_debug(args.debug)
     set_log_histograms(args.histograms)

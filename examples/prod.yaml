@@ -263,7 +263,7 @@ DraftBots: !hcv
       value: 1
     num_super_layers: !hcv
       help: Number of layers in the super oracle.
-      value: 4
+      value: 6
     pool_context_ratings: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
@@ -295,10 +295,10 @@ DraftBots: !hcv
       value: 0.001
     super_attention_dropout: !hcv
       help: The percentage of attention weights to drop.
-      value: 0.01
+      value: 0.0
     super_final_dropout: !hcv
       help: The percentage of values to drop.
-      value: 0.04
+      value: 0.0
     super_key_dims: !hcv
       help: Number of key dimensions per head for the super layers.
       value: 64
@@ -399,4 +399,4 @@ use_async_execution: !hcv
   value: true
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: false
+  value: true
