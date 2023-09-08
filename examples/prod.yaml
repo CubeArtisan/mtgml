@@ -356,7 +356,7 @@ deck_batch_size: !hcv
   value: 16
 deck_builder_weight: !hcv
   help: The weight to multiply the deck builder loss by.
-  value: 1
+  value: 0
 draftbots_weight: !hcv
   help: The weight to multiply the draftbot loss by.
   value: 1

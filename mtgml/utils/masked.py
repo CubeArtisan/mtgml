@@ -59,7 +59,6 @@ def reduce_mean_masked(
     ...
 
 
-@tf.function
 def reduce_mean_masked(
     x,
     mask=None,
@@ -88,7 +87,6 @@ def reduce_mean_masked(
             return result
 
 
-@tf.function
 def reduce_max_masked(
     x,
     mask=None,
@@ -107,7 +105,6 @@ def reduce_max_masked(
         )
 
 
-@tf.function
 def reduce_min_masked(
     x,
     mask=None,
@@ -152,7 +149,6 @@ def reduce_variance_masked(
     ...
 
 
-@tf.function
 def reduce_variance_masked(
     x,
     mask=None,

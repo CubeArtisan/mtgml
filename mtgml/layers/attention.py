@@ -63,7 +63,6 @@ def calculate_partitions(size, chunk_size):
     return partitions
 
 
-@tf.function
 def calculate_attention(query, key, value, query_chunk_size, kv_chunk_size, name=None):
     with tf.name_scope(name or "MultiHeadAttention") as scope:
         q_partitions = calculate_partitions(query.shape[-3], query_chunk_size)
