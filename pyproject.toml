@@ -113,7 +113,7 @@ gunicorn = { extras = ["gevent"], version = "^20.1.0" }
 optional = true
 
 [tool.poetry.group.tflite.dependencies]
-tflite-runtime = "^2.11.0"
+tflite-runtime = "^2.13.0"
 
 [tool.pyright]
 venvPath = "./"

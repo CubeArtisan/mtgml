@@ -18,7 +18,12 @@ RATING_ORACLE_METADATA = {
     "title": "Card Rating",
     "tooltip": "How good the card is in a vacuum.",
 }
-METADATA = [POOL_ORACLE_METADATA, SEEN_ORACLE_METADATA, RATING_ORACLE_METADATA]
+SUPER_ORACLE_METADATA = {
+    "title": "Combined",
+    "tooltip": "How good the card is considering all factors.",
+    "name": "super",
+}
+METADATA = [SUPER_ORACLE_METADATA]
 
 
 def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_index):
@@ -68,19 +73,27 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_
         result = call_draftbots(
             basics=basics, pool=pool, seen=seen_packs, seen_coords=seen_coords, seen_coord_weights=seen_weights
         )
-        oracle_scores = result["sublayer_scores"][0][idx_pack - 1]
-        oracle_weights = result["sublayer_weights"][0][idx_pack - 1]
+        # oracles x cards_in_pack
+        oracle_scores = result["sublayer_scores"][:, 0, idx_pack - 1]
+        # oracles
+        oracle_weights = result["sublayer_weights"][0, idx_pack - 1]
     oracle_scores = ma.masked_array(
-        oracle_scores, mask=np.broadcast_to(np.expand_dims(seen_packs[0][idx_pack - 1] == 0, -1), oracle_scores.shape)
+        oracle_scores, mask=np.broadcast_to(np.expand_dims(seen_packs[0][idx_pack - 1] == 0, 0), oracle_scores.shape)
     )
-    oracle_scores_min = np.amin(oracle_scores, axis=0)
-    oracle_scores = oracle_scores - oracle_scores_min
-    oracle_max_scores = np.max(oracle_scores, axis=0) / 10
-    oracle_max_scores = np.where(oracle_max_scores > 0, oracle_max_scores, np.ones_like(oracle_max_scores))
-    oracle_scores = oracle_scores / oracle_max_scores
-    oracle_weights = oracle_weights * oracle_max_scores
-    oracle_weights = oracle_weights / oracle_weights.sum()
-    scores = (oracle_weights * oracle_scores).sum(axis=1)
+    exp_scores = np.exp(oracle_scores - np.amax(oracle_scores, axis=1))
+    oracle_scores = 100.0 * exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+    # TODO: Handle some smarter way
+    # oracle_scores_min = np.amin(oracle_scores, axis=1)
+    # oracle_scores_shift = oracle_scores - oracle_scores_min
+    # oracle_max_scores = np.max(oracle_scores_shift, axis=1) / 10
+    # oracle_max_scores = np.where(oracle_max_scores > 0, oracle_max_scores, np.ones_like(oracle_max_scores))
+    # oracle_scores = (oracle_scores + 2.0) / 1.0
+    # print(oracle_scores_min, oracle_max_scores, oracle_scores, oracle_weights)
+    oracle_weights = np.array([1.0], dtype=np.float32)
+    # oracle_scores = oracle_scores / oracle_max_scores
+    # oracle_weights = oracle_weights * oracle_max_scores
+    # oracle_weights = oracle_weights / oracle_weights.sum()
+    scores = (oracle_weights[:, None] * oracle_scores).sum(axis=0)
     oracles = [
         [
             dict(metadata)
@@ -90,12 +103,13 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_
             }
             for metadata, weight, score in zip(METADATA, oracle_weights, card_scores)
         ]
-        for card_scores in oracle_scores
+        for card_scores in oracle_scores.T
     ]
     returned_scores = [0.0 for _ in drafter_state["seen"][seen_idx]["pack"]]
     returned_oracles = [
         [
             metadata | {"weight": float(weight) if not math.isnan(float(weight)) else -1, "score": 0}
+            # TODO: Detect metadata automatically somehow?
             for metadata, weight in zip(METADATA, oracle_weights)
         ]
         for _ in drafter_state["seen"][seen_idx]["pack"]

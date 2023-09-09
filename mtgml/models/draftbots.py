@@ -43,7 +43,7 @@ RATING_ORACLE_METADATA = {
     "name": "rating",
 }
 SUPER_ORACLE_METADATA = {
-    "title": "Master",
+    "title": "Combined",
     "tooltip": "How good the card is considering all factors.",
     "name": "super",
 }
@@ -468,7 +468,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 (1, max_seen_packs, 1, max_seen_packs, 1),
             )
             for seen_layer, picked_layer in zip(self.super_score_seen, self.super_score_picked):
-                super_embeds = seen_layer((super_embeds, bands <= 0), training=training, mask=None)
                 super_embeds = picked_layer(
                     (
                         super_embeds,
@@ -478,6 +477,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     training=training,
                     mask=None,
                 )
+                super_embeds = seen_layer((super_embeds, bands <= 0), training=training, mask=None)
             sublayer_scores_list.append(tf.squeeze(self.super_score(super_embeds, training=training), axis=-1))
         # Shift pool right by 1
         pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
