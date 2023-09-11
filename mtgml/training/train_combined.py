@@ -101,8 +101,11 @@ if __name__ == "__main__":
     )
     tf.config.threading.set_intra_op_parallelism_threads(32)
     tf.config.threading.set_inter_op_parallelism_threads(32)
-    # strategy = tf.distribute.MirroredStrategy()
-    strategy = tf.distribute.experimental.CentralStorageStrategy()
+    if len(tf.config.list_physical_devices("GPU")) > 1:
+        # strategy = tf.distribute.MirroredStrategy()
+        strategy = tf.distribute.experimental.CentralStorageStrategy()
+    else:
+        strategy = tf.distribute.get_strategy()
     use_draftbots = (
         hyper_config.get_float(
             "draftbots_weight", default=1, min=0, max=128, help="The weight to multiply the draftbot loss by."
@@ -219,6 +222,7 @@ if __name__ == "__main__":
     tf.keras.mixed_precision.set_global_policy(dtype)
 
     use_xla = bool(hyper_config.get_bool("use_xla", default=False, help="Whether to use xla to speed up calculations."))
+    print("Using XLA", use_xla)
     tf.config.optimizer.set_jit(use_xla)
     if args.debug:
         tf.config.optimizer.set_experimental_options = {
@@ -397,7 +401,7 @@ if __name__ == "__main__":
             )
         else:
             raise Exception("Need to specify a valid optimizer type")
-        model.compile(optimizer=opt)
+        model.compile(optimizer=opt, jit_compile=use_xla)
     latest = tf.train.latest_checkpoint(output_dir)
     loaded = None
     if latest is not None:

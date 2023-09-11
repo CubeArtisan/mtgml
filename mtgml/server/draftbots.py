@@ -33,7 +33,7 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_
         if card_id in card_to_int and original_to_new_index[card_to_int[card_id] + 1] != 0 and idx < MAX_BASICS:
             basics[0][idx] = card_to_int[card_id] + 1
             idx += 1
-    pool = np.zeros((1, MAX_PICKED), dtype=np.int16)
+    pool = np.zeros((1, MAX_SEEN_PACKS), dtype=np.int16)
     idx = 0
     for card_id in drafter_state["picked"][-MAX_SEEN_PACKS:]:
         if card_id in card_to_int and original_to_new_index[card_to_int[card_id] + 1] != 0:
@@ -80,6 +80,7 @@ def get_draft_scores(drafter_state, model, card_to_int, tracer, original_to_new_
     oracle_scores = ma.masked_array(
         oracle_scores, mask=np.broadcast_to(np.expand_dims(seen_packs[0][idx_pack - 1] == 0, 0), oracle_scores.shape)
     )
+    oracle_scores = oracle_scores * oracle_weights[:, None]
     exp_scores = np.exp(oracle_scores - np.amax(oracle_scores, axis=1))
     oracle_scores = 100.0 * exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
     # TODO: Handle some smarter way

@@ -11,4 +11,4 @@ COPY mtgml/constants.py mtgml/constants.py
 COPY mtgml/utils/grid.py mtgml/utils/grid.py
 COPY ml_files/tflite/ ml_files/tflite/
 
-ENTRYPOINT gunicorn -w 8 --access-logfile - -b 0.0.0.0:8000 --timeout 300 mtgml.server:app
+ENTRYPOINT gunicorn -w 2 --access-logfile - -b 0.0.0.0:8000 --timeout 300 mtgml.server:app

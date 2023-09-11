@@ -50,7 +50,7 @@
 
               # export TF_GPU_ALLOCATOR=cuda_malloc_async
               export XLA_FLAGS="--xla_gpu_enable_fast_min_max --xla_gpu_cuda_data_dir=${cudaPackages.cudatoolkit}"
-              export TF_XLA_FLAGS="--tf_xla_cpu_global_jit --tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
+              export TF_XLA_FLAGS="--tf_xla_enable_lazy_compilation  --tf_xla_async_compilation"
               export TF_GPU_THREAD_MODE=gpu_private
 
               poetry env use 3.10

@@ -1,7 +1,7 @@
 DraftBots: !hcv
   help: The model for the draftbots
   value: !hc
-    CardRating: !hcv
+    SuperScore: !hcv
       help: Translates embeddings into linear ratings.
       value: !hc
         Dropout_0: !hcv
@@ -9,7 +9,7 @@ DraftBots: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0
+              value: 0.0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -20,331 +20,100 @@ DraftBots: !hcv
           help: The 1st hidden layer.
           value: !hc
             activation: !hcv
+              choices: !!python/tuple
+              - elu
+              - selu
+              - relu
+              - tanh
+              - sigmoid
+              - linear
+              - swish
               help: The activation function on the output of the layer.
               value: selu
             dims: !hcv
               help: The number of dimensions in the output of this layer.
-              value: 8
+              value: 16
             use_bias: !hcv
               help: Whether to use bias on the output.
               value: true
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
           value: 1
-    EmbedPack: !hcv
-      help: The layer that embeds the packs that have been seen so far.
-      value: !hc
-        Encoder: !hcv
-          help: The layers to model interactions between items.
-          value: !hc
-            InitialDropout: !hcv
-              help: The dropout to apply to the tokens before any other operations.
-              value: !hc
-                blank_last_dim: !hcv
-                  help: Apply dropout to the entire last dimension vs choosing for
-                    each element of the last dimension.
-                  value: false
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.0
-            attention dropout_rate: !hcv
-              help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.16
-            dense dropout_rate: !hcv
-              help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
-            dense_activation: !hcv
-              help: The activation function on the output of the layer.
-              value: selu
-            key_dims: !hcv
-              help: Size of the attention head for query and key.
-              value: 32
-            num_heads: !hcv
-              help: The number of separate heads of attention to use.
-              value: 2
-            num_hidden_dense: !hcv
-              help: The number of hidden dense layers
-              value: 0
-            num_hidden_layers: !hcv
-              help: Number of transformer blocks.
-              value: 3
-            token_stream_dims: !hcv
-              help: The size of the token embeddings passed between layers.
-              value: 64
-            use_bias: !hcv
-              help: Use bias in the dense layers
-              value: true
-            value_dims: !hcv
-              help: Size of the attention head for value.
-              value: 16
-        ItemDropout: !hcv
-          help: Drops out entire items from the set.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.0
-        PoolingAttention: !hcv
-          help: The attention layer that combines the set elements.
-          value: !hc
-            dropout: !hcv
-              help: The percent of values to get dropped out
-              value: 0
-            key_dims: !hcv
-              help: Size of the attention head for query and key.
-              value: 64
-            num_heads: !hcv
-              help: The number of separate heads of attention to use.
-              value: 2
-            use_bias: !hcv
-              help: Use bias in the dense layers
-              value: true
-            value_dims: !hcv
-              help: Size of the attention head for value.
-              value: 16
-        decoding_dropout_rate: !hcv
-          help: The percent of values to dropout from the result of dense layers in
-            the decoding step.
-          value: 0.0
-    EmbedPackPosition: !hcv
-      help: The embedding for the position in the draft
-      value: !hc
-        activation: !hcv
-          help: The activation to apply before combining the weights.
-          value: linear
-    RatingFromPool: !hcv
-      help: The layer that rates based on the other cards that have been picked.
-      value: !hc
-        EmbedContext: !hcv
-          help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
-          value: !hc
-            InitialDropout: !hcv
-              help: The dropout to apply to the tokens before any other operations.
-              value: !hc
-                blank_last_dim: !hcv
-                  help: Apply dropout to the entire last dimension vs choosing for
-                    each element of the last dimension.
-                  value: true
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.0
-            attention dropout_rate: !hcv
-              help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.09
-            dense dropout_rate: !hcv
-              help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
-            dense_activation: !hcv
-              help: The activation function on the output of the layer.
-              value: selu
-            key_dims: !hcv
-              help: Size of the attention head for query and key.
-              value: 64
-            num_heads: !hcv
-              help: The number of separate heads of attention to use.
-              value: 4
-            num_hidden_dense: !hcv
-              help: The number of hidden dense layers
-              value: 0
-            num_hidden_layers: !hcv
-              help: Number of transformer blocks.
-              value: 3
-            token_stream_dims: !hcv
-              help: The size of the token embeddings passed between layers.
-              value: 128
-            use_bias: !hcv
-              help: Use bias in the dense layers
-              value: true
-            value_dims: !hcv
-              help: Size of the attention head for value.
-              value: 32
-        EmbedItem: !hcv
-          help: Transforms the card embeddings to the embedding used to calculate
-            distances.
-          value: !hc
-            Dropout_0: !hcv
-              help: The dropout applied after the 1st hidden layer.
-              value: !hc
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.0
-            Final: !hcv
-              help: The last dense layer in the MLP.
-              value: !hc
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            Hidden_0: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            num_hidden: !hcv
-              help: The number of hidden layers in the MLP.
-              value: 1
-        ProjectContext: !hcv
-          help: Project the context embeddings to the space for measuring distance.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        bounded_distance: !hcv
-          help: Transform the distance to be in the range (0, 1)
-          value: false
-        final_activation: !hcv
-          help: The final activation before calculating distance
-          value: linear
-        measure_dims: !hcv
-          help: The number of dimensions to calculate distance in
-          value: 64
-        use_shifted_causal_mask: !hcv
-          help: Don't allow items to attend to themselves
-          value: false
-    RatingFromSeen: !hcv
-      help: The layer that rates based on the embeddings of the packs that have been
-        seen.
-      value: !hc
-        EmbedContext: !hcv
-          help: The Attentive set embedding layer to use if set_embed_type is 'attentive'
-          value: !hc
-            InitialDropout: !hcv
-              help: The dropout to apply to the tokens before any other operations.
-              value: !hc
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.0
-            attention dropout_rate: !hcv
-              help: The dropout rate for the attention layers of the transformer blocks.
-              value: 0.01
-            dense dropout_rate: !hcv
-              help: The dropout rate for the dense layers of the transformer blocks.
-              value: 0.0
-            dense_activation: !hcv
-              help: The activation function on the output of the layer.
-              value: selu
-            key_dims: !hcv
-              help: Size of the attention head for query and key.
-              value: 32
-            num_heads: !hcv
-              help: The number of separate heads of attention to use.
-              value: 1
-            num_hidden_dense: !hcv
-              help: The number of hidden dense layers
-              value: 0
-            num_hidden_layers: !hcv
-              help: Number of transformer blocks.
-              value: 1
-            token_stream_dims: !hcv
-              help: The size of the token embeddings passed between layers.
-              value: 32
-            use_bias: !hcv
-              help: Use bias in the dense layers
-              value: true
-            value_dims: !hcv
-              help: Size of the attention head for value.
-              value: 16
-        EmbedItem: !hcv
-          help: Transforms the card embeddings to the embedding used to calculate
-            distances.
-          value: !hc
-            Dropout_0: !hcv
-              help: The dropout applied after the 1st hidden layer.
-              value: !hc
-                rate: !hcv
-                  help: The percent of values that get replaced with zero.
-                  value: 0.0
-            Final: !hcv
-              help: The last dense layer in the MLP.
-              value: !hc
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            Hidden_0: !hcv
-              help: The 1st hidden layer.
-              value: !hc
-                activation: !hcv
-                  help: The activation function on the output of the layer.
-                  value: selu
-                dims: !hcv
-                  help: The number of dimensions in the output of this layer.
-                  value: 128
-                use_bias: !hcv
-                  help: Whether to use bias on the output.
-                  value: true
-            num_hidden: !hcv
-              help: The number of hidden layers in the MLP.
-              value: 1
-        ProjectContext: !hcv
-          help: Project the context embeddings to the space for measuring distance.
-          value: !hc
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
-        bounded_distance: !hcv
-          help: Transform the distance to be in the range (0, 1)
-          value: false
-        final_activation: !hcv
-          help: The final activation before calculating distance
-          value: linear
-        measure_dims: !hcv
-          help: The number of dimensions to calculate distance in
-          value: 32
-        use_shifted_causal_mask: !hcv
-          help: Don't allow items to attend to themselves
-          value: true
+    extremeness_margin: !hcv
+      help: The distance from the endpoints (0, 1) at which to start pushing the predicted
+        probability back towards 0.5.
+      value: 0.001
+    extremeness_weight: !hcv
+      help: The multiplier to scale the probability margin loss by. Suggested is 0.01
+        / probability_margin.
+      value: 100.0
     item_ratings: !hcv
       help: Whether to give each card a rating independent of context.
-      value: true
+      value: false
     log_loss_weight: !hcv
-      help: The weight given to log_loss. Triplet loss weight is 1 - log_loss_weight
+      help: The weight given to probability log loss.
       value: 0.8
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 1
+    num_super_layers: !hcv
+      help: Number of layers in the super oracle.
+      value: 3
     pool_context_ratings: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
-      value: true
-    pool_embed_dropout_rate: !hcv
-      help: The percent of enetries of the card embeddings for the pool that should
-        be dropped out.
-      value: 0.0
+      value: false
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
       value: 0.001
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
-      value: 0.0001
+      value: 0.0
     score_variance_weight: !hcv
       help: The weight given to the variance of the combined scores.
-      value: 1.0e-05
+      value: 0.0
     seen_context_ratings: !hcv
       help: Whether to rate cards based on the packs seen so far.
-      value: true
+      value: false
     seen_pack_dims: !hcv
       help: The number of dimensions to embed seen packs into.
-      value: 32
+      value: 64
     seen_variance_weight: !hcv
       help: The weight given to the variance of the seen contextual ratings.
-      value: 0.004
+      value: 0.01
+    sublayer_weights_l2_weight: !hcv
+      help: The multiplier to scale the loss on the square of the sublayer weights.
+      value: 0.001
+    super_attention_dropout: !hcv
+      help: The percentage of attention weights to drop.
+      value: 0.0
+    super_final_dropout: !hcv
+      help: The percentage of values to drop.
+      value: 0.0
+    super_key_dims: !hcv
+      help: Number of key dimensions per head for the super layers.
+      value: 64
+    super_layer: !hcv
+      help: Whether to give a rating with full context.
+      value: true
+    super_num_heads: !hcv
+      help: Number of heads per layer for the super layers.
+      value: 2
+    super_value_dims: !hcv
+      help: Number of value dimensions per head for the super layers.
+      value: 64
+    triplet_loss_weight: !hcv
+      help: The weight given to the triplet separation loss.
+      value: 0.2
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc
     dims: !hcv
       help: The number of dimensions the items should be embedded into.
-      value: 32
+      value: 128
     trainable: !hcv
       help: Whether the embeddings should be trained.
       value: true
-adafactor_ema_overwrite_frequency: !hcv
-  help: The frequency to replace weights with their exponential moving averages.
-  value: 2048
 adafactor_learning_rate: !hcv
   help: The learning rate to use for adafactor
   value: 0.0001
@@ -363,10 +132,10 @@ cube_adj_mtx_weight: !hcv
   value: 0
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 64
+  value: 4
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
-  value: 0.3
+  value: 0.25
 cube_noise_std: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.1
@@ -386,16 +155,30 @@ dtype: !hcv
   - 64
   help: The size of the floating point numbers to use for calculations in the model
   value: 32
+ema_overwrite_frequency: !hcv
+  help: The frequency to replace weights with their exponential moving averages. Set
+    to 0 to disable.
+  value: 2048
 epochs_for_completion: !hcv
   help: The number of epochs it should take to go through the entire dataset.
   value: 1
 optimizer: !hcv
-  choices: []
+  choices: !!python/tuple
+  - adam
+  - adamax
+  - lazyadam
+  - rectadam
+  - adafactor
+  - lamb
+  - adadelta
+  - nadam
+  - rmsprop
+  - adafactor
   help: The optimizer type to use for optimization
   value: adafactor
 pick_batch_size: !hcv
   help: The number of picks to evaluate at a time
-  value: 256
+  value: 32
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
   value: 0
@@ -404,4 +187,4 @@ use_async_execution: !hcv
   value: true
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: true
+  value: false

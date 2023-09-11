@@ -211,19 +211,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             )
             if super_layer
             else None,
-            "embed_pool_position": hyper_config.get_sublayer(
-                "EmbedPoolPosition",
-                sub_layer_type=TimeVaryingEmbedding,
-                fixed={
-                    "dims": card_embed_dims,
-                    "time_shape": (DEFAULT_PACKS_PER_PLAYER, DEFAULT_PICKS_PER_PACK),
-                    "activation": "linear",
-                },
-                seed_mod=23,
-                help="The embedding for the position in the draft",
-            )
-            if super_layer
-            else None,
             "rate_off_seen": hyper_config.get_sublayer(
                 "RatingFromSeen",
                 sub_layer_type=ContextualRating,
@@ -244,7 +231,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             else None,
             "super_layer": super_layer,
             "super_score": hyper_config.get_sublayer(
-                "MasterScore",
+                "SuperScore",
                 sub_layer_type=MLP,
                 seed_mod=13,
                 fixed={"Final": {"dims": 1, "activation": "linear"}},
@@ -452,32 +439,40 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 self.embed_card_pack_position((seen_coords, seen_coord_weights), training=training),
                 (batch_size, max_seen_packs, 1, card_embed_dims),
             )
-            pool_position_embeds = tf.reshape(
-                self.embed_pool_position((seen_coords, seen_coord_weights), training=training),
-                (batch_size, max_seen_packs, card_embed_dims),
-            )
             super_embeds = seen_pack_embeds + seen_position_embeds / tf.math.sqrt(
                 tf.cast(card_embed_dims, dtype=self.compute_dtype)
             )
-            pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds") + pool_position_embeds / tf.math.sqrt(
-                tf.cast(card_embed_dims, dtype=self.compute_dtype)
-            )
+            pool_embeds = tf.gather(card_embeddings, pool, name="pool_embeds")
             bands = tf.reshape(
                 tf.reshape(tf.range(max_seen_packs), (1, max_seen_packs))
                 - tf.reshape(tf.range(max_seen_packs), (max_seen_packs, 1)),
                 (1, max_seen_packs, 1, max_seen_packs, 1),
+            )
+            mask_seen = (
+                bands
+                <= 0
+                # We removed these since tf-lite crashes with them, not sure why
+                # & tf.reshape(seen_packs > 0, (batch_size, max_seen_packs, max_cards_in_pack, 1, 1))
+                # & tf.reshape(seen_packs > 0, (batch_size, 1, 1, max_seen_packs, max_cards_in_pack))
+            )
+            mask_pool = (
+                bands
+                < 0
+                # We removed these since tf-lite crashes with them, not sure why
+                # & tf.reshape(seen_packs > 0, (batch_size, max_seen_packs, max_cards_in_pack, 1, 1))
+                # & tf.reshape(pool > 0, (batch_size, 1, 1, max_seen_packs, 1))
             )
             for seen_layer, picked_layer in zip(self.super_score_seen, self.super_score_picked):
                 super_embeds = picked_layer(
                     (
                         super_embeds,
                         tf.reshape(pool_embeds, (batch_size, max_seen_packs, 1, card_embed_dims)),
-                        bands < 0,
+                        mask_pool,
                     ),
                     training=training,
                     mask=None,
                 )
-                super_embeds = seen_layer((super_embeds, bands <= 0), training=training, mask=None)
+                super_embeds = seen_layer((super_embeds, mask_seen), training=training, mask=None)
             sublayer_scores_list.append(tf.squeeze(self.super_score(super_embeds, training=training), axis=-1))
         # Shift pool right by 1
         pool = tf.concat([tf.zeros_like(pool[:, :1]), pool[:, :-1]], axis=1)
@@ -541,9 +536,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             additive_mask = mask * tf.constant(LARGE_INT, dtype=loss_dtype)
             scores = pos_mask * tf.cast(scores, dtype=loss_dtype, name="cast_scores")
             probs = tf.nn.softmax(scores + additive_mask, axis=-1, name="probs")
-            probs_for_loss = tf.concat(
-                [probs[:, :, :1], tf.constant(1, dtype=self.compute_dtype) - probs[:, :, 1:]], axis=2
-            )
+            probs_for_loss = probs[:, :, 0]
             score_diffs = tf.subtract(
                 tf.add(tf.constant(self.margin, dtype=scores.dtype), scores[:, :, 1:]),
                 scores[:, :, :1],
@@ -557,7 +550,6 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 axis=2,
             )
             card_losses = {
-                "log": -tf.math.log((1 - 2 * EPSILON) * probs_for_loss + EPSILON, name="log_probs"),
                 "triplet": clipped_diffs,
                 "extremeness": tf.maximum(
                     tf.math.abs(0.5 - probs) - 0.5 + self.extremeness_margin, 0.0, name="extremeness_losses"
@@ -573,9 +565,10 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     tf.unstack(sublayers_weighted, num=len(sublayer_scores), axis=0) + [scores],
                 )
             } | {
+                "log": -tf.math.log((1 - 2 * EPSILON) * probs_for_loss + EPSILON, name="log_probs"),
                 "sublayer_weights_l2": reduce_sum_masked(
                     tf.square(sublayer_weights), axis=-1, mask=tf.expand_dims(mask_freebies_1, -1), name="weights_l2"
-                )
+                ),
             }
             pack_weights = tf.cast(pack_mask, loss_dtype)
             _, loss = self.collapse_losses(((card_losses, card_weights), (pack_losses, pack_weights), {}, {}))
@@ -617,7 +610,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 "probs": (0, 1),
                 "extremeness_loss": (0.0, self.extremeness_margin),
             }
-            saturates = {"position"}
+            saturates = frozenset({"position"})
             self.log_metrics(int_metrics, float_metrics, ranges, saturates, mask_freebies_1)
             self.log_metrics(
                 {},

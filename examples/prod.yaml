@@ -206,7 +206,7 @@ DeckBuilder: !hcv
 DraftBots: !hcv
   help: The model for the draftbots
   value: !hc
-    MasterScore: !hcv
+    SuperScore: !hcv
       help: Translates embeddings into linear ratings.
       value: !hc
         Dropout_0: !hcv
@@ -214,7 +214,7 @@ DraftBots: !hcv
           value: !hc
             rate: !hcv
               help: The percent of values that get replaced with zero.
-              value: 0.2
+              value: 0.0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
@@ -251,7 +251,7 @@ DraftBots: !hcv
     extremeness_weight: !hcv
       help: The multiplier to scale the probability margin loss by. Suggested is 0.01
         / probability_margin.
-      value: 10.0
+      value: 100.0
     item_ratings: !hcv
       help: Whether to give each card a rating independent of context.
       value: false
@@ -263,7 +263,7 @@ DraftBots: !hcv
       value: 1
     num_super_layers: !hcv
       help: Number of layers in the super oracle.
-      value: 2
+      value: 3
     pool_context_ratings: !hcv
       help: Whether to rate cards based on how the go with the other cards in the
         pool so far.
@@ -271,10 +271,6 @@ DraftBots: !hcv
     pool_variance_weight: !hcv
       help: The weight given to the variance of the pool contextual ratings.
       value: 0.001
-    probability_margin: !hcv
-      help: The distance from the endpoints (0, 1) at which to start pushing the predicted
-        probability back towards 0.5.
-      value: 0.01
     rating_variance_weight: !hcv
       help: The weight given to the variance of the card ratings.
       value: 0.0
@@ -307,7 +303,7 @@ DraftBots: !hcv
       value: true
     super_num_heads: !hcv
       help: Number of heads per layer for the super layers.
-      value: 8
+      value: 4
     super_value_dims: !hcv
       help: Number of value dimensions per head for the super layers.
       value: 64
@@ -341,7 +337,7 @@ cube_adj_mtx_weight: !hcv
   value: 0
 cube_batch_size: !hcv
   help: The number of cube samples to evaluate at a time
-  value: 2
+  value: 4
 cube_noise_mean: !hcv
   help: The median of the noise distribution for cubes.
   value: 0.25
@@ -393,10 +389,10 @@ pick_batch_size: !hcv
   value: 32
 recommender_weight: !hcv
   help: The weight to multiply the recommender loss by.
-  value: 0
+  value: 1
 use_async_execution: !hcv
   help: Whether to enable experimental asynchronous execution.
-  value: true
+  value: false
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: true
+  value: false

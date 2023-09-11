@@ -102,6 +102,8 @@ def verify_request():
 def get_model_dict(name="prod"):
     global INT_TO_CARD
     global CARD_TO_INT
+    # Force prod temporarily until new models can be trained.
+    name = "prod"
     if name not in MODELS:
         model_path = Path(f"ml_files/tflite")
         model = tflite.Interpreter(model_path=str(model_path / f"{name}_model.tflite"), num_threads=2)
