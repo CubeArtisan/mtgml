@@ -196,6 +196,16 @@ def deck_building_recommendations():
     return results, 200
 
 
+@app.route("/oracle-ids", methods=["GET"])
+def get_oracle_ids():
+    name = request.args.get("model_type", "prod")
+    trace.get_current_span().set_attribute("model_name", name)
+    model_dict = get_model_dict(name)
+    card_to_int = model_dict["card_to_int"]
+    original_to_new_index = model_dict["original_to_new_index"]
+    return {"oracleIds": [oracle for oracle, idx in card_to_int.items() if original_to_new_index[idx] > 0]}, 200
+
+
 @app.route("/version", methods=["GET"])
 def get_version():
     return {"version": os.environ.get("MTGML_VERSION", "development"), "success": True}, 200
