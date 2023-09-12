@@ -14,5 +14,20 @@ class TensorBoardFix(tf.keras.callbacks.TensorBoard):
         super(TensorBoardFix, self).on_test_begin(*args, **kwargs)
         tf.summary.experimental.set_step(self._val_step)
 
+    def _push_writer(self, writer, step):
+        """Sets the default writer for custom batch-level summaries."""
+        if self.update_freq == "epoch":
+            return
 
-TensorBoardFix.__name__ == "TensorBoard"
+        should_record = lambda: tf.equal(step % self.update_freq, self.update_freq - 1)
+        # TODO(b/151339474): Fix deadlock when not using .value() here.
+        summary_context = (
+            writer.as_default(step.value()),
+            tf.summary.record_if(should_record),
+        )
+        self._prev_summary_state.append(summary_context)
+        summary_context[0].__enter__()
+        summary_context[1].__enter__()
+
+
+TensorBoardFix.__name__ = "TensorBoard"

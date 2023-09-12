@@ -44,7 +44,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--log-dir", type=Path, default=None, help="The path to store logs in.")
     parser.add_argument("--histograms", action="store_true", help="Enable logging histograms while training.")
-    parser.set_defaults(float_type=tf.float32, use_xla=True)
+    parser.set_defaults(float_type=tf.float32)
     args = parser.parse_args()
     set_log_histograms(args.histograms)
     tf.keras.utils.set_random_seed(args.seed)
@@ -337,6 +337,7 @@ if __name__ == "__main__":
             )
         else:
             raise Exception("Need to specify a valid optimizer type")
+        # Assigning to variables makes this unhappy in replicated contexts so no jit_compile here.
         model.compile(optimizer=opt)
     latest = tf.train.latest_checkpoint(output_dir)
     if latest is not None:
@@ -373,7 +374,7 @@ if __name__ == "__main__":
             log_dir=log_dir,
             histogram_freq=0,
             write_graph=True,
-            update_freq=256,
+            update_freq=len(draftbot_validation_generator),
             embeddings_freq=None,
             profile_batch=0 if args.debug or not args.profile else (128, 135),
         )

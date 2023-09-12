@@ -272,7 +272,7 @@ def histogram_masked(
     buckets=None,
     saturate: bool = False,
     name: str | None = None,
-) -> tuple[tf.Tensor, tf.Tensor]:
+) -> tf.Tensor:
     with tf.name_scope(name or "HistogramMasked") as scope:
         x = tf.convert_to_tensor(x, name="x")
         mask = get_mask_for(x, mask)

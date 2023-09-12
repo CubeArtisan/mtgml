@@ -369,7 +369,7 @@ ema_overwrite_frequency: !hcv
   value: 2048
 epochs_for_completion: !hcv
   help: The number of epochs it should take to go through the entire dataset.
-  value: 8
+  value: 4
 optimizer: !hcv
   choices: !!python/tuple
   - adam
@@ -395,4 +395,4 @@ use_async_execution: !hcv
   value: false
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: false
+  value: true

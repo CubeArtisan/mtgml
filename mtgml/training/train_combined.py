@@ -401,7 +401,8 @@ if __name__ == "__main__":
             )
         else:
             raise Exception("Need to specify a valid optimizer type")
-        model.compile(optimizer=opt, jit_compile=use_xla)
+        # Assigning to variables makes this unhappy in replicated contexts so no jit_compile here.
+        model.compile(optimizer=opt)
     latest = tf.train.latest_checkpoint(output_dir)
     loaded = None
     if latest is not None:
@@ -438,7 +439,7 @@ if __name__ == "__main__":
             log_dir=log_dir,
             histogram_freq=0,
             write_graph=True,
-            update_freq=512,
+            update_freq=len(draftbot_validation_generator),
             embeddings_freq=None,
             profile_batch=0 if args.debug or not args.profile else (128, 135),
         )

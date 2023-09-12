@@ -134,7 +134,7 @@ ALL_PICKS = tuple(0 for _ in range(MAX_SEEN_PACKS))
 #             yield (default_basics, value, seen, seen_coords, seen_coord_weights, ALL_PICKS)
 
 
-DESTS = [0] * 38 + [1, 2]
+DESTS = [0] * 8 + [1, 2]
 
 
 def load_all_drafts(pool, *args):

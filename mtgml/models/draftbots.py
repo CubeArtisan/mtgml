@@ -591,7 +591,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             position = reduce_sum_masked(
                 tf.cast(scores[:, :, 1:] >= scores[:, :, :1], dtype=tf.float32), mask=mask[:, :, 1:], axis=2
             )
-            int_metrics = {"position": position}
+            int_metrics = {"position": tf.cast(position, tf.int32)}
             float_metrics = {
                 "top_1_accuracy": reduce_mean_masked(
                     tf.cast(position < 1.0, dtype=tf.float32),

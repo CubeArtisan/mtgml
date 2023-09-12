@@ -26,7 +26,7 @@ DraftBots: !hcv
       value: false
     log_loss_weight: !hcv
       help: The weight given to probability log loss.
-      value: 0.8
+      value: 1.0
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
       value: 0.01
@@ -161,4 +161,4 @@ use_async_execution: !hcv
   value: true
 use_xla: !hcv
   help: Whether to use xla to speed up calculations.
-  value: false
+  value: true
