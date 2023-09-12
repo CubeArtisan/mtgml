@@ -4,41 +4,15 @@ DraftBots: !hcv
     SuperScore: !hcv
       help: Translates embeddings into linear ratings.
       value: !hc
-        Dropout_0: !hcv
-          help: The dropout applied after the 1st hidden layer.
-          value: !hc
-            rate: !hcv
-              help: The percent of values that get replaced with zero.
-              value: 0.0
         Final: !hcv
           help: The last dense layer in the MLP.
           value: !hc
             use_bias: !hcv
               help: Whether to use bias on the output.
-              value: true
-        Hidden_0: !hcv
-          help: The 1st hidden layer.
-          value: !hc
-            activation: !hcv
-              choices: !!python/tuple
-              - elu
-              - selu
-              - relu
-              - tanh
-              - sigmoid
-              - linear
-              - swish
-              help: The activation function on the output of the layer.
-              value: selu
-            dims: !hcv
-              help: The number of dimensions in the output of this layer.
-              value: 16
-            use_bias: !hcv
-              help: Whether to use bias on the output.
-              value: true
+              value: false
         num_hidden: !hcv
           help: The number of hidden layers in the MLP.
-          value: 1
+          value: 0
     extremeness_margin: !hcv
       help: The distance from the endpoints (0, 1) at which to start pushing the predicted
         probability back towards 0.5.
@@ -55,7 +29,7 @@ DraftBots: !hcv
       value: 0.8
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
-      value: 1
+      value: 0.01
     num_super_layers: !hcv
       help: Number of layers in the super oracle.
       value: 3
@@ -104,7 +78,7 @@ DraftBots: !hcv
       value: 64
     triplet_loss_weight: !hcv
       help: The weight given to the triplet separation loss.
-      value: 0.2
+      value: 1.0
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc

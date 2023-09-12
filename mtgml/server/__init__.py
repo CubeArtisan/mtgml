@@ -99,11 +99,14 @@ def verify_request():
             return None
 
 
+AVAILABLE_MODELS = [
+    str(path.name).split("_model.tflite")[0] for path in Path(f"ml_files/tflite").glob("*_model.tflite")
+]
+
+
 def get_model_dict(name="prod"):
     global INT_TO_CARD
     global CARD_TO_INT
-    # Force prod temporarily until new models can be trained.
-    name = "prod"
     if name not in MODELS:
         model_path = Path(f"ml_files/tflite")
         model = tflite.Interpreter(model_path=str(model_path / f"{name}_model.tflite"), num_threads=2)
@@ -208,7 +211,11 @@ def get_oracle_ids():
 
 @app.route("/version", methods=["GET"])
 def get_version():
-    return {"version": os.environ.get("MTGML_VERSION", "development"), "success": True}, 200
+    return {
+        "version": os.environ.get("MTGML_VERSION", "development"),
+        "success": True,
+        "models": AVAILABLE_MODELS,
+    }, 200
 
 
 @app.after_request

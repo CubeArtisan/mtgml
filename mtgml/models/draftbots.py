@@ -542,12 +542,16 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 scores[:, :, :1],
                 name="score_diffs",
             )
-            clipped_diffs = tf.concat(
-                [
-                    tf.zeros_like(score_diffs[:, :, :1]),
-                    tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name="clipped_score_diffs"),
-                ],
-                axis=2,
+            clipped_diffs = (
+                tf.concat(
+                    [
+                        tf.zeros_like(score_diffs[:, :, :1]),
+                        tf.math.maximum(tf.constant(0, dtype=loss_dtype), score_diffs, name="clipped_score_diffs"),
+                    ],
+                    axis=2,
+                )
+                * riskiness
+                * tf.cast(riskiness > 1.0, dtype=loss_dtype)
             )
             card_losses = {
                 "triplet": clipped_diffs,
@@ -557,7 +561,7 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             }
             num_in_pack = tf.math.reduce_sum(mask, axis=-1, name="num_in_pack")
             mask_freebies_1 = num_in_pack > 1.0
-            card_weights = riskiness * tf.cast(tf.expand_dims(mask_freebies_1, -1), dtype=loss_dtype) * mask
+            card_weights = tf.cast(tf.expand_dims(mask_freebies_1, -1), dtype=loss_dtype) * mask
             pack_losses = {
                 f"{name}_variance": reduce_variance_masked(values, mask=mask, axis=-1, name=f"{name}_variance")
                 for name, values in zip(
@@ -571,7 +575,17 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                 ),
             }
             pack_weights = tf.cast(pack_mask, loss_dtype)
-            _, loss = self.collapse_losses(((card_losses, card_weights), (pack_losses, pack_weights), {}, {}))
+            draft_losses = {}
+            draft_weights = None
+            overall_losses = {}
+            _, loss = self.collapse_losses(
+                (
+                    (card_losses, card_weights),
+                    (pack_losses, pack_weights),
+                    (draft_losses, draft_weights),
+                    overall_losses,
+                )
+            )
             max_score = reduce_max_masked(scores, mask=mask, axis=2, name="max_score")
             min_score = reduce_min_masked(scores, mask=mask, axis=2, name="min_score")
             position = reduce_sum_masked(

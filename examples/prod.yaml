@@ -257,10 +257,10 @@ DraftBots: !hcv
       value: false
     log_loss_weight: !hcv
       help: The weight given to probability log loss.
-      value: 0.8
+      value: 1.0
     margin: !hcv
       help: The margin by which we want the correct choice to beat the incorrect choices.
-      value: 1
+      value: 0.01
     num_super_layers: !hcv
       help: Number of layers in the super oracle.
       value: 3
@@ -309,7 +309,7 @@ DraftBots: !hcv
       value: 64
     triplet_loss_weight: !hcv
       help: The weight given to the triplet separation loss.
-      value: 0.2
+      value: 1.0
 EmbedCards: !hcv
   help: The embeddings for the card objects.
   value: !hc

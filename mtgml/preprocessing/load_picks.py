@@ -212,12 +212,12 @@ DEVOTION_AND_IDENTITY = DEVOTION + COLOR_IDENTITY
 
 def calculate_riskiness(pack, pool):
     # total_devotions is BUFFER_SIZE, MAX_PICKED, 5
-    total_devotions = np.cumsum(DEVOTION[pool], axis=-2)
-    total_devotion = np.sum(total_devotions, axis=-1, keepdims=True)
+    total_devotions = np.cumsum(DEVOTION[pool], axis=1)
+    total_devotion = np.sum(total_devotions, axis=2, keepdims=True)
     # pack_colors is BUFFER_SIZE, MAX_SEEN_PACKS, MAX_CARDS_IN_PACK, 5
     pack_colors = DEVOTION_AND_IDENTITY[pack]
     pack_used_colors = np.where(
-        (total_devotions > total_devotion / 5)[:, :, None] | (np.take(pack_colors, [0], axis=-2) > 0),
+        (total_devotions > total_devotion / 5)[:, :, None] | (np.take(pack_colors, [0], axis=1) > 0),
         pack_colors,
         np.zeros_like(pack_colors),
     )
@@ -225,7 +225,7 @@ def calculate_riskiness(pack, pool):
     pack_unused_colors = np.where(
         (total_devotion + np.zeros_like(extra_colors)) > 5, extra_colors, np.zeros_like(extra_colors)
     )
-    return pack_unused_colors * 4 + 1
+    return pack_unused_colors * 4
 
 
 PREFIX = struct.Struct(
