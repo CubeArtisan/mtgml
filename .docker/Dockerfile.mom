@@ -1,4 +1,4 @@
-FROM python:3.9-bullseye
+FROM python:3.10-bullseye
 
 WORKDIR /mtgml
 
@@ -13,4 +13,4 @@ COPY ml_files/tflite/mom_int_to_oracle_id.json ml_files/tflite/
 COPY ml_files/tflite/mom_model.tflite ml_files/tflite/
 COPY ml_files/tflite/mom_original_to_new_index.json ml_files/tflite/
 
-ENTRYPOINT gunicorn -w 8 --access-logfile - -b 0.0.0.0:8000 --timeout 300 mtgml.server:app
+ENTRYPOINT gunicorn -w 4 --access-logfile - -b 0.0.0.0:8000 --timeout 300 mtgml.server:app
