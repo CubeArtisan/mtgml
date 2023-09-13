@@ -363,6 +363,13 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
                     max=1.0,
                     help="The multiplier to scale the loss on the square of the sublayer weights.",
                 ),
+                "mean_score": hyper_config.get_float(
+                    "mean_score_weight",
+                    default=1e-02,
+                    min=0.0,
+                    max=1.0,
+                    help="The multiplier to force the mean score to go towards 0.",
+                ),
             },
             "margin": hyper_config.get_float(
                 "margin",
@@ -577,7 +584,9 @@ class DraftBot(ConfigurableLayer, tf.keras.Model):
             pack_weights = tf.cast(pack_mask, loss_dtype)
             draft_losses = {}
             draft_weights = None
-            overall_losses = {}
+            overall_losses = {
+                "mean_score": tf.math.abs(reduce_mean_masked(scores, mask=card_weights, axis=None, name="mean_score"))
+            }
             _, loss = self.collapse_losses(
                 (
                     (card_losses, card_weights),
