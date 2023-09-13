@@ -19,6 +19,7 @@ from mtgml.constants import OPTIMIZER_CHOICES, set_debug, set_log_histograms
 from mtgml.generators.combined_generator import CombinedGenerator
 from mtgml.models.combined_model import CombinedModel
 from mtgml.tensorboard.callback import TensorBoardFix
+from mtgml.training.time_stopping import TimedStopping
 from mtgml.utils.tqdm_callback import TQDMProgressBar
 
 BATCH_CHOICES = tuple(2**i for i in range(4, 18))
@@ -360,6 +361,9 @@ if __name__ == "__main__":
             )
             callbacks.append(mcp_callback)
             callbacks.append(cp_callback)
+        if args.time_limit > 0:
+            ts_callback = TimedStopping(seconds=args.time_limit * 60, verbose=1)
+            callbacks.append(ts_callback)
         nan_callback = tf.keras.callbacks.TerminateOnNaN()
         num_batches = len(draftbot_train_generator)
         es_callback = tf.keras.callbacks.EarlyStopping(
