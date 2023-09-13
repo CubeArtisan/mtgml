@@ -20,18 +20,11 @@ class DraftmancerDraftbots(ConfigurableLayer):
             max=512,
             help="The number of dimensions to use for encoding card information.",
         )
-        token_stream_dims = hyper_config.get_int(
-            "token_stream_dims",
-            default=128,
-            min=8,
-            max=512,
-            help="The number of dimensions to use for the token stream.",
-        )
         return {
+            "num_cards": num_cards,
             "card_embeddings": tf.keras.layers.Embedding(
                 num_cards + 2, card_embed_dims, name="card_embeddings", mask_zero=True
             ),
-            "token_stream_dims": token_stream_dims,
             "card_embed_dims": card_embed_dims,
             "use_pool_positions": hyper_config.get_bool(
                 "use_pool_positions", default=True, help="Whether to use position embeddings for the pool."
