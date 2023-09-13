@@ -2,8 +2,7 @@
 
 set -e
 
-# export SET_TYPES=("ltr" "mom" "sir" "one" "bro" "dmu" "snc" "neo" "vow" "mid" "stx")
-export SET_TYPES=("snc" "neo" "vow" "mid" "stx")
+export SET_TYPES=("ltr" "mom" "sir" "one" "bro" "dmu" "snc" "neo" "vow" "mid" "stx")
 # HBG seems to have issues with looking up card names, needs further investigation
 # KHM doesn't have any draft data so a set specific model doesn't make sense currently
 # AFR seems to have file corruption issues though that might be local
@@ -18,7 +17,7 @@ export DATE=`gsutil ls -lh $GS_PATH\
     | cut -d '/' -f 5\
     | cut -d '.' -f 1`
 
-rm -rf data/17lands_complete
+rm -rf data/17lands_complete data/17lands/
 mkdir -p data/17lands_complete/drafts data/17lands_complete/decks
 for set in ${SET_TYPES[@]}
 do
